@@ -1,0 +1,5 @@
+Coloca aqui el archivo del logo con este nombre exacto:
+logo-aipetfriendly.png
+
+La app ya esta configurada para cargarlo automaticamente desde /logo-aipetfriendly.png.
+Si el archivo no existe, se muestra un icono de respaldo.

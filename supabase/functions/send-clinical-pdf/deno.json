@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "name": "send-clinical-pdf",
+  "main": "index.ts",
+  "supabaseUrl": "http://localhost:54321",
+  "envPath": ".env.local"
+}
