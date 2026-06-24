@@ -1,5 +1,7 @@
+import { FormEvent, useState } from 'react';
 import { Bell, Check, Crown, Lock, Tags, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { signUpWithEmail } from '../hooks/useSupabaseSync';
 
 /* ── SubscriptionBanner ─────────────────────────────── */
 export function SubscriptionBanner() {
@@ -33,8 +35,155 @@ const FEATURES = [
 ];
 
 export function PaywallCard() {
-  const { subscription } = useAppState();
+  const {
+    subscription,
+    user,
+    setActiveTab,
+    pets,
+    clinicalEntries,
+    preventiveTasks,
+    chatMessages,
+  } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
+  const isGuest = user?.isGuest ?? false;
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const handleUpgrade = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!email.trim() || !password.trim()) {
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      await signUpWithEmail(email.trim().toLowerCase(), password, {
+        pets,
+        clinicalEntries,
+        preventiveTasks,
+        chatMessages,
+      });
+
+      setSuccess('Tu cuenta fue creada y la información que cargaste quedó guardada.');
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'No se pudo crear la cuenta.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isGuest) {
+    return (
+      <section className="space-y-4 pb-2">
+        <div className="pt-2">
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Bienvenido, Visitante</h2>
+          <p className="mt-1 text-slate-500">Crea una cuenta para sincronizar tus datos y acceder a todas las funciones.</p>
+        </div>
+
+        <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 shadow-md">
+          <div className="mb-4 flex items-center gap-3">
+            <span className="text-4xl">🎉</span>
+            <div className="text-white">
+              <p className="text-xl font-extrabold">Suscríbete ahora</p>
+              <p className="text-sm text-white/80">Guarda tu progreso y accede a todas las funciones</p>
+            </div>
+          </div>
+          <p className="mt-3 text-sm text-white/85">
+            Si te suscribís ahora, se guardan los datos que cargaste para no perder la info. Después podés corregirlos si algo quedó mal.
+          </p>
+        </div>
+
+        <form onSubmit={handleUpgrade} className="rounded-3xl bg-white p-5 shadow-sm space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="tu@email.com"
+              className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Contraseña</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              minLength={6}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Confirmar contraseña</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repite la contraseña"
+              className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              minLength={6}
+              required
+            />
+          </div>
+
+          {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
+          {success && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</p>}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-3.5 font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Crown size={18} className="text-yellow-300" />
+            {loading ? 'Creando cuenta...' : 'Crear cuenta ahora'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('pets')}
+            className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-700"
+          >
+            Seguir probando la app
+          </button>
+        </form>
+
+        <div className="rounded-3xl bg-white p-5 shadow-sm">
+          <p className="mb-4 font-bold text-slate-900">Con una cuenta accederás a:</p>
+          <div className="space-y-2">
+            {FEATURES.map(f => (
+              <div key={f.label} className={`flex items-center gap-2 text-sm text-slate-700`}>
+                <Check size={15} className="shrink-0 text-emerald-500" />
+                <span>{f.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4 pb-2">

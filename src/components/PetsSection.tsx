@@ -82,7 +82,7 @@ const inp = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 tex
 
 export function PetsSection() {
   const { pets, selectedPetId, canAddPet, freePetLimit, addPet, selectPet, removePet, updatePet } = usePets();
-  const { setActiveTab } = useAppState();
+  const { setActiveTab, user } = useAppState();
   const { timeline, addClinicalNote, generateClinicalPdf, sendClinicalPdfByEmail } = useClinical();
   const { preventiveTasks, addPreventiveTask, toggleTask } = usePreventive();
 
@@ -149,10 +149,10 @@ export function PetsSection() {
   const doNext = () => { if (okStep()) setStep(s => s + 1); };
   const doBack = () => { setErr(null); setStep(s => s - 1); };
 
-  const doSave = () => {
+  const doSave = async () => {
     if (!okStep()) return;
     try {
-      const saved = addPet(form);
+      const saved = await addPet(form);
       selectPet(saved.id);
       setForm(INIT); setStep(1); setErr(null);
       setView('detail');
@@ -201,6 +201,19 @@ export function PetsSection() {
         <p className="mt-1 text-slate-500">{pets.length} registradas (max {freePetLimit})</p>
       </div>
 
+      {user?.isGuest && (
+        <div className="rounded-2xl bg-amber-50 border-2 border-amber-200 p-4">
+          <p className="mb-3 text-sm font-semibold text-amber-900">⚠️ Modo visitante - Los datos no se guardarán</p>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('subscription')}
+            className="w-full rounded-full bg-amber-500 py-2.5 font-bold text-white hover:bg-amber-600 transition"
+          >
+            Crear cuenta para guardar datos
+          </button>
+        </div>
+      )}
+
       {canAddPet && (
         <button type="button" onClick={() => { setStep(1); setForm(INIT); setView('wizard'); }}
           className="w-full rounded-3xl border-2 border-dashed border-emerald-300 bg-white/80 py-6 text-center shadow-sm transition hover:bg-white">
@@ -211,7 +224,23 @@ export function PetsSection() {
         </button>
       )}
 
-      {pets.length === 0 ? (
+      {!canAddPet && !user?.isGuest && (
+        <div className="rounded-2xl bg-rose-50 border-2 border-rose-200 p-4">
+          <p className="text-sm font-semibold text-rose-900">Has alcanzado el límite de mascotas ({freePetLimit})</p>
+        </div>
+      )}
+
+      {user?.isGuest && pets.length === 0 && (
+        <div className="rounded-3xl bg-white/60 px-6 py-14 text-center shadow-sm">
+          <span className="mx-auto mb-5 inline-flex h-28 w-28 items-center justify-center rounded-full bg-emerald-100 text-emerald-400">
+            <Heart size={52} />
+          </span>
+          <h3 className="text-2xl font-extrabold text-slate-900">Prueba agregando mascotas</h3>
+          <p className="mt-2 text-slate-500">Crea una cuenta para guardar tus datos</p>
+        </div>
+      )}
+
+      {!user?.isGuest && pets.length === 0 ? (
         <div className="rounded-3xl bg-white/60 px-6 py-14 text-center shadow-sm">
           <span className="mx-auto mb-5 inline-flex h-28 w-28 items-center justify-center rounded-full bg-emerald-100 text-emerald-400">
             <Heart size={52} />
@@ -224,6 +253,7 @@ export function PetsSection() {
           </button>
         </div>
       ) : (
+        pets.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {pets.map(p => (
             <button key={p.id} type="button" onClick={() => { selectPet(p.id); setView('detail'); }}
@@ -241,6 +271,7 @@ export function PetsSection() {
             </button>
           ))}
         </div>
+        )
       )}
     </section>
   );
@@ -478,7 +509,16 @@ export function PetsSection() {
             <div className="mt-6 flex gap-3">
               <button type="button" onClick={() => setDeleteConfirm(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
-              <button type="button" onClick={() => { removePet(pet.id); setDeleteConfirm(false); setView('list'); }}
+              <button type="button" onClick={async () => {
+                try {
+                  await removePet(pet.id);
+                  setDeleteConfirm(false);
+                  setView('list');
+                } catch (ex) {
+                  setErr(ex instanceof Error ? ex.message : 'No se pudo eliminar la mascota.');
+                  setDeleteConfirm(false);
+                }
+              }}
                 className="w-full rounded-full bg-rose-500 py-3 font-bold text-white">Eliminar</button>
             </div>
           </div>
@@ -672,7 +712,16 @@ export function PetsSection() {
             <div className="mt-6 flex gap-3">
               <button type="button" onClick={() => setDeleteConfirm(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
-              <button type="button" onClick={() => { removePet(pet.id); setDeleteConfirm(false); setView('list'); }}
+              <button type="button" onClick={async () => {
+                try {
+                  await removePet(pet.id);
+                  setDeleteConfirm(false);
+                  setView('list');
+                } catch (ex) {
+                  setMsg(ex instanceof Error ? ex.message : 'No se pudo eliminar la mascota.');
+                  setDeleteConfirm(false);
+                }
+              }}
                 className="w-full rounded-full bg-rose-500 py-3 font-bold text-white">Eliminar</button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useAppState } from '../context/AppStateContext';
+import { createPet, deletePet } from '../lib/supabase';
 import type { Pet, PetFormData } from '../types';
 
 export function usePets() {
@@ -13,7 +14,34 @@ export function usePets() {
   } = useAppState();
 
   const addPet = useCallback(
-    (data: PetFormData) => {
+    async (data: PetFormData) => {
+      if (user?.isGuest) {
+        const now = new Date().toISOString();
+        const nextPet: Pet = {
+          id: crypto.randomUUID(),
+          userId: user.id,
+          name: data.name,
+          breed: data.breed,
+          species: data.species,
+          sex: data.sex,
+          birthDate: data.birthDate,
+          ageYears: data.ageYears,
+          ageMonths: data.ageMonths,
+          weightKg: data.weightKg,
+          photoUrl: data.photoUrl,
+          notes: data.notes,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const nextPets = [nextPet, ...pets];
+        setPets(nextPets);
+        if (!selectedPetId) {
+          setSelectedPetId(nextPet.id);
+        }
+        return nextPet;
+      }
+
       if (!user) {
         throw new Error('Debes iniciar sesion para registrar mascotas.');
       }
@@ -21,14 +49,10 @@ export function usePets() {
         throw new Error('Limite de mascotas alcanzado en plan gratis.');
       }
 
-      const now = new Date().toISOString();
-      const nextPet: Pet = {
-        id: crypto.randomUUID(),
-        userId: user.id,
-        createdAt: now,
-        updatedAt: now,
-        ...data,
-      };
+      const nextPet = await createPet(user.id, data);
+      if (!nextPet) {
+        throw new Error('No se pudo guardar la mascota en Supabase.');
+      }
 
       const nextPets = [nextPet, ...pets];
       setPets(nextPets);
@@ -41,14 +65,28 @@ export function usePets() {
   );
 
   const removePet = useCallback(
-    (petId: string) => {
+    async (petId: string) => {
+      if (user?.isGuest) {
+        const nextPets = pets.filter((pet) => pet.id !== petId);
+        setPets(nextPets);
+        if (selectedPetId === petId) {
+          setSelectedPetId(nextPets[0]?.id ?? null);
+        }
+        return;
+      }
+
+      const deleted = await deletePet(petId);
+      if (!deleted) {
+        throw new Error('No se pudo eliminar la mascota en Supabase.');
+      }
+
       const nextPets = pets.filter((pet) => pet.id !== petId);
       setPets(nextPets);
       if (selectedPetId === petId) {
         setSelectedPetId(nextPets[0]?.id ?? null);
       }
     },
-    [pets, selectedPetId, setPets, setSelectedPetId],
+    [pets, selectedPetId, setPets, setSelectedPetId, user?.isGuest],
   );
 
   const selectPet = useCallback(
@@ -68,7 +106,7 @@ export function usePets() {
   return {
     pets,
     selectedPetId,
-    canAddPet: subscription.canAddPet,
+    canAddPet: user?.isGuest ? true : subscription.canAddPet,
     freePetLimit: subscription.freePetLimit,
     addPet,
     removePet,

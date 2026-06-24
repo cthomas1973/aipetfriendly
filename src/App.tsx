@@ -140,12 +140,17 @@ function AppContent() {
     loading,
     activeTab,
     setActiveTab,
+    setUser,
     subscription: subscriptionState,
   } = useAppState();
   const [showLogo, setShowLogo] = useState(true);
 
   // Sincronizar con Supabase
   useSupabaseSync();
+
+  const onSignOutGuest = () => {
+    setUser(null);
+  };
 
   const renderTabContent = () => {
     if (!user) {
@@ -199,7 +204,29 @@ function AppContent() {
 
         <DesktopTabNav activeTab={activeTab} onChange={setActiveTab} />
 
-        {user && <SubscriptionBanner />}
+        {user && !user.isGuest && <SubscriptionBanner />}
+
+        {user?.isGuest && (
+          <div className="mb-5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 p-4 shadow-md text-white">
+            <p className="mb-3 text-sm font-semibold">Modo visitante · Los datos no se guardarán</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('subscription')}
+                className="flex-1 rounded-full bg-white font-bold text-blue-600 py-2 hover:bg-gray-100 transition"
+              >
+                ✨ Crear cuenta
+              </button>
+              <button
+                type="button"
+                onClick={onSignOutGuest}
+                className="flex-1 rounded-full border-2 border-white font-semibold py-2 hover:bg-white/20 transition"
+              >
+                Salir
+              </button>
+            </div>
+          </div>
+        )}
 
         <section className="mt-4 md:mt-5">
           {loading ? (

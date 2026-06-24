@@ -120,6 +120,7 @@ export interface AppUser {
   avatarUrl?: string;
   wantsNewsletter?: boolean;
   subscription: UserSubscription;
+  isGuest?: boolean;
 }
 
 export interface SubscriptionState {
