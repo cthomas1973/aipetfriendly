@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type {
+  AdminUserRow,
   Pet,
   ClinicalTimelineEntry,
   PreventiveTask,
   ChatMessage,
   AppUser,
+  SubscriptionPlan,
+  UserAccessLevel,
 } from '../types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -20,11 +23,18 @@ const mockClient = {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
   },
   from: () => ({
-    select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }), order: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }) }),
+    select: () => ({
+      eq: () => ({
+        single: async () => ({ data: null, error: null }),
+        maybeSingle: async () => ({ data: null, error: null }),
+      }),
+      order: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }),
+    }),
     insert: () => ({ select: async () => ({ data: null, error: null }) }),
     update: () => ({ eq: async () => ({ error: null }) }),
     delete: () => ({ eq: async () => ({ error: null }) }),
   }),
+  rpc: async () => ({ data: [], error: null }),
 };
 
 // Usar cliente real si hay variables, sino mock
@@ -49,18 +59,36 @@ export async function fetchUserProfile(userId: string): Promise<AppUser | null> 
     .eq('user_id', userId)
     .single();
 
+  const { data: adminRow } = await supabase
+    .from('admin_users')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const accessMode = (user.access_mode || 'free') as 'guest' | 'free' | 'premium';
+  const defaultSubscription = subscription
+    ? {
+        plan: subscription.plan,
+        isActive: subscription.is_active,
+        expiresAt: subscription.expires_at,
+      }
+    : { plan: 'free' as const, isActive: false, expiresAt: null };
+
+  const resolvedSubscription =
+    accessMode === 'premium'
+      ? { plan: 'premium' as const, isActive: true, expiresAt: defaultSubscription.expiresAt }
+      : accessMode === 'guest'
+        ? { plan: 'free' as const, isActive: false, expiresAt: defaultSubscription.expiresAt }
+        : defaultSubscription;
+
   return {
     id: user.id,
     email: user.email,
     fullName: user.full_name,
     avatarUrl: user.avatar_url,
-    subscription: subscription
-      ? {
-          plan: subscription.plan,
-          isActive: subscription.is_active,
-          expiresAt: subscription.expires_at,
-        }
-      : { plan: 'free', isActive: false, expiresAt: null },
+    isGuest: accessMode === 'guest',
+    isAdmin: Boolean(adminRow?.user_id),
+    subscription: resolvedSubscription,
   };
 }
 
@@ -213,6 +241,7 @@ export async function fetchPreventiveTasks(petId: string): Promise<PreventiveTas
   }
 
   return (data || []).map((task: any) => ({
+    ...(task.metadata || {}),
     id: task.id,
     petId: task.pet_id,
     title: task.title,
@@ -238,6 +267,35 @@ export async function createPreventiveTask(
         due_date: taskData.dueDate,
         completed: taskData.completed || false,
         notes: taskData.notes,
+        metadata: {
+          dose: taskData.dose ?? null,
+          frequency: taskData.frequency ?? null,
+          scheduleTimes: taskData.scheduleTimes ?? null,
+          startDate: taskData.startDate ?? null,
+          endDate: taskData.endDate ?? null,
+          durationDays: taskData.durationDays ?? null,
+          remindersEnabled: taskData.remindersEnabled ?? null,
+          appointmentReason: taskData.appointmentReason ?? null,
+          appointmentTime: taskData.appointmentTime ?? null,
+          appointmentLocation: taskData.appointmentLocation ?? null,
+          appointmentReference: taskData.appointmentReference ?? null,
+          notificationLeadTime: taskData.notificationLeadTime ?? null,
+          notificationChannels: taskData.notificationChannels ?? null,
+          notificationPhone: taskData.notificationPhone ?? null,
+          foodBrand: taskData.foodBrand ?? null,
+          foodVariety: taskData.foodVariety ?? null,
+          foodBagWeightKg: taskData.foodBagWeightKg ?? null,
+          foodPurchaseDate: taskData.foodPurchaseDate ?? null,
+          foodPurchaseGroupId: taskData.foodPurchaseGroupId ?? null,
+          foodSharedPetIds: taskData.foodSharedPetIds ?? null,
+          foodAppliesToPetsCount: taskData.foodAppliesToPetsCount ?? null,
+          foodEstimatedDailyKgTotal: taskData.foodEstimatedDailyKgTotal ?? null,
+          foodEstimatedDailyKgPerPet: taskData.foodEstimatedDailyKgPerPet ?? null,
+          foodEstimatedDurationDays: taskData.foodEstimatedDurationDays ?? null,
+          foodPreviousPurchaseDate: taskData.foodPreviousPurchaseDate ?? null,
+          foodUseAsDefaultNext: taskData.foodUseAsDefaultNext ?? null,
+          foodEntryType: taskData.foodEntryType ?? null,
+        },
       },
     ])
     .select()
@@ -249,6 +307,7 @@ export async function createPreventiveTask(
   }
 
   return {
+    ...(data.metadata || {}),
     id: data.id,
     petId: data.pet_id,
     title: data.title,
@@ -316,4 +375,37 @@ export async function createChatMessage(
     content: data.content,
     createdAt: data.created_at,
   };
+}
+
+export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_user_access');
+
+  if (error) {
+    console.error('Error fetching admin users:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    email: row.email,
+    fullName: row.full_name || undefined,
+    access: row.access as UserAccessLevel,
+    subscriptionPlan: row.subscription_plan as SubscriptionPlan,
+    subscriptionActive: Boolean(row.subscription_active),
+    createdAt: row.created_at,
+  }));
+}
+
+export async function updateAdminUserAccess(userId: string, access: UserAccessLevel): Promise<boolean> {
+  const { error } = await supabase.rpc('admin_set_user_access', {
+    p_user_id: userId,
+    p_access: access,
+  });
+
+  if (error) {
+    console.error('Error updating admin user access:', error);
+    throw error;
+  }
+
+  return true;
 }

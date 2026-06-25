@@ -42,10 +42,11 @@ create table public.preventive_tasks (
   id uuid primary key default gen_random_uuid(),
   pet_id uuid not null references public.pets(id) on delete cascade,
   title text not null,
-  category text not null check (category in ('vaccine', 'deworming', 'appointment', 'feeding', 'other')),
+  category text not null check (category in ('medication', 'vaccine', 'deworming', 'appointment', 'feeding', 'other')),
   due_date date not null,
   completed boolean default false,
   notes text,
+  metadata jsonb,
   created_at timestamp with time zone default now()
 );
 

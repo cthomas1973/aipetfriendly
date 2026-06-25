@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type {
+  AdminUserRow,
   AppTab,
   AppUser,
   ChatMessage,
@@ -19,6 +20,7 @@ export interface GlobalAppState {
   clinicalEntries: ClinicalTimelineEntry[];
   preventiveTasks: PreventiveTask[];
   chatMessages: ChatMessage[];
+  adminUsers: AdminUserRow[];
   subscription: SubscriptionState;
   setUser: (user: AppUser | null) => void;
   setPets: (pets: Pet[]) => void;
@@ -28,6 +30,7 @@ export interface GlobalAppState {
   setClinicalEntries: (entries: ClinicalTimelineEntry[]) => void;
   setPreventiveTasks: (tasks: PreventiveTask[]) => void;
   setChatMessages: (messages: ChatMessage[]) => void;
+  setAdminUsers: (users: AdminUserRow[]) => void;
 }
 
 export const AppStateContext = createContext<GlobalAppState | null>(null);

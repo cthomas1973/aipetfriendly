@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import { useAppState } from '../context/AppStateContext';
+import { createClinicalEntry } from '../lib/supabase';
 import type {
   ClinicalEntryCategory,
   ClinicalNoteFormData,
@@ -50,20 +51,40 @@ export function useClinical() {
   }, [activeFilter, clinicalEntries, selectedPetId]);
 
   const addClinicalNote = useCallback(
-    (data: ClinicalNoteFormData) => {
-      const entry: ClinicalTimelineEntry = {
-        id: crypto.randomUUID(),
-        petId: data.petId,
+    async (data: ClinicalNoteFormData) => {
+      if (!user) {
+        throw new Error('Debes iniciar sesion para registrar notas clinicas.');
+      }
+
+      if (user.isGuest) {
+        const entry: ClinicalTimelineEntry = {
+          id: crypto.randomUUID(),
+          petId: data.petId,
+          category: data.category,
+          title: data.title,
+          description: data.content,
+          eventDate: data.eventDate,
+          createdAt: new Date().toISOString(),
+        };
+        setClinicalEntries([entry, ...clinicalEntries]);
+        return entry;
+      }
+
+      const saved = await createClinicalEntry(data.petId, {
         category: data.category,
         title: data.title,
         description: data.content,
         eventDate: data.eventDate,
-        createdAt: new Date().toISOString(),
-      };
-      setClinicalEntries([entry, ...clinicalEntries]);
-      return entry;
+      });
+
+      if (!saved) {
+        throw new Error('No se pudo guardar la nota clinica en Supabase.');
+      }
+
+      setClinicalEntries([saved, ...clinicalEntries]);
+      return saved;
     },
-    [clinicalEntries, setClinicalEntries],
+    [clinicalEntries, setClinicalEntries, user],
   );
 
   const generateClinicalPdf = useCallback(

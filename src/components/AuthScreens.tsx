@@ -1,22 +1,64 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { PawPrint } from 'lucide-react';
-import { signInWithEmail, signUpWithEmail, resetPassword } from '../hooks/useSupabaseSync';
+import { signInWithEmail, signUpWithEmail, resetPassword, updatePassword } from '../hooks/useSupabaseSync';
 import { useAppState } from '../context/AppStateContext';
+import { supabase } from '../lib/supabase';
 
 const inputCls = 'mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200';
 const labelCls = 'block text-sm font-medium text-slate-700';
 
-type AuthMode = 'login' | 'register' | 'forgot-password';
+type AuthMode = 'login' | 'register' | 'forgot-password' | 'reset-password';
 
-export function AuthScreens() {
+export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode }) {
   const { setUser } = useAppState();
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [email, setEmail] = useState('');
+  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [email, setEmail] = useState(() => {
+    const queryEmail = new URLSearchParams(window.location.search).get('email');
+    return queryEmail ?? '';
+  });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
+
+  useEffect(() => {
+    setMode(initialMode);
+    setError(null);
+    setSuccess(null);
+    setPassword('');
+    setConfirmPassword('');
+    setPasswordUpdated(false);
+  }, [initialMode]);
+
+  useEffect(() => {
+    if (window.location.pathname === '/' && window.location.search.includes('email=')) {
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'reset-password') {
+      return;
+    }
+
+    const loadRecoveryEmail = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user?.email) {
+          setEmail(user.email);
+        }
+      } catch {
+        // no-op: el formulario sigue funcionando aunque no se pueda precargar email
+      }
+    };
+
+    loadRecoveryEmail();
+  }, [mode]);
 
   const onSubmitEmail = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -90,6 +132,117 @@ export function AuthScreens() {
     };
     setUser(guestUser);
   };
+
+  const onResetPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!password.trim()) {
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      await updatePassword(password);
+      setSuccess('Contraseña actualizada correctamente. Ya puedes continuar en la app.');
+      setPasswordUpdated(true);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'No se pudo actualizar la contraseña.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goToLoginWithPrefill = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch {
+      // Si falla signOut igual redirigimos a login.
+    }
+
+    const targetEmail = email.trim().toLowerCase();
+    const query = targetEmail ? `?email=${encodeURIComponent(targetEmail)}` : '';
+    window.location.href = `/${query}`;
+  };
+
+  if (mode === 'reset-password') {
+    return (
+      <section className="pb-4">
+        <div className="mb-6 text-center">
+          <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow">
+            <PawPrint size={26} />
+          </span>
+          <h2 className="mt-3 text-2xl font-extrabold text-slate-900">Crear nueva contraseña</h2>
+          <p className="mt-1 text-sm text-slate-500">Ingresa tu nueva clave para finalizar la recuperación.</p>
+        </div>
+
+        <div className="rounded-3xl bg-white p-5 shadow-sm">
+          <form onSubmit={onResetPassword} className="space-y-4">
+            <label className={labelCls}>
+              Nueva contraseña
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                className={inputCls}
+                minLength={6}
+                required
+              />
+            </label>
+
+            <label className={labelCls}>
+              Confirmar nueva contraseña
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repite la nueva contraseña"
+                className={inputCls}
+                minLength={6}
+                required
+              />
+            </label>
+
+            {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
+            {success && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</p>}
+
+            {passwordUpdated ? (
+              <button
+                type="button"
+                onClick={goToLoginWithPrefill}
+                className="w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white transition active:bg-emerald-600"
+              >
+                Ir a login
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white transition active:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? 'Actualizando...' : 'Guardar nueva contraseña'}
+              </button>
+            )}
+          </form>
+        </div>
+      </section>
+    );
+  }
 
   /* ─── FORGOT PASSWORD ─────────────────────────────── */
   if (mode === 'forgot-password') {

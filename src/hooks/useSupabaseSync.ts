@@ -121,6 +121,7 @@ export function useSupabaseSync() {
     setClinicalEntries,
     setPreventiveTasks,
     setChatMessages,
+    setAdminUsers,
     setUser: contextSetUser,
   } = useAppState();
 
@@ -192,6 +193,7 @@ export function useSupabaseSync() {
         setClinicalEntries([]);
         setPreventiveTasks([]);
         setChatMessages([]);
+        setAdminUsers([]);
       } else if (event === 'SIGNED_IN' && session.user) {
         await ensureUserBootstrap(session.user.id, session.user.email ?? null);
         const storedGuestMigration = !guestMigrationInProgress ? readGuestMigration() : null;
@@ -223,7 +225,7 @@ export function useSupabaseSync() {
     return () => {
       subscription?.unsubscribe();
     };
-  }, [contextSetUser, setChatMessages, setClinicalEntries, setPreventiveTasks, setPets]);
+  }, [contextSetUser, setAdminUsers, setChatMessages, setClinicalEntries, setPreventiveTasks, setPets]);
 }
 
 export async function signUpWithEmail(email: string, password: string, guestSnapshot?: GuestMigrationSnapshot) {

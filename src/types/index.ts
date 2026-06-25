@@ -8,12 +8,14 @@ export type ClinicalEntryCategory =
   | 'clinical_note';
 
 export type SubscriptionPlan = 'free' | 'premium';
+export type UserAccessLevel = 'guest' | 'free' | 'premium';
 
-export type AppTab = 'pets' | 'clinical' | 'agenda' | 'offers' | 'subscription';
+export type AppTab = 'pets' | 'clinical' | 'agenda' | 'offers' | 'subscription' | 'admin';
 
 export type Species = 'dog' | 'cat' | 'other';
 
 export type PreventiveCategory =
+  | 'medication'
   | 'vaccine'
   | 'deworming'
   | 'appointment'
@@ -69,6 +71,33 @@ export interface PreventiveFormData {
   dueDate: string;
   completed: boolean;
   notes?: string;
+  dose?: string;
+  frequency?: string;
+  scheduleTimes?: string[];
+  startDate?: string;
+  endDate?: string;
+  durationDays?: number;
+  remindersEnabled?: boolean;
+  appointmentReason?: string;
+  appointmentTime?: string;
+  appointmentLocation?: string;
+  appointmentReference?: string;
+  notificationLeadTime?: string;
+  notificationChannels?: string[];
+  notificationPhone?: string;
+  foodBrand?: string;
+  foodVariety?: string;
+  foodBagWeightKg?: number;
+  foodPurchaseDate?: string;
+  foodPurchaseGroupId?: string;
+  foodSharedPetIds?: string[];
+  foodAppliesToPetsCount?: number;
+  foodEstimatedDailyKgTotal?: number;
+  foodEstimatedDailyKgPerPet?: number;
+  foodEstimatedDurationDays?: number;
+  foodPreviousPurchaseDate?: string;
+  foodUseAsDefaultNext?: boolean;
+  foodEntryType?: 'purchase' | 'reminder';
 }
 
 export interface PreventiveTask extends PreventiveFormData {
@@ -121,6 +150,17 @@ export interface AppUser {
   wantsNewsletter?: boolean;
   subscription: UserSubscription;
   isGuest?: boolean;
+  isAdmin?: boolean;
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  fullName?: string;
+  access: UserAccessLevel;
+  subscriptionPlan: SubscriptionPlan;
+  subscriptionActive: boolean;
+  createdAt: string;
 }
 
 export interface SubscriptionState {

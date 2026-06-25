@@ -5,7 +5,9 @@ import {
   Gift,
   MessageCircle,
   PawPrint,
+  Shield,
 } from 'lucide-react';
+import { AdminUsersSection } from './components/AdminUsersSection';
 import { AgendaSection } from './components/AgendaSection';
 import { AuthScreens } from './components/AuthScreens';
 import { ChatSection } from './components/ChatSection';
@@ -16,8 +18,9 @@ import {
   SubscriptionBanner,
 } from './components/SubscriptionComponents';
 import { AppStateContext, useAppState } from './context/AppStateContext';
-import { useSupabaseSync } from './hooks/useSupabaseSync';
+import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
 import type {
+  AdminUserRow,
   AppTab,
   AppUser,
   ChatMessage,
@@ -40,6 +43,7 @@ interface GlobalAppState {
   clinicalEntries: ClinicalTimelineEntry[];
   preventiveTasks: PreventiveTask[];
   chatMessages: ChatMessage[];
+  adminUsers: AdminUserRow[];
   subscription: SubscriptionState;
   setUser: (user: AppUser | null) => void;
   setPets: (pets: Pet[]) => void;
@@ -49,14 +53,17 @@ interface GlobalAppState {
   setClinicalEntries: (entries: ClinicalTimelineEntry[]) => void;
   setPreventiveTasks: (tasks: PreventiveTask[]) => void;
   setChatMessages: (messages: ChatMessage[]) => void;
+  setAdminUsers: (users: AdminUserRow[]) => void;
 }
 
 function BottomNav({
   activeTab,
   onChange,
+  isAdmin,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
+  isAdmin: boolean;
 }) {
   const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
@@ -66,9 +73,13 @@ function BottomNav({
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
 
+  if (isAdmin) {
+    tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
+  }
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden">
-      <ul className="grid grid-cols-5 gap-1">
+      <ul className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'} gap-1`}>
         {tabs.map((tab) => (
           <li key={tab.id} className="text-center">
             <button
@@ -99,9 +110,11 @@ function BottomNav({
 function DesktopTabNav({
   activeTab,
   onChange,
+  isAdmin,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
+  isAdmin: boolean;
 }) {
   const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
@@ -111,9 +124,13 @@ function DesktopTabNav({
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
 
+  if (isAdmin) {
+    tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
+  }
+
   return (
     <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className="grid grid-cols-5 gap-2">
+      <ul className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'} gap-2`}>
         {tabs.map((tab) => (
           <li key={tab.id}>
             <button
@@ -144,6 +161,12 @@ function AppContent() {
     subscription: subscriptionState,
   } = useAppState();
   const [showLogo, setShowLogo] = useState(true);
+  const [switchingUser, setSwitchingUser] = useState(false);
+  const currentPath = window.location.pathname;
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const isRecoveryLink = hashParams.get('type') === 'recovery';
+  const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -152,7 +175,31 @@ function AppContent() {
     setUser(null);
   };
 
+  const onLogoGoToLogin = async () => {
+    if (switchingUser) {
+      return;
+    }
+
+    setSwitchingUser(true);
+    try {
+      if (user?.isGuest) {
+        setUser(null);
+      } else if (user) {
+        await signOut();
+      }
+      setActiveTab('pets');
+    } catch (err) {
+      console.error('No se pudo cambiar de usuario:', err);
+    } finally {
+      setSwitchingUser(false);
+    }
+  };
+
   const renderTabContent = () => {
+    if (isResetPasswordRoute) {
+      return <AuthScreens initialMode="reset-password" />;
+    }
+
     if (!user) {
       return <AuthScreens />;
     }
@@ -181,6 +228,17 @@ function AppContent() {
       return <OffersSection />;
     }
 
+    if (activeTab === 'admin') {
+      if (!user.isAdmin) {
+        return (
+          <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+            <p className="text-sm text-slate-500">No tienes acceso a la vista de administración.</p>
+          </div>
+        );
+      }
+      return <AdminUsersSection />;
+    }
+
     return <PaywallCard />;
   };
 
@@ -188,25 +246,35 @@ function AppContent() {
     <div className="min-h-screen bg-[#EAF7F1] pb-24 md:pb-10">
       <main className="mx-auto w-full max-w-md px-4 pt-5 md:max-w-5xl md:px-6 md:pt-8">
         <div className="mb-3 text-center md:mb-5">
-          {showLogo ? (
-            <img
-              src="/logo-aipetfriendly.png"
-              alt="AiPetFriendly"
-              className="mx-auto h-16 w-auto md:h-20"
-              onError={() => setShowLogo(false)}
-            />
-          ) : (
-            <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow">
-              <PawPrint size={26} />
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={onLogoGoToLogin}
+            disabled={switchingUser}
+            title={user ? 'Cambiar usuario' : 'Ir al login'}
+            className="inline-flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {showLogo ? (
+              <img
+                src="/logo-aipetfriendly.png"
+                alt="AiPetFriendly"
+                className="mx-auto h-16 w-auto md:h-20"
+                onError={() => setShowLogo(false)}
+              />
+            ) : (
+              <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow">
+                <PawPrint size={26} />
+              </div>
+            )}
+          </button>
         </div>
 
-        <DesktopTabNav activeTab={activeTab} onChange={setActiveTab} />
+        {!isResetPasswordRoute && (
+          <DesktopTabNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
+        )}
 
-        {user && !user.isGuest && <SubscriptionBanner />}
+        {user && !user.isGuest && !isResetPasswordRoute && <SubscriptionBanner />}
 
-        {user?.isGuest && (
+        {user?.isGuest && !isResetPasswordRoute && (
           <div className="mb-5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 p-4 shadow-md text-white">
             <p className="mb-3 text-sm font-semibold">Modo visitante · Los datos no se guardarán</p>
             <div className="flex gap-2">
@@ -239,7 +307,9 @@ function AppContent() {
         </section>
       </main>
 
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} />
+      {!isResetPasswordRoute && (
+        <BottomNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
+      )}
     </div>
   );
 }
@@ -254,6 +324,7 @@ export default function App() {
   const [clinicalEntries, setClinicalEntries] = useState<ClinicalTimelineEntry[]>([]);
   const [preventiveTasks, setPreventiveTasks] = useState<PreventiveTask[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUserRow[]>([]);
 
   const subscriptionState: SubscriptionState = useMemo(() => {
     const isSubscribed = Boolean(user?.subscription?.isActive);
@@ -280,6 +351,7 @@ export default function App() {
       clinicalEntries,
       preventiveTasks,
       chatMessages,
+      adminUsers,
       subscription: subscriptionState,
       setUser,
       setPets,
@@ -289,6 +361,7 @@ export default function App() {
       setClinicalEntries,
       setPreventiveTasks,
       setChatMessages,
+      setAdminUsers,
     };
 
   return (

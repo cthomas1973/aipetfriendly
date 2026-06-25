@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
   Circle, ClipboardList, Download, Heart, Mail,
@@ -71,12 +71,63 @@ const CAT_MAP: Record<ClinicalEntryCategory, { label: string; emoji: string; bg:
 };
 
 const PREV_MAP: Record<PreventiveCategory, { label: string; emoji: string }> = {
+  medication:  { label: 'Medicacion',      emoji: '💊' },
   vaccine:     { label: 'Vacuna',          emoji: '💉' },
   deworming:   { label: 'Desparasitacion', emoji: '🪱' },
   appointment: { label: 'Turno',           emoji: '🏥' },
   feeding:     { label: 'Alimentacion',    emoji: '🍖' },
   other:       { label: 'Otro',            emoji: '📌' },
 };
+
+const FREQUENCY_OPTIONS = [
+  'Una vez al dia',
+  'Cada 12 horas',
+  'Cada 8 horas',
+  'Cada 24 horas',
+  'Semanal',
+  'Segun indicacion',
+] as const;
+
+const APPOINTMENT_LEAD_OPTIONS = [
+  '15 minutos antes',
+  '30 minutos antes',
+  '1 hora antes',
+  '2 horas antes',
+  '24 horas antes',
+] as const;
+
+const NOTIFICATION_CHANNEL_OPTIONS = ['Email', 'Push', 'WhatsApp'] as const;
+const NOTIFICATION_PHONE_KEY = 'apf_notification_whatsapp_phone';
+
+function normalizeNotificationPhone(value: string) {
+  const trimmed = value.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '';
+  return `${hasPlus ? '+' : '+'}${digits}`;
+}
+
+function isValidNotificationPhone(value: string) {
+  return /^\+[1-9]\d{7,14}$/.test(value);
+}
+
+function getStoredNotificationPhone() {
+  if (typeof window === 'undefined') return '';
+  const raw = window.localStorage.getItem(NOTIFICATION_PHONE_KEY) || '';
+  const normalized = normalizeNotificationPhone(raw);
+  return isValidNotificationPhone(normalized) ? normalized : '';
+}
+
+function addMonthsToDateString(dateStr: string, months: number) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) {
+    return '';
+  }
+
+  const date = new Date(year, month - 1, day);
+  date.setMonth(date.getMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
 
 const inp = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200';
 
@@ -106,6 +157,25 @@ export function PetsSection() {
   const [pTitle, setPTitle] = useState('');
   const [pCat,   setPCat]   = useState<PreventiveCategory>('vaccine');
   const [pDate,  setPDate]  = useState(() => new Date().toISOString().slice(0, 10));
+  const [pDose, setPDose] = useState('');
+  const [pFrequency, setPFrequency] = useState<string>(FREQUENCY_OPTIONS[0]);
+  const [pScheduleTimes, setPScheduleTimes] = useState<string[]>(['08:00']);
+  const [pEndDate, setPEndDate] = useState('');
+  const [pDurationDays, setPDurationDays] = useState('');
+  const [pNotes, setPNotes] = useState('');
+  const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
+  const [pAppointmentReason, setPAppointmentReason] = useState('');
+  const [pAppointmentTime, setPAppointmentTime] = useState('09:00');
+  const [pAppointmentLocation, setPAppointmentLocation] = useState('');
+  const [pAppointmentReference, setPAppointmentReference] = useState('');
+  const [pAppointmentNotifyEnabled, setPAppointmentNotifyEnabled] = useState(true);
+  const [pAppointmentLeadTime, setPAppointmentLeadTime] = useState<string>(APPOINTMENT_LEAD_OPTIONS[2]);
+  const [pAppointmentChannels, setPAppointmentChannels] = useState<string[]>(['Email']);
+  const [pAppointmentPhone, setPAppointmentPhone] = useState<string>(() => getStoredNotificationPhone());
+  const [pDewormingIntervalMonths, setPDewormingIntervalMonths] = useState<number>(3);
+  const [pNextDewormingDate, setPNextDewormingDate] = useState('');
+  const [pAutoScheduleNextDeworming, setPAutoScheduleNextDeworming] = useState(true);
+  const [pDewormingRemindersEnabled, setPDewormingRemindersEnabled] = useState(true);
   const [mailTo, setMailTo] = useState('');
 
   const photoRef       = useRef<HTMLInputElement>(null);
@@ -159,20 +229,193 @@ export function PetsSection() {
     } catch (ex) { setErr(ex instanceof Error ? ex.message : 'No se pudo guardar.'); }
   };
 
-  const doAddNote = (e: FormEvent) => {
+  const doAddNote = async (e: FormEvent) => {
     e.preventDefault();
     if (!pet) return;
-    addClinicalNote({ petId: pet.id, title: nTitle, content: nDesc, category: nCat, eventDate: nDate });
-    setNTitle(''); setNDesc(''); setNCat('clinical_note'); setNVet('');
-    setNoteModal(false); setMsg('Nota agregada.');
+    try {
+      await addClinicalNote({ petId: pet.id, title: nTitle, content: nDesc, category: nCat, eventDate: nDate });
+      setNTitle(''); setNDesc(''); setNCat('clinical_note'); setNVet('');
+      setNoteModal(false); setMsg('Nota agregada.');
+      setErr(null);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo guardar la nota clinica.');
+    }
   };
 
-  const doAddPrev = (e: FormEvent) => {
+  const doAddPrev = async (e: FormEvent) => {
     e.preventDefault();
     if (!pet) return;
-    addPreventiveTask({ petId: pet.id, title: pTitle, category: pCat, dueDate: pDate, completed: false });
-    setPTitle(''); setPCat('vaccine');
-    setPrevModal(false);
+
+    const requireDetail = pCat === 'medication' || pCat === 'vaccine';
+    const requireAppointmentDetail = pCat === 'appointment';
+    const cleanedTimes = pScheduleTimes.map((t) => t.trim()).filter(Boolean);
+    const cleanedAppointmentChannels = pAppointmentChannels.map((c) => c.trim()).filter(Boolean);
+    const normalizedAppointmentPhone = normalizeNotificationPhone(pAppointmentPhone);
+    const usesWhatsapp = cleanedAppointmentChannels.includes('WhatsApp');
+    const isDeworming = pCat === 'deworming';
+
+    if (requireDetail && !pDose.trim()) {
+      setErr('La dosis es obligatoria para medicacion y vacuna.');
+      return;
+    }
+    if (requireDetail && cleanedTimes.length === 0) {
+      setErr('Debes indicar al menos un horario.');
+      return;
+    }
+    if (requireAppointmentDetail && !pAppointmentReason.trim()) {
+      setErr('El motivo es obligatorio para un turno.');
+      return;
+    }
+    if (requireAppointmentDetail && !pAppointmentTime.trim()) {
+      setErr('El horario es obligatorio para un turno.');
+      return;
+    }
+    if (requireAppointmentDetail && !pAppointmentLocation.trim()) {
+      setErr('El lugar es obligatorio para un turno.');
+      return;
+    }
+    if (requireAppointmentDetail && !pAppointmentReference.trim()) {
+      setErr('La referencia es obligatoria para un turno.');
+      return;
+    }
+    if (requireAppointmentDetail && pAppointmentNotifyEnabled && cleanedAppointmentChannels.length === 0) {
+      setErr('Selecciona al menos un medio de notificacion.');
+      return;
+    }
+    if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && !normalizedAppointmentPhone) {
+      setErr('Para WhatsApp debes indicar un celular.');
+      return;
+    }
+    if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && !isValidNotificationPhone(normalizedAppointmentPhone)) {
+      setErr('El celular de WhatsApp no es valido. Usa formato internacional, por ejemplo: +5491122334455.');
+      return;
+    }
+    if (isDeworming && pAutoScheduleNextDeworming && !pNextDewormingDate) {
+      setErr('Debes elegir la fecha del proximo desparasitario.');
+      return;
+    }
+
+    try {
+      let followUpScheduleFailed = false;
+
+      if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && isValidNotificationPhone(normalizedAppointmentPhone) && typeof window !== 'undefined') {
+        window.localStorage.setItem(NOTIFICATION_PHONE_KEY, normalizedAppointmentPhone);
+      }
+
+      await addPreventiveTask({
+        petId: pet.id,
+        title: pTitle,
+        category: pCat,
+        dueDate: pDate,
+        completed: false,
+        dose: requireDetail ? pDose.trim() : undefined,
+        frequency: requireDetail ? pFrequency : undefined,
+        scheduleTimes: requireDetail ? cleanedTimes : undefined,
+        startDate: pDate,
+        endDate: pEndDate || undefined,
+        durationDays: pDurationDays ? Number(pDurationDays) : undefined,
+        notes: pNotes || undefined,
+        remindersEnabled: requireDetail ? pRemindersEnabled : (requireAppointmentDetail ? pAppointmentNotifyEnabled : undefined),
+        appointmentReason: requireAppointmentDetail ? pAppointmentReason.trim() : undefined,
+        appointmentTime: requireAppointmentDetail ? pAppointmentTime.trim() : undefined,
+        appointmentLocation: requireAppointmentDetail ? pAppointmentLocation.trim() : undefined,
+        appointmentReference: requireAppointmentDetail ? pAppointmentReference.trim() : undefined,
+        notificationLeadTime: requireAppointmentDetail && pAppointmentNotifyEnabled ? pAppointmentLeadTime : undefined,
+        notificationChannels: requireAppointmentDetail && pAppointmentNotifyEnabled ? cleanedAppointmentChannels : undefined,
+        notificationPhone: requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp ? normalizedAppointmentPhone : undefined,
+      });
+
+      if (isDeworming && pAutoScheduleNextDeworming && pNextDewormingDate) {
+        try {
+          await addPreventiveTask({
+            petId: pet.id,
+            title: `Proximo ${pTitle.trim() || 'desparasitario'}`,
+            category: 'deworming',
+            dueDate: pNextDewormingDate,
+            completed: false,
+            notes: `Sugerido cada ${pDewormingIntervalMonths} meses desde ${pDate}.`,
+            remindersEnabled: pDewormingRemindersEnabled,
+            notificationLeadTime: pDewormingRemindersEnabled ? '24 horas antes' : undefined,
+            notificationChannels: pDewormingRemindersEnabled ? ['Push'] : undefined,
+          });
+        } catch {
+          followUpScheduleFailed = true;
+        }
+      }
+
+      setPTitle('');
+      setPCat('vaccine');
+      setPDose('');
+      setPFrequency(FREQUENCY_OPTIONS[0]);
+      setPScheduleTimes(['08:00']);
+      setPEndDate('');
+      setPDurationDays('');
+      setPNotes('');
+      setPRemindersEnabled(true);
+      setPAppointmentReason('');
+      setPAppointmentTime('09:00');
+      setPAppointmentLocation('');
+      setPAppointmentReference('');
+      setPAppointmentNotifyEnabled(true);
+      setPAppointmentLeadTime(APPOINTMENT_LEAD_OPTIONS[2]);
+      setPAppointmentChannels(['Email']);
+      setPAppointmentPhone(getStoredNotificationPhone());
+      setPDewormingIntervalMonths(3);
+      setPNextDewormingDate('');
+      setPAutoScheduleNextDeworming(true);
+      setPDewormingRemindersEnabled(true);
+      setPrevModal(false);
+      if (followUpScheduleFailed) {
+        setMsg('Desparasitario guardado, pero no se pudo programar el siguiente recordatorio.');
+      } else if (!(isDeworming && pAutoScheduleNextDeworming)) {
+        setMsg('Preventivo agregado.');
+      } else {
+        setMsg('Desparasitario guardado y proximo tratamiento programado.');
+      }
+      setErr(null);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo guardar el preventivo.');
+    }
+  };
+
+  const isDetailedPreventive = pCat === 'medication' || pCat === 'vaccine';
+  const isAppointmentPreventive = pCat === 'appointment';
+  const isDewormingPreventive = pCat === 'deworming';
+  const updateScheduleTime = (index: number, value: string) => {
+    setPScheduleTimes((prev) => prev.map((time, i) => (i === index ? value : time)));
+  };
+  const addScheduleTime = () => {
+    setPScheduleTimes((prev) => [...prev, '20:00']);
+  };
+  const removeScheduleTime = (index: number) => {
+    setPScheduleTimes((prev) => prev.filter((_, i) => i !== index));
+  };
+  const toggleAppointmentChannel = (channel: string) => {
+    setPAppointmentChannels((prev) => (
+      prev.includes(channel)
+        ? prev.filter((item) => item !== channel)
+        : [...prev, channel]
+    ));
+  };
+  const appointmentUsesWhatsapp = pAppointmentChannels.includes('WhatsApp');
+  const normalizedAppointmentPhone = normalizeNotificationPhone(pAppointmentPhone);
+  const isAppointmentPhoneValid = isValidNotificationPhone(normalizedAppointmentPhone);
+
+  useEffect(() => {
+    if (!isDewormingPreventive) {
+      return;
+    }
+    const suggested = addMonthsToDateString(pDate, pDewormingIntervalMonths);
+    setPNextDewormingDate(suggested);
+  }, [isDewormingPreventive, pDate, pDewormingIntervalMonths]);
+
+  const doTogglePreventive = async (taskId: string) => {
+    try {
+      await toggleTask(taskId);
+      setErr(null);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo actualizar el preventivo.');
+    }
   };
 
   const doPdf = async () => {
@@ -198,7 +441,10 @@ export function PetsSection() {
     <section className="space-y-5 pb-2">
       <div className="pt-2 text-center">
         <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Mis Mascotas</h2>
-        <p className="mt-1 text-slate-500">{pets.length} registradas (max {freePetLimit})</p>
+        <p className="mt-1 text-slate-500">
+          {pets.length} registradas
+          {user?.subscription?.plan === 'premium' && user?.subscription?.isActive ? '' : ` (max ${freePetLimit})`}
+        </p>
       </div>
 
       {user?.isGuest && (
@@ -595,7 +841,7 @@ export function PetsSection() {
           </button>
         </div>
 
-        <button type="button" onClick={() => setNoteModal(true)}
+        <button type="button" onClick={() => { setErr(null); setNoteModal(true); }}
           className="w-full rounded-3xl bg-white py-4 text-center font-semibold text-emerald-600 shadow-sm">
           + Agregar nota clinica
         </button>
@@ -603,7 +849,7 @@ export function PetsSection() {
           className="w-full rounded-3xl bg-emerald-500 py-4 text-center font-bold text-white shadow-sm">
           Consultar con veterinario IA
         </button>
-        <button type="button" onClick={() => setPrevModal(true)}
+        <button type="button" onClick={() => { setErr(null); setPrevModal(true); }}
           className="w-full rounded-3xl border-2 border-emerald-300 bg-white py-4 text-center font-semibold text-emerald-700 shadow-sm">
           + Agregar medicacion
         </button>
@@ -660,6 +906,7 @@ export function PetsSection() {
                 <input value={nVet} onChange={e => setNVet(e.target.value)} placeholder="Dr./Dra. Nombre" className={inp} />
               </div>
             </div>
+            {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
             <button type="submit" className="mt-5 w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white">Guardar</button>
           </form>
         </div>
@@ -679,6 +926,7 @@ export function PetsSection() {
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
                 <select value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
+                  <option value="medication">💊 Medicacion</option>
                   <option value="vaccine">💉 Vacuna</option>
                   <option value="deworming">🪱 Desparasitacion</option>
                   <option value="appointment">🏥 Turno</option>
@@ -695,7 +943,229 @@ export function PetsSection() {
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
                 <input type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
               </div>
+              {isDewormingPreventive && (
+                <>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                    <p className="text-sm font-semibold text-emerald-800">Sugerencia de proximo tratamiento</p>
+                    <p className="mt-1 text-xs text-emerald-700">Elige cada cuántos meses repetir y te calculamos la fecha.</p>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Repetir dentro de</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[1, 3, 6].map((months) => (
+                        <button
+                          key={months}
+                          type="button"
+                          onClick={() => setPDewormingIntervalMonths(months)}
+                          className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pDewormingIntervalMonths === months ? 'border-emerald-400 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                        >
+                          {months} mes{months !== 1 ? 'es' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha proxima sugerida</label>
+                    <input type="date" value={pNextDewormingDate} onChange={e => setPNextDewormingDate(e.target.value)} className={inp} />
+                  </div>
+                  <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <span className="text-sm font-medium text-emerald-800">Programar proximo desparasitario</span>
+                    <input
+                      type="checkbox"
+                      checked={pAutoScheduleNextDeworming}
+                      onChange={(e) => setPAutoScheduleNextDeworming(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <span className="text-sm font-medium text-emerald-800">Activar recordatorio del proximo</span>
+                    <input
+                      type="checkbox"
+                      checked={pDewormingRemindersEnabled}
+                      onChange={(e) => setPDewormingRemindersEnabled(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                </>
+              )}
+              {isDetailedPreventive && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Dosis *</label>
+                    <input value={pDose} onChange={e => setPDose(e.target.value)} placeholder="Ej: 1 comprimido, 2 ml" className={inp} required={isDetailedPreventive} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Frecuencia</label>
+                    <select value={pFrequency} onChange={e => setPFrequency(e.target.value)} className={inp}>
+                      {FREQUENCY_OPTIONS.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <label className="block text-sm font-medium text-slate-700">Horarios</label>
+                      <button type="button" onClick={addScheduleTime} className="text-xs font-semibold text-emerald-600">+ Agregar horario</button>
+                    </div>
+                    <div className="space-y-2">
+                      {pScheduleTimes.map((time, index) => (
+                        <div key={`${index}-${time}`} className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={time}
+                            onChange={(e) => updateScheduleTime(index, e.target.value)}
+                            className={inp}
+                            required
+                          />
+                          {pScheduleTimes.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeScheduleTime(index)}
+                              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+                            >
+                              Quitar
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Fin del tratamiento</label>
+                      <input type="date" value={pEndDate} onChange={e => setPEndDate(e.target.value)} className={inp} />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Duracion (dias)</label>
+                      <input type="number" min={1} value={pDurationDays} onChange={e => setPDurationDays(e.target.value)} className={inp} placeholder="Ej: 7" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Notas para el historial</label>
+                    <textarea
+                      value={pNotes}
+                      onChange={e => setPNotes(e.target.value)}
+                      placeholder="Indicaciones del veterinario, observaciones, reacciones, etc."
+                      className={`${inp} min-h-20 resize-none`}
+                    />
+                  </div>
+                  <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <span className="text-sm font-medium text-emerald-800">Activar recordatorios</span>
+                    <input
+                      type="checkbox"
+                      checked={pRemindersEnabled}
+                      onChange={(e) => setPRemindersEnabled(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                </>
+              )}
+              {isAppointmentPreventive && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Motivo del turno *</label>
+                    <input
+                      value={pAppointmentReason}
+                      onChange={e => setPAppointmentReason(e.target.value)}
+                      placeholder="Ej: Control anual, consulta por piel, refuerzo"
+                      className={inp}
+                      required={isAppointmentPreventive}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
+                      <input type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Horario *</label>
+                      <input
+                        type="time"
+                        value={pAppointmentTime}
+                        onChange={e => setPAppointmentTime(e.target.value)}
+                        className={inp}
+                        required={isAppointmentPreventive}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Lugar *</label>
+                    <input
+                      value={pAppointmentLocation}
+                      onChange={e => setPAppointmentLocation(e.target.value)}
+                      placeholder="Ej: Vet San Martin, consultorio 2"
+                      className={inp}
+                      required={isAppointmentPreventive}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Referencia *</label>
+                    <input
+                      value={pAppointmentReference}
+                      onChange={e => setPAppointmentReference(e.target.value)}
+                      placeholder="Ej: Frente a la plaza, llevar estudios previos"
+                      className={inp}
+                      required={isAppointmentPreventive}
+                    />
+                  </div>
+                  <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <span className="text-sm font-medium text-emerald-800">Activar notificacion</span>
+                    <input
+                      type="checkbox"
+                      checked={pAppointmentNotifyEnabled}
+                      onChange={(e) => setPAppointmentNotifyEnabled(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  {pAppointmentNotifyEnabled && (
+                    <>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Antelacion del aviso</label>
+                        <select value={pAppointmentLeadTime} onChange={e => setPAppointmentLeadTime(e.target.value)} className={inp}>
+                          {APPOINTMENT_LEAD_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Medios de notificacion</label>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          {NOTIFICATION_CHANNEL_OPTIONS.map((channel) => (
+                            <label key={channel} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={pAppointmentChannels.includes(channel)}
+                                onChange={() => toggleAppointmentChannel(channel)}
+                                className="h-4 w-4"
+                              />
+                              <span className="text-sm text-slate-700">{channel}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {appointmentUsesWhatsapp && (
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular para WhatsApp *</label>
+                          <input
+                            value={pAppointmentPhone}
+                            onChange={e => setPAppointmentPhone(e.target.value)}
+                            placeholder="Ej: +5491122334455"
+                            className={inp}
+                            required={appointmentUsesWhatsapp}
+                          />
+                          {pAppointmentPhone.trim() && (
+                            <p className={`mt-1 text-xs ${isAppointmentPhoneValid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {isAppointmentPhoneValid ? 'Contacto valido para notificaciones.' : 'Numero invalido. Usa codigo de pais, por ejemplo +5491122334455.'}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
             </div>
+            {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
             <button type="submit" className="mt-5 w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white">Guardar</button>
           </form>
         </div>
@@ -835,7 +1305,7 @@ export function PetsSection() {
             </div>
           )}
           {pending.map(t => (
-            <button key={t.id} type="button" onClick={() => toggleTask(t.id)}
+            <button key={t.id} type="button" onClick={() => doTogglePreventive(t.id)}
               className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 shadow-sm transition active:scale-[0.98]">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg">{PREV_MAP[t.category]?.emoji}</span>
               <div className="flex-1 text-left">
@@ -846,7 +1316,7 @@ export function PetsSection() {
             </button>
           ))}
           {done.map(t => (
-            <button key={t.id} type="button" onClick={() => toggleTask(t.id)}
+            <button key={t.id} type="button" onClick={() => doTogglePreventive(t.id)}
               className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 opacity-50 shadow-sm">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg">{PREV_MAP[t.category]?.emoji}</span>
               <div className="flex-1 text-left">
@@ -855,7 +1325,7 @@ export function PetsSection() {
               <CheckCircle2 size={22} className="shrink-0 text-emerald-500" />
             </button>
           ))}
-          <button type="button" onClick={() => setPrevModal(true)}
+          <button type="button" onClick={() => { setErr(null); setPrevModal(true); }}
             className="flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-emerald-300 bg-white/80 py-4 font-semibold text-emerald-600">
             <Plus size={18} /> Agregar preventivo
           </button>
@@ -875,6 +1345,7 @@ export function PetsSection() {
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
                   <select value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
+                    <option value="medication">💊 Medicacion</option>
                     <option value="vaccine">💉 Vacuna</option>
                     <option value="deworming">🪱 Desparasitacion</option>
                     <option value="appointment">🏥 Turno</option>
@@ -891,7 +1362,229 @@ export function PetsSection() {
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
                   <input type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
                 </div>
+                {isDewormingPreventive && (
+                  <>
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-sm font-semibold text-emerald-800">Sugerencia de proximo tratamiento</p>
+                      <p className="mt-1 text-xs text-emerald-700">Elige cada cuántos meses repetir y te calculamos la fecha.</p>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Repetir dentro de</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[1, 3, 6].map((months) => (
+                          <button
+                            key={months}
+                            type="button"
+                            onClick={() => setPDewormingIntervalMonths(months)}
+                            className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pDewormingIntervalMonths === months ? 'border-emerald-400 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                          >
+                            {months} mes{months !== 1 ? 'es' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha proxima sugerida</label>
+                      <input type="date" value={pNextDewormingDate} onChange={e => setPNextDewormingDate(e.target.value)} className={inp} />
+                    </div>
+                    <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span className="text-sm font-medium text-emerald-800">Programar proximo desparasitario</span>
+                      <input
+                        type="checkbox"
+                        checked={pAutoScheduleNextDeworming}
+                        onChange={(e) => setPAutoScheduleNextDeworming(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span className="text-sm font-medium text-emerald-800">Activar recordatorio del proximo</span>
+                      <input
+                        type="checkbox"
+                        checked={pDewormingRemindersEnabled}
+                        onChange={(e) => setPDewormingRemindersEnabled(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                  </>
+                )}
+                {isDetailedPreventive && (
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Dosis *</label>
+                      <input value={pDose} onChange={e => setPDose(e.target.value)} placeholder="Ej: 1 comprimido, 2 ml" className={inp} required={isDetailedPreventive} />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Frecuencia</label>
+                      <select value={pFrequency} onChange={e => setPFrequency(e.target.value)} className={inp}>
+                        {FREQUENCY_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <label className="block text-sm font-medium text-slate-700">Horarios</label>
+                        <button type="button" onClick={addScheduleTime} className="text-xs font-semibold text-emerald-600">+ Agregar horario</button>
+                      </div>
+                      <div className="space-y-2">
+                        {pScheduleTimes.map((time, index) => (
+                          <div key={`${index}-${time}`} className="flex items-center gap-2">
+                            <input
+                              type="time"
+                              value={time}
+                              onChange={(e) => updateScheduleTime(index, e.target.value)}
+                              className={inp}
+                              required
+                            />
+                            {pScheduleTimes.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeScheduleTime(index)}
+                                className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+                              >
+                                Quitar
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Fin del tratamiento</label>
+                        <input type="date" value={pEndDate} onChange={e => setPEndDate(e.target.value)} className={inp} />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Duracion (dias)</label>
+                        <input type="number" min={1} value={pDurationDays} onChange={e => setPDurationDays(e.target.value)} className={inp} placeholder="Ej: 7" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Notas para el historial</label>
+                      <textarea
+                        value={pNotes}
+                        onChange={e => setPNotes(e.target.value)}
+                        placeholder="Indicaciones del veterinario, observaciones, reacciones, etc."
+                        className={`${inp} min-h-20 resize-none`}
+                      />
+                    </div>
+                    <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span className="text-sm font-medium text-emerald-800">Activar recordatorios</span>
+                      <input
+                        type="checkbox"
+                        checked={pRemindersEnabled}
+                        onChange={(e) => setPRemindersEnabled(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                  </>
+                )}
+                {isAppointmentPreventive && (
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Motivo del turno *</label>
+                      <input
+                        value={pAppointmentReason}
+                        onChange={e => setPAppointmentReason(e.target.value)}
+                        placeholder="Ej: Control anual, consulta por piel, refuerzo"
+                        className={inp}
+                        required={isAppointmentPreventive}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
+                        <input type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Horario *</label>
+                        <input
+                          type="time"
+                          value={pAppointmentTime}
+                          onChange={e => setPAppointmentTime(e.target.value)}
+                          className={inp}
+                          required={isAppointmentPreventive}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Lugar *</label>
+                      <input
+                        value={pAppointmentLocation}
+                        onChange={e => setPAppointmentLocation(e.target.value)}
+                        placeholder="Ej: Vet San Martin, consultorio 2"
+                        className={inp}
+                        required={isAppointmentPreventive}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Referencia *</label>
+                      <input
+                        value={pAppointmentReference}
+                        onChange={e => setPAppointmentReference(e.target.value)}
+                        placeholder="Ej: Frente a la plaza, llevar estudios previos"
+                        className={inp}
+                        required={isAppointmentPreventive}
+                      />
+                    </div>
+                    <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <span className="text-sm font-medium text-emerald-800">Activar notificacion</span>
+                      <input
+                        type="checkbox"
+                        checked={pAppointmentNotifyEnabled}
+                        onChange={(e) => setPAppointmentNotifyEnabled(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                    {pAppointmentNotifyEnabled && (
+                      <>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-slate-700">Antelacion del aviso</label>
+                          <select value={pAppointmentLeadTime} onChange={e => setPAppointmentLeadTime(e.target.value)} className={inp}>
+                            {APPOINTMENT_LEAD_OPTIONS.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-slate-700">Medios de notificacion</label>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            {NOTIFICATION_CHANNEL_OPTIONS.map((channel) => (
+                              <label key={channel} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+                                <input
+                                  type="checkbox"
+                                  checked={pAppointmentChannels.includes(channel)}
+                                  onChange={() => toggleAppointmentChannel(channel)}
+                                  className="h-4 w-4"
+                                />
+                                <span className="text-sm text-slate-700">{channel}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        {appointmentUsesWhatsapp && (
+                          <div>
+                            <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular para WhatsApp *</label>
+                            <input
+                              value={pAppointmentPhone}
+                              onChange={e => setPAppointmentPhone(e.target.value)}
+                              placeholder="Ej: +5491122334455"
+                              className={inp}
+                              required={appointmentUsesWhatsapp}
+                            />
+                            {pAppointmentPhone.trim() && (
+                              <p className={`mt-1 text-xs ${isAppointmentPhoneValid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {isAppointmentPhoneValid ? 'Contacto valido para notificaciones.' : 'Numero invalido. Usa codigo de pais, por ejemplo +5491122334455.'}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
               </div>
+              {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
               <button type="submit" className="mt-5 w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white">Guardar</button>
             </form>
           </div>
