@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   CreditCard,
@@ -54,6 +54,13 @@ interface GlobalAppState {
   setPreventiveTasks: (tasks: PreventiveTask[]) => void;
   setChatMessages: (messages: ChatMessage[]) => void;
   setAdminUsers: (users: AdminUserRow[]) => void;
+}
+
+interface ReminderPopupItem {
+  id: string;
+  title: string;
+  dueDate: string;
+  petName: string;
 }
 
 function BottomNav({
@@ -156,12 +163,15 @@ function AppContent() {
     user,
     loading,
     activeTab,
+    pets,
+    preventiveTasks,
     setActiveTab,
     setUser,
     subscription: subscriptionState,
   } = useAppState();
   const [showLogo, setShowLogo] = useState(true);
   const [switchingUser, setSwitchingUser] = useState(false);
+  const [popupQueue, setPopupQueue] = useState<ReminderPopupItem[]>([]);
   const currentPath = window.location.pathname;
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -193,6 +203,49 @@ function AppContent() {
     } finally {
       setSwitchingUser(false);
     }
+  };
+
+  useEffect(() => {
+    if (!user || user.isGuest || preventiveTasks.length === 0) {
+      return;
+    }
+
+    const today = new Date();
+    const todayKey = today.toISOString().slice(0, 10);
+    const notifiedRaw = window.localStorage.getItem(`apf_popup_notified_${todayKey}`);
+    const notifiedSet = new Set<string>(notifiedRaw ? JSON.parse(notifiedRaw) as string[] : []);
+
+    const dueItems: ReminderPopupItem[] = preventiveTasks
+      .filter((task) => {
+        if (task.completed) return false;
+        const hasPushChannel = !task.notificationChannels || task.notificationChannels.length === 0
+          ? true
+          : task.notificationChannels.includes('Push');
+        if (!hasPushChannel) return false;
+        if (task.remindersEnabled === false) return false;
+
+        const dueDate = new Date(`${task.dueDate}T23:59:59`);
+        return dueDate.getTime() <= today.getTime();
+      })
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      .filter((task) => !notifiedSet.has(task.id))
+      .slice(0, 3)
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        dueDate: task.dueDate,
+        petName: pets.find((pet) => pet.id === task.petId)?.name ?? 'Mascota',
+      }));
+
+    if (dueItems.length > 0) {
+      setPopupQueue(dueItems);
+      const nextNotified = new Set([...notifiedSet, ...dueItems.map((item) => item.id)]);
+      window.localStorage.setItem(`apf_popup_notified_${todayKey}`, JSON.stringify(Array.from(nextNotified)));
+    }
+  }, [pets, preventiveTasks, user]);
+
+  const closeReminderPopup = (id: string) => {
+    setPopupQueue((current) => current.filter((item) => item.id !== id));
   };
 
   const renderTabContent = () => {
@@ -309,6 +362,39 @@ function AppContent() {
 
       {!isResetPasswordRoute && (
         <BottomNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
+      )}
+
+      {popupQueue.length > 0 && !isResetPasswordRoute && (
+        <div className="pointer-events-none fixed right-3 top-3 z-50 flex w-[min(24rem,calc(100%-1.5rem))] flex-col gap-2 md:right-6 md:top-6">
+          {popupQueue.map((item) => (
+            <div key={item.id} className="pointer-events-auto rounded-2xl border border-emerald-200 bg-white p-3 shadow-lg">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Recordatorio</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{item.title}</p>
+                  <p className="mt-0.5 text-xs text-slate-600">{item.petName} · vence {new Date(item.dueDate).toLocaleDateString()}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => closeReminderPopup(item.id)}
+                  className="rounded-md px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                >
+                  Cerrar
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('agenda');
+                  closeReminderPopup(item.id);
+                }}
+                className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                Ver agenda
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

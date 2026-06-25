@@ -122,6 +122,9 @@ export function AgendaSection() {
   const [pCat,   setPCat]   = useState<PreventiveCategory>('vaccine');
   const [pDate,  setPDate]  = useState(() => toDateStr(new Date()));
   const [pPetId, setPPetId] = useState('');
+  const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
+  const [pNotificationChannels, setPNotificationChannels] = useState<string[]>(['Push']);
+  const [pNotificationPhone, setPNotificationPhone] = useState('');
   const [foodBrand, setFoodBrand] = useState<string>(FOOD_BRANDS[0]);
   const [foodCustomBrand, setFoodCustomBrand] = useState('');
   const [foodVariety, setFoodVariety] = useState('');
@@ -283,6 +286,7 @@ export function AgendaSection() {
     }
 
     const resolvedFoodBrand = foodBrand === 'Otro' ? foodCustomBrand.trim() : foodBrand;
+    const normalizedChannels = pNotificationChannels.length > 0 ? pNotificationChannels : ['Push'];
 
     if (isFoodForm) {
       if (!resolvedFoodBrand.trim()) {
@@ -305,7 +309,17 @@ export function AgendaSection() {
 
     try {
       if (!isFoodForm) {
-        await addPreventiveTask({ petId, title: pTitle, category: pCat, dueDate: pDate, completed: false });
+        await addPreventiveTask({
+          petId,
+          title: pTitle,
+          category: pCat,
+          dueDate: pDate,
+          completed: false,
+          remindersEnabled: pRemindersEnabled,
+          notificationChannels: normalizedChannels,
+          notificationPhone: pNotificationPhone.trim() || undefined,
+          notificationLeadTime: 'en fecha',
+        });
       } else {
         const purchaseGroupId = crypto.randomUUID();
         const purchaseTitle = `Compra alimento: ${resolvedFoodBrand}${foodVariety.trim() ? ` - ${foodVariety.trim()}` : ''}`;
@@ -383,6 +397,9 @@ export function AgendaSection() {
 
       setPTitle('');
       setPCat('vaccine');
+      setPRemindersEnabled(true);
+      setPNotificationChannels(['Push']);
+      setPNotificationPhone('');
       setFoodBrand(FOOD_BRANDS[0]);
       setFoodCustomBrand('');
       setFoodVariety('');
@@ -546,6 +563,53 @@ export function AgendaSection() {
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
                   <input type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
                 </div>
+                <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                  <span className="text-sm font-medium text-emerald-800">Activar recordatorios</span>
+                  <input
+                    type="checkbox"
+                    checked={pRemindersEnabled}
+                    onChange={(e) => setPRemindersEnabled(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                </label>
+                {pRemindersEnabled && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-medium text-slate-700">Canales de aviso</p>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {['Push', 'Email', 'WhatsApp'].map((channel) => {
+                        const checked = pNotificationChannels.includes(channel);
+                        return (
+                          <label key={channel} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                            <span>{channel}</span>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setPNotificationChannels((prev) => Array.from(new Set([...prev, channel])));
+                                } else {
+                                  setPNotificationChannels((prev) => prev.filter((item) => item !== channel));
+                                }
+                              }}
+                              className="h-4 w-4"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {pNotificationChannels.includes('WhatsApp') && (
+                      <div className="mt-3">
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp (con codigo pais)</label>
+                        <input
+                          value={pNotificationPhone}
+                          onChange={(e) => setPNotificationPhone(e.target.value)}
+                          className={inp}
+                          placeholder="Ej: +5491122334455"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-3">

@@ -1,0 +1,26 @@
+name: Send Preventive Reminders
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Supabase reminders function
+        env:
+          REMINDERS_API_KEY: ${{ secrets.REMINDERS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REMINDERS_API_KEY}" ]; then
+            echo "REMINDERS_API_KEY is not configured in GitHub Secrets"
+            exit 1
+          fi
+
+          curl -sS -X POST "https://apejkczbthvbxoksmlye.supabase.co/functions/v1/send-preventive-reminders" \
+            -H "Content-Type: application/json" \
+            -H "x-reminders-key: ${REMINDERS_API_KEY}" \
+            --fail-with-body
