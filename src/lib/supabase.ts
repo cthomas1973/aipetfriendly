@@ -10,6 +10,17 @@ import type {
   UserAccessLevel,
 } from '../types';
 
+interface PetAssistantRequest {
+  petId: string;
+  question: string;
+  recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+}
+
+interface PetAssistantResponse {
+  answer: string;
+  model?: string;
+}
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
@@ -35,6 +46,12 @@ const mockClient = {
     delete: () => ({ eq: async () => ({ error: null }) }),
   }),
   rpc: async () => ({ data: [], error: null }),
+  functions: {
+    invoke: async () => ({
+      data: null,
+      error: new Error('Mock mode: Supabase Functions no configuradas'),
+    }),
+  },
 };
 
 // Usar cliente real si hay variables, sino mock
@@ -414,6 +431,22 @@ export async function createChatMessage(
     content: data.content,
     createdAt: data.created_at,
   };
+}
+
+export async function askPetAssistant(payload: PetAssistantRequest): Promise<PetAssistantResponse> {
+  const { data, error } = await supabase.functions.invoke('pet-ai-chat', {
+    body: payload,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo invocar la funcion de IA');
+  }
+
+  if (!data || typeof data.answer !== 'string') {
+    throw new Error('Respuesta invalida de la funcion de IA');
+  }
+
+  return data as PetAssistantResponse;
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {

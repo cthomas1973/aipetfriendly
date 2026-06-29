@@ -40,7 +40,17 @@ npm install @supabase/supabase-js
 npm install -g supabase
 
 supabase functions deploy send-clinical-pdf
+supabase functions deploy pet-ai-chat
 ```
+
+### 7. Secrets para IA contextual
+
+En Supabase Dashboard > Edge Functions > Secrets, agregar:
+
+- `AI_API_KEY`: clave de tu proveedor IA
+- `AI_MODEL`: por ejemplo `gpt-4o-mini`
+- `AI_BASE_URL`: opcional, default `https://api.openai.com/v1`
+- `SUPABASE_SERVICE_ROLE_KEY`: necesaria para que la function lea historial por usuario
 
 ## Variables de entorno requeridas
 

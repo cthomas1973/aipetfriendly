@@ -33,10 +33,10 @@ export function ChatSection() {
 
   const doSend = async (text: string) => {
     const t = text.trim();
-    if (!t || sending || !canUseAI) return;
+    if (!t || sending || !canUseAI || !selectedPetId) return;
     setInput('');
     setSending(true);
-    try { await sendMessage(t); } finally { setSending(false); }
+    try { await sendMessage(t, selectedPetId); } finally { setSending(false); }
   };
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); doSend(input); };
@@ -134,11 +134,17 @@ export function ChatSection() {
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
-          disabled={!canUseAI || sending}
-          placeholder={canUseAI ? 'Escribe tu consulta...' : 'Limite alcanzado'}
+          disabled={!canUseAI || sending || !selectedPetId}
+          placeholder={
+            !selectedPetId
+              ? 'Agrega o selecciona una mascota para comenzar'
+              : canUseAI
+                ? 'Escribe tu consulta...'
+                : 'Limite alcanzado'
+          }
           className="flex-1 rounded-full bg-white px-5 py-3.5 text-sm ring-1 ring-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-50"
         />
-        <button type="submit" disabled={!canUseAI || !input.trim() || sending}
+        <button type="submit" disabled={!canUseAI || !input.trim() || sending || !selectedPetId}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition disabled:opacity-40">
           <Send size={18} />
         </button>

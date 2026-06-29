@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "name": "pet-ai-chat",
+  "main": "index.ts",
+  "supabaseUrl": "http://localhost:54321",
+  "envPath": ".env.local"
+}
