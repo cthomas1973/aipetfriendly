@@ -13,17 +13,19 @@ const SUGGESTIONS = [
 ];
 
 export function ChatSection() {
-  const { pets, selectedPetId, setSelectedPetId, subscription, aiDailyUsage } = useAppState();
-  const { messages, canUseAI, sendMessage } = useChat();
+  const { pets, selectedPetId, setSelectedPetId, subscription } = useAppState();
+  const { messages, canUseAI, quota, sendMessage } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isPremium = subscription?.isPremiumUser ?? false;
-  const remaining = isPremium
-    ? null
-    : Math.max(0, (subscription?.freeAiDailyLimit ?? 3) - aiDailyUsage);
+  const quotaLabel = quota.tier === 'guest'
+    ? 'Visitante'
+    : quota.tier === 'premium'
+      ? 'Premium'
+      : 'Free';
 
   const visible = messages.filter(m => m.role !== 'system');
 
@@ -53,11 +55,9 @@ export function ChatSection() {
             <p className="font-extrabold text-slate-900">Consultorio IA</p>
             <p className="text-sm text-slate-500">Veterinario virtual</p>
           </div>
-          {remaining !== null && (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
-              {remaining} restantes
-            </span>
-          )}
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
+            {quota.remaining}/{quota.limit} restantes ({quotaLabel})
+          </span>
           {isPremium && (
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Premium</span>
           )}
@@ -124,8 +124,8 @@ export function ChatSection() {
       {/* paywall message */}
       {!canUseAI && (
         <div className="rounded-3xl bg-amber-50 px-4 py-4 text-center">
-          <p className="font-semibold text-amber-800">Limite diario alcanzado</p>
-          <p className="mt-1 text-sm text-amber-600">Actualiza a Premium para consultas ilimitadas.</p>
+          <p className="font-semibold text-amber-800">Limite por mascota alcanzado</p>
+          <p className="mt-1 text-sm text-amber-600">Selecciona otra mascota o ajusta el plan en Mi Cuenta.</p>
         </div>
       )}
 

@@ -1,8 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Shield, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { fetchAdminUsers, updateAdminUserAccess } from '../lib/supabase';
-import type { UserAccessLevel } from '../types';
+import {
+  fetchAdminAiUsageSettings,
+  fetchAdminUsers,
+  updateAdminAiUsageSettings,
+  updateAdminUserAccess,
+} from '../lib/supabase';
+import type { AiUsageSettings, UserAccessLevel } from '../types';
 
 const ACCESS_LABELS: Record<UserAccessLevel, string> = {
   guest: 'Visitante',
@@ -16,9 +21,15 @@ export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [savingLimits, setSavingLimits] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [limits, setLimits] = useState<AiUsageSettings>({
+    guestLimitPerPet: 3,
+    freeLimitPerPet: 10,
+    premiumLimitPerPet: 100,
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -33,12 +44,35 @@ export function AdminUsersSection() {
     try {
       setLoading(true);
       setError(null);
-      const rows = await fetchAdminUsers();
+      const [rows, limitsData] = await Promise.all([
+        fetchAdminUsers(),
+        fetchAdminAiUsageSettings(),
+      ]);
       setAdminUsers(rows);
+      setLimits(limitsData);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo cargar el listado de usuarios.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveLimits = async () => {
+    try {
+      setSavingLimits(true);
+      setError(null);
+      setMsg(null);
+
+      if (limits.guestLimitPerPet < 0 || limits.freeLimitPerPet < 0 || limits.premiumLimitPerPet < 0) {
+        throw new Error('Los limites no pueden ser negativos.');
+      }
+
+      await updateAdminAiUsageSettings(limits);
+      setMsg('Limites de consultas IA actualizados correctamente.');
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudieron guardar los limites IA.');
+    } finally {
+      setSavingLimits(false);
     }
   };
 
@@ -92,6 +126,66 @@ export function AdminUsersSection() {
             />
           </div>
         </div>
+      </div>
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+        <div>
+          <p className="font-bold text-slate-900">Limites IA por mascota</p>
+          <p className="text-sm text-slate-500">Estos valores se aplican sin tocar codigo.</p>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3">
+          <label className="text-sm text-slate-700">
+            Visitante
+            <input
+              type="number"
+              min={0}
+              value={limits.guestLimitPerPet}
+              onChange={(e) => setLimits((current) => ({
+                ...current,
+                guestLimitPerPet: Number(e.target.value || 0),
+              }))}
+              className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            />
+          </label>
+
+          <label className="text-sm text-slate-700">
+            Free
+            <input
+              type="number"
+              min={0}
+              value={limits.freeLimitPerPet}
+              onChange={(e) => setLimits((current) => ({
+                ...current,
+                freeLimitPerPet: Number(e.target.value || 0),
+              }))}
+              className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            />
+          </label>
+
+          <label className="text-sm text-slate-700">
+            Premium
+            <input
+              type="number"
+              min={0}
+              value={limits.premiumLimitPerPet}
+              onChange={(e) => setLimits((current) => ({
+                ...current,
+                premiumLimitPerPet: Number(e.target.value || 0),
+              }))}
+              className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            />
+          </label>
+        </div>
+
+        <button
+          type="button"
+          onClick={saveLimits}
+          disabled={savingLimits}
+          className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-70"
+        >
+          {savingLimits ? 'Guardando limites...' : 'Guardar limites IA'}
+        </button>
       </div>
 
       {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}

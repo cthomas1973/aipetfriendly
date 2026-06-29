@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import type {
+  AiUsageSettings,
   AdminUserRow,
   Pet,
+  PetAiUsageRow,
   ClinicalTimelineEntry,
   PreventiveTask,
   ChatMessage,
@@ -14,11 +16,43 @@ interface PetAssistantRequest {
   petId: string;
   question: string;
   recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  guestContext?: {
+    pet: {
+      id: string;
+      name: string;
+      species: string;
+      breed: string;
+      sex: string;
+      ageYears: number;
+      ageMonths: number;
+      weightKg: number;
+      notes: string | null;
+    };
+    clinicalEntries: Array<{
+      eventDate: string;
+      category: string;
+      title: string;
+      description: string;
+    }>;
+    preventiveTasks: Array<{
+      dueDate: string;
+      category: string;
+      title: string;
+      completed: boolean;
+      notes: string | null;
+    }>;
+  };
 }
 
 interface PetAssistantResponse {
   answer: string;
   model?: string;
+  usage?: {
+    tier: 'guest' | 'free' | 'premium';
+    limit: number;
+    used: number;
+    remaining: number;
+  };
 }
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -447,6 +481,73 @@ export async function askPetAssistant(payload: PetAssistantRequest): Promise<Pet
   }
 
   return data as PetAssistantResponse;
+}
+
+export async function fetchAiUsageSettings(): Promise<AiUsageSettings> {
+  const { data, error } = await supabase.rpc('get_ai_usage_settings');
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return {
+      guestLimitPerPet: 3,
+      freeLimitPerPet: 10,
+      premiumLimitPerPet: 100,
+    };
+  }
+
+  return {
+    guestLimitPerPet: Number(row.guest_limit_per_pet ?? 3),
+    freeLimitPerPet: Number(row.free_limit_per_pet ?? 10),
+    premiumLimitPerPet: Number(row.premium_limit_per_pet ?? 100),
+  };
+}
+
+export async function fetchUserPetAiUsage(): Promise<PetAiUsageRow[]> {
+  const { data, error } = await supabase.rpc('get_user_pet_ai_usage');
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    petId: row.pet_id,
+    usageCount: Number(row.usage_count || 0),
+  }));
+}
+
+export async function fetchAdminAiUsageSettings(): Promise<AiUsageSettings> {
+  const { data, error } = await supabase.rpc('admin_get_ai_usage_settings');
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    throw new Error('No se encontro configuracion de limites IA');
+  }
+
+  return {
+    guestLimitPerPet: Number(row.guest_limit_per_pet),
+    freeLimitPerPet: Number(row.free_limit_per_pet),
+    premiumLimitPerPet: Number(row.premium_limit_per_pet),
+  };
+}
+
+export async function updateAdminAiUsageSettings(settings: AiUsageSettings): Promise<void> {
+  const { error } = await supabase.rpc('admin_update_ai_usage_settings', {
+    p_guest_limit: settings.guestLimitPerPet,
+    p_free_limit: settings.freeLimitPerPet,
+    p_premium_limit: settings.premiumLimitPerPet,
+  });
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {

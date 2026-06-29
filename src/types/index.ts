@@ -133,6 +133,17 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface AiUsageSettings {
+  guestLimitPerPet: number;
+  freeLimitPerPet: number;
+  premiumLimitPerPet: number;
+}
+
+export interface PetAiUsageRow {
+  petId: string;
+  usageCount: number;
+}
+
 export interface DailyAiUsage {
   date: string;
   count: number;
