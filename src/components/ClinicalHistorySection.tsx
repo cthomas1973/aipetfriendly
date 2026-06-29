@@ -32,6 +32,7 @@ export function ClinicalHistorySection() {
   const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [showNoteForm, setShowNoteForm] = useState(false);
 
@@ -75,13 +76,23 @@ export function ClinicalHistorySection() {
 
   const onSendEmail = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (sendingEmail) {
+      return;
+    }
+
+    setSendingEmail(true);
+    setEmailOpen(false);
+    setStatus('Enviando PDF por email...');
+
     try {
       await sendClinicalPdfByEmail(email, '/logo-aipetfriendly.png');
       setStatus('PDF enviado por email correctamente.');
-      setEmailOpen(false);
       setEmail('');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'No se pudo enviar el email.');
+      setEmailOpen(true);
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -215,7 +226,10 @@ export function ClinicalHistorySection() {
               <button type="button" onClick={() => setEmailOpen(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
               <button type="submit"
-                className="w-full rounded-full bg-emerald-500 py-3 font-bold text-white">Enviar</button>
+                disabled={sendingEmail}
+                className="w-full rounded-full bg-emerald-500 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-70">
+                {sendingEmail ? 'Enviando...' : 'Enviar'}
+              </button>
             </div>
           </form>
         </div>

@@ -280,14 +280,22 @@ export function useClinical() {
           email,
           fileName: pdf.fileName,
           pdfBytes: bytes,
+          petName: selectedPet?.name ?? '',
         }),
       });
 
       if (!response.ok) {
-        throw new Error('No se pudo enviar el PDF por email.');
+        let detail = '';
+        try {
+          const payload = await response.json();
+          detail = typeof payload?.error === 'string' ? payload.error : '';
+        } catch {
+          detail = '';
+        }
+        throw new Error(detail || 'No se pudo enviar el PDF por email.');
       }
     },
-    [generateClinicalPdf, subscription.isPremiumUser],
+    [generateClinicalPdf, selectedPet?.name, subscription.isPremiumUser],
   );
 
   return {
