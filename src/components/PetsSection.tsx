@@ -129,13 +129,42 @@ function addMonthsToDateString(dateStr: string, months: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function addDaysToDateString(dateStr: string, days: number) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) {
+    return dateStr;
+  }
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function listDatesInRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  let current = startDate;
+  while (current <= endDate) {
+    dates.push(current);
+    current = addDaysToDateString(current, 1);
+  }
+  return dates;
+}
+
+function formatPreventiveDateTime(task: { dueDate: string; appointmentTime?: string; scheduleTimes?: string[] }) {
+  const time = task.appointmentTime || (Array.isArray(task.scheduleTimes) ? task.scheduleTimes[0] : '');
+  const dateLabel = new Date(`${task.dueDate}T12:00:00`).toLocaleDateString('es-AR');
+  if (time && /^\d{2}:\d{2}$/.test(time)) {
+    return `${dateLabel} · ${time}`;
+  }
+  return dateLabel;
+}
+
 const inp = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200';
 
 export function PetsSection() {
   const { pets, selectedPetId, canAddPet, freePetLimit, addPet, selectPet, removePet, updatePet } = usePets();
   const { setActiveTab, user } = useAppState();
   const { timeline, addClinicalNote, generateClinicalPdf, sendClinicalPdfByEmail } = useClinical();
-  const { preventiveTasks, addPreventiveTask, toggleTask } = usePreventive();
+  const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask } = usePreventive();
 
   const [view, setView]   = useState<View>('list');
   const [step, setStep]   = useState(1);
@@ -302,28 +331,61 @@ export function PetsSection() {
         window.localStorage.setItem(NOTIFICATION_PHONE_KEY, normalizedAppointmentPhone);
       }
 
-      await addPreventiveTask({
-        petId: pet.id,
-        title: pTitle,
-        category: pCat,
-        dueDate: pDate,
-        completed: false,
-        dose: requireDetail ? pDose.trim() : undefined,
-        frequency: requireDetail ? pFrequency : undefined,
-        scheduleTimes: requireDetail ? cleanedTimes : undefined,
-        startDate: pDate,
-        endDate: pEndDate || undefined,
-        durationDays: pDurationDays ? Number(pDurationDays) : undefined,
-        notes: pNotes || undefined,
-        remindersEnabled: requireDetail ? pRemindersEnabled : (requireAppointmentDetail ? pAppointmentNotifyEnabled : undefined),
-        appointmentReason: requireAppointmentDetail ? pAppointmentReason.trim() : undefined,
-        appointmentTime: requireAppointmentDetail ? pAppointmentTime.trim() : undefined,
-        appointmentLocation: requireAppointmentDetail ? pAppointmentLocation.trim() : undefined,
-        appointmentReference: requireAppointmentDetail ? pAppointmentReference.trim() : undefined,
-        notificationLeadTime: requireAppointmentDetail && pAppointmentNotifyEnabled ? pAppointmentLeadTime : undefined,
-        notificationChannels: requireAppointmentDetail && pAppointmentNotifyEnabled ? cleanedAppointmentChannels : undefined,
-        notificationPhone: requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp ? normalizedAppointmentPhone : undefined,
-      });
+      if (pCat === 'medication' && cleanedTimes.length > 0) {
+        const durationDays = pDurationDays ? Number(pDurationDays) : undefined;
+        const computedEndDate = pEndDate || (durationDays && durationDays > 0 ? addDaysToDateString(pDate, durationDays - 1) : pDate);
+        const endDate = computedEndDate >= pDate ? computedEndDate : pDate;
+        const planDates = listDatesInRange(pDate, endDate);
+        const orderedTimes = [...cleanedTimes].sort();
+        let createdAlerts = 0;
+
+        for (const day of planDates) {
+          for (const time of orderedTimes) {
+            createdAlerts += 1;
+            await addPreventiveTask({
+              petId: pet.id,
+              title: pTitle,
+              category: pCat,
+              dueDate: day,
+              completed: false,
+              dose: pDose.trim(),
+              frequency: pFrequency,
+              scheduleTimes: [time],
+              appointmentTime: time,
+              startDate: pDate,
+              endDate: endDate,
+              durationDays: durationDays,
+              notes: pNotes || undefined,
+              remindersEnabled: pRemindersEnabled,
+              notificationChannels: pRemindersEnabled ? ['Push'] : undefined,
+              createClinicalEntry: createdAlerts === 1,
+            });
+          }
+        }
+      } else {
+        await addPreventiveTask({
+          petId: pet.id,
+          title: pTitle,
+          category: pCat,
+          dueDate: pDate,
+          completed: false,
+          dose: requireDetail ? pDose.trim() : undefined,
+          frequency: requireDetail ? pFrequency : undefined,
+          scheduleTimes: requireDetail ? cleanedTimes : undefined,
+          startDate: pDate,
+          endDate: pEndDate || undefined,
+          durationDays: pDurationDays ? Number(pDurationDays) : undefined,
+          notes: pNotes || undefined,
+          remindersEnabled: requireDetail ? pRemindersEnabled : (requireAppointmentDetail ? pAppointmentNotifyEnabled : undefined),
+          appointmentReason: requireAppointmentDetail ? pAppointmentReason.trim() : undefined,
+          appointmentTime: requireAppointmentDetail ? pAppointmentTime.trim() : undefined,
+          appointmentLocation: requireAppointmentDetail ? pAppointmentLocation.trim() : undefined,
+          appointmentReference: requireAppointmentDetail ? pAppointmentReference.trim() : undefined,
+          notificationLeadTime: requireAppointmentDetail && pAppointmentNotifyEnabled ? pAppointmentLeadTime : undefined,
+          notificationChannels: requireAppointmentDetail && pAppointmentNotifyEnabled ? cleanedAppointmentChannels : undefined,
+          notificationPhone: requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp ? normalizedAppointmentPhone : undefined,
+        });
+      }
 
       if (isDeworming && pAutoScheduleNextDeworming && pNextDewormingDate) {
         try {
@@ -415,6 +477,26 @@ export function PetsSection() {
       setErr(null);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'No se pudo actualizar el preventivo.');
+    }
+  };
+
+  const doPostponePreventive = async (taskId: string) => {
+    const raw = window.prompt('Posponer alerta (minutos):', '30');
+    if (!raw) {
+      return;
+    }
+    const minutes = Number(raw);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      setErr('Ingresa una cantidad valida de minutos para posponer.');
+      return;
+    }
+
+    try {
+      await postponeTask(taskId, Math.round(minutes));
+      setErr(null);
+      setMsg(`Alerta pospuesta ${Math.round(minutes)} minutos.`);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo posponer la alerta.');
     }
   };
 
@@ -1305,15 +1387,33 @@ export function PetsSection() {
             </div>
           )}
           {pending.map(t => (
-            <button key={t.id} type="button" onClick={() => doTogglePreventive(t.id)}
-              className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 shadow-sm transition active:scale-[0.98]">
+            <div key={t.id}
+              className="rounded-3xl bg-white p-4 shadow-sm">
+              <div className="flex w-full items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg">{PREV_MAP[t.category]?.emoji}</span>
               <div className="flex-1 text-left">
                 <p className="font-semibold text-slate-900">{t.title}</p>
-                <p className="text-xs text-slate-500">{PREV_MAP[t.category]?.label} · {new Date(t.dueDate + 'T12:00:00').toLocaleDateString('es-AR')}</p>
+                <p className="text-xs text-slate-500">{PREV_MAP[t.category]?.label} · {formatPreventiveDateTime(t)}</p>
               </div>
               <Circle size={22} className="shrink-0 text-slate-300" />
-            </button>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => doTogglePreventive(t.id)}
+                  className="w-full rounded-full bg-emerald-500 py-2 text-xs font-bold text-white"
+                >
+                  Se suministro ahora
+                </button>
+                <button
+                  type="button"
+                  onClick={() => doPostponePreventive(t.id)}
+                  className="w-full rounded-full border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700"
+                >
+                  Posponer
+                </button>
+              </div>
+            </div>
           ))}
           {done.map(t => (
             <button key={t.id} type="button" onClick={() => doTogglePreventive(t.id)}

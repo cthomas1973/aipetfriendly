@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAppState } from '../context/AppStateContext';
-import { createClinicalEntry, createPreventiveTask, togglePreventiveTask } from '../lib/supabase';
+import {
+  createClinicalEntry,
+  createPreventiveTask,
+  togglePreventiveTask,
+  updatePreventiveTaskSchedule,
+} from '../lib/supabase';
 import type { ClinicalEntryCategory, ClinicalTimelineEntry, PreventiveFormData, PreventiveTask } from '../types';
 
 function mapPreventiveToClinicalCategory(category: PreventiveFormData['category']): ClinicalEntryCategory {
@@ -63,6 +68,9 @@ function preventiveDescription(data: PreventiveFormData) {
   if (data.notificationChannels && data.notificationChannels.length > 0) {
     detail.push(`Medios aviso: ${data.notificationChannels.join(', ')}`);
   }
+  if (data.notificationEmail) {
+    detail.push(`Email notificacion: ${data.notificationEmail}`);
+  }
   if (data.notificationPhone) {
     detail.push(`Celular notificacion: ${data.notificationPhone}`);
   }
@@ -95,7 +103,37 @@ function preventiveDescription(data: PreventiveFormData) {
 }
 
 function shouldCreateClinicalEntry(data: PreventiveFormData) {
+  if (data.createClinicalEntry === false) {
+    return false;
+  }
   return !(data.category === 'feeding' && data.foodEntryType === 'reminder');
+}
+
+function parseTaskDateTime(task: PreventiveTask): Date {
+  const [year, month, day] = task.dueDate.split('-').map(Number);
+  const fallback = new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
+
+  const fromAppointment = typeof task.appointmentTime === 'string' ? task.appointmentTime : '';
+  const fromSchedule = Array.isArray(task.scheduleTimes) && task.scheduleTimes.length > 0
+    ? task.scheduleTimes[0]
+    : '';
+  const taskTime = fromAppointment || fromSchedule;
+  if (!/^\d{2}:\d{2}$/.test(taskTime)) {
+    return fallback;
+  }
+
+  const [hours, minutes] = taskTime.split(':').map(Number);
+  return new Date(year, month - 1, day, hours || 0, minutes || 0, 0, 0);
+}
+
+function toDateString(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function toTimeString(date: Date) {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 export function usePreventive() {
@@ -159,6 +197,7 @@ export function usePreventive() {
               appointmentReference: data.appointmentReference ?? null,
               notificationLeadTime: data.notificationLeadTime ?? null,
               notificationChannels: data.notificationChannels?.join(', ') ?? null,
+              notificationEmail: data.notificationEmail ?? null,
               notificationPhone: data.notificationPhone ?? null,
               foodBrand: data.foodBrand ?? null,
               foodVariety: data.foodVariety ?? null,
@@ -201,6 +240,7 @@ export function usePreventive() {
         appointmentReference: data.appointmentReference,
         notificationLeadTime: data.notificationLeadTime,
         notificationChannels: data.notificationChannels,
+        notificationEmail: data.notificationEmail,
         notificationPhone: data.notificationPhone,
         foodBrand: data.foodBrand,
         foodVariety: data.foodVariety,
@@ -246,6 +286,7 @@ export function usePreventive() {
             appointmentReference: data.appointmentReference ?? null,
             notificationLeadTime: data.notificationLeadTime ?? null,
             notificationChannels: data.notificationChannels?.join(', ') ?? null,
+            notificationEmail: data.notificationEmail ?? null,
             notificationPhone: data.notificationPhone ?? null,
             foodBrand: data.foodBrand ?? null,
             foodVariety: data.foodVariety ?? null,
@@ -312,6 +353,45 @@ export function usePreventive() {
     [preventiveTasks, setPreventiveTasks, user],
   );
 
+  const postponeTask = useCallback(
+    async (taskId: string, minutes: number) => {
+      const current = preventiveTasks.find((task) => task.id === taskId);
+      if (!current) {
+        return;
+      }
+
+      const nextDateTime = parseTaskDateTime(current);
+      nextDateTime.setMinutes(nextDateTime.getMinutes() + minutes);
+      const nextDueDate = toDateString(nextDateTime);
+      const nextTime = toTimeString(nextDateTime);
+
+      if (!user || user.isGuest) {
+        setPreventiveTasks(
+          preventiveTasks.map((task) => (
+            task.id === taskId
+              ? { ...task, dueDate: nextDueDate, appointmentTime: nextTime, scheduleTimes: [nextTime] }
+              : task
+          )),
+        );
+        return;
+      }
+
+      const updated = await updatePreventiveTaskSchedule(taskId, nextDueDate, nextTime);
+      if (!updated) {
+        throw new Error('No se pudo posponer la alerta en Supabase.');
+      }
+
+      setPreventiveTasks(
+        preventiveTasks.map((task) => (
+          task.id === taskId
+            ? { ...task, dueDate: nextDueDate, appointmentTime: nextTime, scheduleTimes: [nextTime] }
+            : task
+        )),
+      );
+    },
+    [preventiveTasks, setPreventiveTasks, user],
+  );
+
   const pendingTasks = useMemo(
     () => preventiveTasks.filter((task) => !task.completed),
     [preventiveTasks],
@@ -322,5 +402,6 @@ export function usePreventive() {
     pendingTasks,
     addPreventiveTask,
     toggleTask,
+    postponeTask,
   };
 }

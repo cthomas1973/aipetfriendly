@@ -46,10 +46,10 @@ function toIsoDate(date: Date) {
 function normalizeChannels(metadata: Record<string, unknown> | null) {
   const raw = metadata?.notificationChannels;
   if (!Array.isArray(raw) || raw.length === 0) {
-    return ['Push'];
+    return ['push'];
   }
 
-  return raw.map(String);
+  return raw.map((value) => String(value).trim().toLowerCase());
 }
 
 function maybePhone(metadata: Record<string, unknown> | null): string | null {
@@ -61,6 +61,15 @@ function maybePhone(metadata: Record<string, unknown> | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function maybeEmail(metadata: Record<string, unknown> | null): string | null {
+  const email = metadata?.notificationEmail;
+  if (typeof email !== 'string') {
+    return null;
+  }
+  const trimmed = email.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 async function alreadySent(taskId: string, channel: 'email' | 'whatsapp', date: string) {
   const { data, error } = await supabase
     .from('notification_logs')
@@ -68,6 +77,7 @@ async function alreadySent(taskId: string, channel: 'email' | 'whatsapp', date: 
     .eq('task_id', taskId)
     .eq('channel', channel)
     .eq('scheduled_date', date)
+    .eq('status', 'sent')
     .limit(1);
 
   if (error) {
@@ -87,15 +97,20 @@ async function saveLog(args: {
   providerMessageId?: string;
   providerResponse?: unknown;
 }) {
-  const { error } = await supabase.from('notification_logs').insert({
-    task_id: args.taskId,
-    channel: args.channel,
-    target: args.target,
-    scheduled_date: args.scheduledDate,
-    status: args.status,
-    provider_message_id: args.providerMessageId ?? null,
-    provider_response: args.providerResponse ?? null,
-  });
+  const { error } = await supabase
+    .from('notification_logs')
+    .upsert(
+      {
+        task_id: args.taskId,
+        channel: args.channel,
+        target: args.target,
+        scheduled_date: args.scheduledDate,
+        status: args.status,
+        provider_message_id: args.providerMessageId ?? null,
+        provider_response: args.providerResponse ?? null,
+      },
+      { onConflict: 'task_id,channel,scheduled_date' },
+    );
 
   if (error) {
     console.error('saveLog error', error);
@@ -196,6 +211,7 @@ Deno.serve(async (req) => {
     let sentEmail = 0;
     let sentWhatsApp = 0;
     let failed = 0;
+    const failedDetails: Array<{ taskId: string; channel: 'email' | 'whatsapp'; reason: string }> = [];
 
     for (const task of tasks) {
       const metadata = task.metadata ?? {};
@@ -205,8 +221,8 @@ Deno.serve(async (req) => {
       }
 
       const channels = normalizeChannels(metadata);
-      const wantsEmail = channels.includes('Email');
-      const wantsWhatsApp = channels.includes('WhatsApp');
+      const wantsEmail = channels.includes('email');
+      const wantsWhatsApp = channels.includes('whatsapp');
       if (!wantsEmail && !wantsWhatsApp) {
         continue;
       }
@@ -235,6 +251,8 @@ Deno.serve(async (req) => {
 
       const petName = (pet as PetRow).name;
       const ownerEmail = (user as UserRow).email;
+      const eventEmail = maybeEmail(metadata);
+      const targetEmail = eventEmail ?? ownerEmail;
       const scheduledDate = task.due_date;
 
       const messageText = `Recordatorio de ${petName}: ${task.title}. Vence el ${scheduledDate}.${task.notes ? ` Nota: ${task.notes}` : ''}`;
@@ -244,7 +262,7 @@ Deno.serve(async (req) => {
         if (!skip) {
           try {
             const response = await sendEmail(
-              ownerEmail,
+              targetEmail,
               `AiPetFriendly: recordatorio de ${petName}`,
               `<h2>Recordatorio AiPetFriendly</h2><p><strong>Mascota:</strong> ${petName}</p><p><strong>Tarea:</strong> ${task.title}</p><p><strong>Fecha:</strong> ${scheduledDate}</p><p>${task.notes ?? ''}</p>`,
             );
@@ -252,7 +270,7 @@ Deno.serve(async (req) => {
             await saveLog({
               taskId: task.id,
               channel: 'email',
-              target: ownerEmail,
+              target: targetEmail,
               scheduledDate,
               status: 'sent',
               providerMessageId: response.id,
@@ -260,15 +278,17 @@ Deno.serve(async (req) => {
             });
             sentEmail += 1;
           } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
             await saveLog({
               taskId: task.id,
               channel: 'email',
-              target: ownerEmail,
+              target: targetEmail,
               scheduledDate,
               status: 'failed',
-              providerResponse: String(error),
+              providerResponse: reason,
             });
             failed += 1;
+            failedDetails.push({ taskId: task.id, channel: 'email', reason });
           }
         }
       }
@@ -277,6 +297,7 @@ Deno.serve(async (req) => {
         const phone = maybePhone(metadata);
         if (!phone) {
           failed += 1;
+          failedDetails.push({ taskId: task.id, channel: 'whatsapp', reason: 'Missing notificationPhone in task metadata' });
         } else {
           const skip = await alreadySent(task.id, 'whatsapp', scheduledDate);
           if (!skip) {
@@ -294,15 +315,17 @@ Deno.serve(async (req) => {
               });
               sentWhatsApp += 1;
             } catch (error) {
+              const reason = error instanceof Error ? error.message : String(error);
               await saveLog({
                 taskId: task.id,
                 channel: 'whatsapp',
                 target: phone,
                 scheduledDate,
                 status: 'failed',
-                providerResponse: String(error),
+                providerResponse: reason,
               });
               failed += 1;
+              failedDetails.push({ taskId: task.id, channel: 'whatsapp', reason });
             }
           }
         }
@@ -316,6 +339,7 @@ Deno.serve(async (req) => {
         sentEmail,
         sentWhatsApp,
         failed,
+        failedDetails: failedDetails.slice(0, 10),
       }),
       {
         status: 200,

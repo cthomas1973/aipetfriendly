@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
+import { readNotificationProfile } from '../lib/notificationProfile';
 import type { PreventiveCategory } from '../types';
 
 const PREV_MAP: Record<PreventiveCategory, { label: string; emoji: string }> = {
@@ -111,7 +112,7 @@ function formatDateTimeLabel(task: { dueDate: string; appointmentTime?: string; 
 }
 
 export function AgendaSection() {
-  const { pets, selectedPetId } = useAppState();
+  const { pets, selectedPetId, user } = useAppState();
   const { preventiveTasks, addPreventiveTask, toggleTask } = usePreventive();
 
   const [tab, setTab] = useState<'meds' | 'food'>('meds');
@@ -124,6 +125,7 @@ export function AgendaSection() {
   const [pPetId, setPPetId] = useState('');
   const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
   const [pNotificationChannels, setPNotificationChannels] = useState<string[]>(['Push']);
+  const [pNotificationEmail, setPNotificationEmail] = useState('');
   const [pNotificationPhone, setPNotificationPhone] = useState('');
   const [foodBrand, setFoodBrand] = useState<string>(FOOD_BRANDS[0]);
   const [foodCustomBrand, setFoodCustomBrand] = useState('');
@@ -150,6 +152,17 @@ export function AgendaSection() {
       return current === 'feeding' ? 'medication' : current;
     });
   }, [tab]);
+
+  useEffect(() => {
+    if (!showForm || tab === 'food') {
+      return;
+    }
+
+    const profile = readNotificationProfile(user);
+    setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
+    setPNotificationEmail(profile.defaultEmail);
+    setPNotificationPhone(profile.defaultPhone);
+  }, [showForm, tab, user]);
 
   useEffect(() => {
     if (tab !== 'food') {
@@ -287,6 +300,18 @@ export function AgendaSection() {
 
     const resolvedFoodBrand = foodBrand === 'Otro' ? foodCustomBrand.trim() : foodBrand;
     const normalizedChannels = pNotificationChannels.length > 0 ? pNotificationChannels : ['Push'];
+    const wantsEmail = normalizedChannels.includes('Email');
+    const wantsWhatsApp = normalizedChannels.includes('WhatsApp');
+
+    if (!isFoodForm && pRemindersEnabled && wantsEmail && !pNotificationEmail.trim()) {
+      setError('Debes indicar un email para el canal Email.');
+      return;
+    }
+
+    if (!isFoodForm && pRemindersEnabled && wantsWhatsApp && !pNotificationPhone.trim()) {
+      setError('Debes indicar un celular para el canal WhatsApp.');
+      return;
+    }
 
     if (isFoodForm) {
       if (!resolvedFoodBrand.trim()) {
@@ -317,6 +342,7 @@ export function AgendaSection() {
           completed: false,
           remindersEnabled: pRemindersEnabled,
           notificationChannels: normalizedChannels,
+          notificationEmail: pNotificationEmail.trim() || undefined,
           notificationPhone: pNotificationPhone.trim() || undefined,
           notificationLeadTime: 'en fecha',
         });
@@ -397,9 +423,11 @@ export function AgendaSection() {
 
       setPTitle('');
       setPCat('vaccine');
+      const profile = readNotificationProfile(user);
       setPRemindersEnabled(true);
-      setPNotificationChannels(['Push']);
-      setPNotificationPhone('');
+      setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
+      setPNotificationEmail(profile.defaultEmail);
+      setPNotificationPhone(profile.defaultPhone);
       setFoodBrand(FOOD_BRANDS[0]);
       setFoodCustomBrand('');
       setFoodVariety('');
@@ -597,6 +625,18 @@ export function AgendaSection() {
                         );
                       })}
                     </div>
+                    {pNotificationChannels.includes('Email') && (
+                      <div className="mt-3">
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Email para notificacion</label>
+                        <input
+                          type="email"
+                          value={pNotificationEmail}
+                          onChange={(e) => setPNotificationEmail(e.target.value)}
+                          className={inp}
+                          placeholder="Ej: contacto@dominio.com"
+                        />
+                      </div>
+                    )}
                     {pNotificationChannels.includes('WhatsApp') && (
                       <div className="mt-3">
                         <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp (con codigo pais)</label>

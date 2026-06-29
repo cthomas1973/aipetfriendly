@@ -218,9 +218,12 @@ function AppContent() {
     const dueItems: ReminderPopupItem[] = preventiveTasks
       .filter((task) => {
         if (task.completed) return false;
-        const hasPushChannel = !task.notificationChannels || task.notificationChannels.length === 0
+        const normalizedChannels = Array.isArray(task.notificationChannels)
+          ? task.notificationChannels.map((channel) => String(channel).trim().toLowerCase())
+          : [];
+        const hasPushChannel = normalizedChannels.length === 0
           ? true
-          : task.notificationChannels.includes('Push');
+          : normalizedChannels.includes('push');
         if (!hasPushChannel) return false;
         if (task.remindersEnabled === false) return false;
 

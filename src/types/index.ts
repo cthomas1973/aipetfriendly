@@ -84,7 +84,9 @@ export interface PreventiveFormData {
   appointmentReference?: string;
   notificationLeadTime?: string;
   notificationChannels?: string[];
+  notificationEmail?: string;
   notificationPhone?: string;
+  createClinicalEntry?: boolean;
   foodBrand?: string;
   foodVariety?: string;
   foodBagWeightKg?: number;

@@ -1,7 +1,8 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Bell, Check, Crown, Lock, Tags, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
+import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 
 /* ── SubscriptionBanner ─────────────────────────────── */
 export function SubscriptionBanner() {
@@ -52,6 +53,18 @@ export function PaywallCard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [accountTab, setAccountTab] = useState<'plan' | 'data'>('plan');
+  const [defaultNotifEmail, setDefaultNotifEmail] = useState(user?.email ?? '');
+  const [defaultNotifPhone, setDefaultNotifPhone] = useState('');
+  const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
+  const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const profile = readNotificationProfile(user);
+    setDefaultNotifEmail(profile.defaultEmail);
+    setDefaultNotifPhone(profile.defaultPhone);
+    setDefaultChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
+  }, [user]);
 
   const handleUpgrade = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -192,60 +205,158 @@ export function PaywallCard() {
         <p className="mt-1 text-slate-500">Gestiona tu plan y preferencias</p>
       </div>
 
-      {/* plan card */}
-      <div className="rounded-3xl bg-emerald-500 p-5 shadow-md">
-        <div className="mb-4 flex items-center gap-3">
-          <Crown size={28} className="text-yellow-300" />
-          <div className="text-white">
-            <p className="text-xl font-extrabold">{isPremium ? 'Plan Premium' : 'Plan Gratuito'}</p>
-            <p className="text-sm text-white/70">{isPremium ? 'Todas las funciones activas' : 'Funciones basicas'}</p>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {FEATURES.map(f => {
-            const active = isPremium || f.free;
-            return (
-              <div key={f.label} className={`flex items-center gap-2 text-sm ${active ? 'text-white' : 'text-white/40'}`}>
-                {active
-                  ? <Check size={15} className="shrink-0" />
-                  : <X size={15} className="shrink-0" />
-                }
-                <span>{f.label}</span>
-              </div>
-            );
-          })}
-        </div>
-        {!isPremium && (
-          <button type="button"
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 font-bold text-emerald-700">
-            <Crown size={18} className="text-yellow-400" />
-            Actualizar a Premium
-          </button>
-        )}
+      <div className="grid grid-cols-2 overflow-hidden rounded-2xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setAccountTab('plan')}
+          className={`rounded-xl py-2.5 text-sm font-semibold transition ${accountTab === 'plan' ? 'bg-emerald-500 text-white shadow' : 'text-slate-500'}`}
+        >
+          Plan
+        </button>
+        <button
+          type="button"
+          onClick={() => setAccountTab('data')}
+          className={`rounded-xl py-2.5 text-sm font-semibold transition ${accountTab === 'data' ? 'bg-emerald-500 text-white shadow' : 'text-slate-500'}`}
+        >
+          Mis datos
+        </button>
       </div>
 
-      {/* notification preferences */}
-      <div className="rounded-3xl bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <Bell size={18} className="text-emerald-500" />
-          <p className="font-bold text-slate-900">Preferencias de notificacion</p>
-        </div>
-        <div className="space-y-3">
-          {[
-            { label: 'Notificaciones Push',   sub: 'Alertas en el dispositivo' },
-            { label: 'Notificaciones Email',  sub: 'Recordatorios por email' },
-            { label: 'Notificaciones WhatsApp', sub: 'Mensajes por WhatsApp' },
-          ].map(item => (
-            <div key={item.label} className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">{item.label}</p>
-                <p className="text-xs text-slate-400">{item.sub}</p>
+      {accountTab === 'plan' ? (
+        <>
+          {/* plan card */}
+          <div className="rounded-3xl bg-emerald-500 p-5 shadow-md">
+            <div className="mb-4 flex items-center gap-3">
+              <Crown size={28} className="text-yellow-300" />
+              <div className="text-white">
+                <p className="text-xl font-extrabold">{isPremium ? 'Plan Premium' : 'Plan Gratuito'}</p>
+                <p className="text-sm text-white/70">{isPremium ? 'Todas las funciones activas' : 'Funciones basicas'}</p>
               </div>
-              <div className="h-6 w-11 rounded-full bg-emerald-500" />
             </div>
-          ))}
+            <div className="space-y-2">
+              {FEATURES.map(f => {
+                const active = isPremium || f.free;
+                return (
+                  <div key={f.label} className={`flex items-center gap-2 text-sm ${active ? 'text-white' : 'text-white/40'}`}>
+                    {active
+                      ? <Check size={15} className="shrink-0" />
+                      : <X size={15} className="shrink-0" />
+                    }
+                    <span>{f.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {!isPremium && (
+              <button type="button"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 font-bold text-emerald-700">
+                <Crown size={18} className="text-yellow-400" />
+                Actualizar a Premium
+              </button>
+            )}
+          </div>
+
+          {/* notification preferences */}
+          <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Bell size={18} className="text-emerald-500" />
+              <p className="font-bold text-slate-900">Preferencias de notificacion</p>
+            </div>
+            <div className="space-y-3">
+              {[
+                { label: 'Notificaciones Push',   sub: 'Alertas en el dispositivo' },
+                { label: 'Notificaciones Email',  sub: 'Recordatorios por email' },
+                { label: 'Notificaciones WhatsApp', sub: 'Mensajes por WhatsApp' },
+              ].map(item => (
+                <div key={item.label} className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{item.label}</p>
+                    <p className="text-xs text-slate-400">{item.sub}</p>
+                  </div>
+                  <div className="h-6 w-11 rounded-full bg-emerald-500" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-3xl bg-white p-5 shadow-sm space-y-4">
+          <div>
+            <h3 className="font-bold text-slate-900">Mis datos de notificacion</h3>
+            <p className="mt-1 text-sm text-slate-500">Estos valores se usan por defecto al crear una tarea nueva.</p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Email predeterminado</label>
+            <input
+              type="email"
+              value={defaultNotifEmail}
+              onChange={(e) => setDefaultNotifEmail(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              placeholder="destino@dominio.com"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp predeterminado</label>
+            <input
+              value={defaultNotifPhone}
+              onChange={(e) => setDefaultNotifPhone(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              placeholder="Ej: +5491122334455"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-medium text-slate-700">Canales predeterminados para nuevas tareas</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {['Push', 'Email', 'WhatsApp'].map((channel) => {
+                const checked = defaultChannels.includes(channel);
+                return (
+                  <label key={channel} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                    <span>{channel}</span>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setDefaultChannels((prev) => Array.from(new Set([...prev, channel])));
+                        } else {
+                          setDefaultChannels((prev) => prev.filter((item) => item !== channel));
+                        }
+                      }}
+                      className="h-4 w-4"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              writeNotificationProfile({
+                defaultEmail: defaultNotifEmail,
+                defaultPhone: defaultNotifPhone,
+                channels: defaultChannels.length > 0 ? defaultChannels : ['Push'],
+              });
+              setSaveProfileMessage('Mis datos guardados. Se usaran como predeterminados en nuevas tareas.');
+            }}
+            className="w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white"
+          >
+            Guardar mis datos
+          </button>
+
+          {saveProfileMessage && (
+            <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{saveProfileMessage}</p>
+          )}
+
+          <p className="text-xs text-slate-500">
+            Puedes editar email/celular al crear una tarea puntual. Ese cambio aplica solo para ese evento y no modifica tus predeterminados.
+          </p>
         </div>
-      </div>
+      )}
     </section>
   );
 }

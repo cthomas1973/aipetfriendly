@@ -281,6 +281,7 @@ export async function createPreventiveTask(
           appointmentReference: taskData.appointmentReference ?? null,
           notificationLeadTime: taskData.notificationLeadTime ?? null,
           notificationChannels: taskData.notificationChannels ?? null,
+          notificationEmail: taskData.notificationEmail ?? null,
           notificationPhone: taskData.notificationPhone ?? null,
           foodBrand: taskData.foodBrand ?? null,
           foodVariety: taskData.foodVariety ?? null,
@@ -325,6 +326,44 @@ export async function togglePreventiveTask(taskId: string, completed: boolean): 
     .update({ completed })
     .eq('id', taskId);
   return !error;
+}
+
+export async function updatePreventiveTaskSchedule(
+  taskId: string,
+  dueDate: string,
+  time: string,
+): Promise<boolean> {
+  const { data: existing, error: readError } = await supabase
+    .from('preventive_tasks')
+    .select('metadata')
+    .eq('id', taskId)
+    .single();
+
+  if (readError) {
+    console.error('Error reading preventive task metadata:', readError);
+    return false;
+  }
+
+  const metadata = {
+    ...(existing?.metadata || {}),
+    appointmentTime: time,
+    scheduleTimes: [time],
+  };
+
+  const { error } = await supabase
+    .from('preventive_tasks')
+    .update({
+      due_date: dueDate,
+      metadata,
+    })
+    .eq('id', taskId);
+
+  if (error) {
+    console.error('Error updating preventive task schedule:', error);
+    return false;
+  }
+
+  return true;
 }
 
 export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> {
