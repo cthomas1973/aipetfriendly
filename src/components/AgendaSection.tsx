@@ -137,12 +137,18 @@ export function AgendaSection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (pPetId) {
+    if (!showForm || tab === 'food') {
       return;
     }
-    const fallbackPetId = selectedPetId ?? pets[0]?.id ?? '';
-    setPPetId(fallbackPetId);
-  }, [pPetId, pets, selectedPetId]);
+
+    const fallbackPetId = petFilter !== 'all'
+      ? petFilter
+      : (selectedPetId ?? pets[0]?.id ?? '');
+
+    if (fallbackPetId && fallbackPetId !== pPetId) {
+      setPPetId(fallbackPetId);
+    }
+  }, [petFilter, pPetId, pets, selectedPetId, showForm, tab]);
 
   useEffect(() => {
     setPCat((current) => {
@@ -565,11 +571,21 @@ export function AgendaSection() {
               <div className="space-y-3">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Mascota</label>
-                  <select value={pPetId} onChange={e => setPPetId(e.target.value)} className={inp} required>
+                  <select
+                    value={pPetId}
+                    onChange={e => setPPetId(e.target.value)}
+                    className={inp}
+                    required
+                    disabled={petFilter !== 'all'}
+                  >
+                    {petFilter === 'all' && <option value="">Selecciona una mascota</option>}
                     {pets.map((pet) => (
                       <option key={pet.id} value={pet.id}>{pet.name}</option>
                     ))}
                   </select>
+                  {petFilter !== 'all' && (
+                    <p className="mt-1 text-xs text-slate-400">Se usara la mascota filtrada en Agenda.</p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
