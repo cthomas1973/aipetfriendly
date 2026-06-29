@@ -145,10 +145,10 @@ export function AgendaSection() {
       ? petFilter
       : (selectedPetId ?? pets[0]?.id ?? '');
 
-    if (fallbackPetId && fallbackPetId !== pPetId) {
+    if (fallbackPetId) {
       setPPetId(fallbackPetId);
     }
-  }, [petFilter, pPetId, pets, selectedPetId, showForm, tab]);
+  }, [petFilter, pets, selectedPetId, showForm, tab]);
 
   useEffect(() => {
     setPCat((current) => {
