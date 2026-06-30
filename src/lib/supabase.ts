@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type {
+  AdminAiAuditEntry,
+  AdminAiDashboardMetrics,
   AiUsageSettings,
   AdminUserRow,
   Pet,
@@ -548,6 +550,49 @@ export async function updateAdminAiUsageSettings(settings: AiUsageSettings): Pro
   if (error) {
     throw error;
   }
+}
+
+export async function fetchAdminAiDashboardMetrics(): Promise<AdminAiDashboardMetrics> {
+  const { data, error } = await supabase.rpc('admin_get_ai_dashboard_metrics');
+
+  if (error) {
+    throw error;
+  }
+
+  const metrics = data || {};
+  return {
+    consultasHoy: Number(metrics.consultasHoy || 0),
+    consultas7d: Number(metrics.consultas7d || 0),
+    tokens7d: Number(metrics.tokens7d || 0),
+    percentLimitesAgotados: Number(metrics.percentLimitesAgotados || 0),
+    topMascotas: Array.isArray(metrics.topMascotas)
+      ? metrics.topMascotas.map((item: any) => ({
+          petName: String(item.petName || 'Mascota'),
+          count: Number(item.count || 0),
+        }))
+      : [],
+  };
+}
+
+export async function fetchAdminAiQueryAudit(limit = 20): Promise<AdminAiAuditEntry[]> {
+  const { data, error } = await supabase.rpc('admin_list_ai_query_audit', {
+    p_limit: limit,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    createdAt: row.created_at,
+    userEmail: row.user_email,
+    petName: row.pet_name,
+    tier: row.tier,
+    model: row.model || undefined,
+    estimatedTotalTokens: Number(row.estimated_total_tokens || 0),
+    questionChars: Number(row.question_chars || 0),
+    answerChars: Number(row.answer_chars || 0),
+  }));
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {

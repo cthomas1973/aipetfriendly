@@ -2,12 +2,19 @@ import { useMemo, useState } from 'react';
 import { Shield, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import {
+  fetchAdminAiDashboardMetrics,
+  fetchAdminAiQueryAudit,
   fetchAdminAiUsageSettings,
   fetchAdminUsers,
   updateAdminAiUsageSettings,
   updateAdminUserAccess,
 } from '../lib/supabase';
-import type { AiUsageSettings, UserAccessLevel } from '../types';
+import type {
+  AdminAiAuditEntry,
+  AdminAiDashboardMetrics,
+  AiUsageSettings,
+  UserAccessLevel,
+} from '../types';
 
 const ACCESS_LABELS: Record<UserAccessLevel, string> = {
   guest: 'Visitante',
@@ -25,6 +32,14 @@ export function AdminUsersSection() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [metrics, setMetrics] = useState<AdminAiDashboardMetrics>({
+    consultasHoy: 0,
+    consultas7d: 0,
+    tokens7d: 0,
+    percentLimitesAgotados: 0,
+    topMascotas: [],
+  });
+  const [auditRows, setAuditRows] = useState<AdminAiAuditEntry[]>([]);
   const [limits, setLimits] = useState<AiUsageSettings>({
     guestLimitPerPet: 3,
     freeLimitPerPet: 10,
@@ -44,12 +59,16 @@ export function AdminUsersSection() {
     try {
       setLoading(true);
       setError(null);
-      const [rows, limitsData] = await Promise.all([
+      const [rows, limitsData, metricsData, auditData] = await Promise.all([
         fetchAdminUsers(),
         fetchAdminAiUsageSettings(),
+        fetchAdminAiDashboardMetrics(),
+        fetchAdminAiQueryAudit(20),
       ]);
       setAdminUsers(rows);
       setLimits(limitsData);
+      setMetrics(metricsData);
+      setAuditRows(auditData);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo cargar el listado de usuarios.');
     } finally {
@@ -186,6 +205,76 @@ export function AdminUsersSection() {
         >
           {savingLimits ? 'Guardando limites...' : 'Guardar limites IA'}
         </button>
+      </div>
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+        <div>
+          <p className="font-bold text-slate-900">Metrica rapida IA</p>
+          <p className="text-sm text-slate-500">Resumen para control operativo diario.</p>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-4">
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Consultas hoy</p>
+            <p className="mt-1 text-xl font-extrabold text-slate-900">{metrics.consultasHoy}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Consultas 7 dias</p>
+            <p className="mt-1 text-xl font-extrabold text-slate-900">{metrics.consultas7d}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Tokens 7 dias</p>
+            <p className="mt-1 text-xl font-extrabold text-slate-900">{metrics.tokens7d}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Limites agotados</p>
+            <p className="mt-1 text-xl font-extrabold text-slate-900">{metrics.percentLimitesAgotados}%</p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold text-slate-700">Top mascotas consultadas (30 dias)</p>
+          <div className="mt-2 space-y-2">
+            {metrics.topMascotas.length === 0 && (
+              <p className="text-sm text-slate-500">Aun no hay consultas registradas.</p>
+            )}
+            {metrics.topMascotas.map((item) => (
+              <div key={`${item.petName}-${item.count}`} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                <p className="text-sm font-semibold text-slate-800">{item.petName}</p>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                  {item.count} consultas
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+        <div>
+          <p className="font-bold text-slate-900">Auditoria IA reciente</p>
+          <p className="text-sm text-slate-500">Fecha, usuario, mascota, tier y tokens estimados.</p>
+        </div>
+
+        <div className="space-y-2">
+          {auditRows.length === 0 && (
+            <p className="text-sm text-slate-500">Aun no hay registros de auditoria.</p>
+          )}
+          {auditRows.map((row, index) => (
+            <div key={`${row.createdAt}-${row.userEmail}-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-900">{row.petName} · {row.userEmail}</p>
+                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {row.tier.toUpperCase()}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {new Date(row.createdAt).toLocaleString('es-AR')} · Tokens: {row.estimatedTotalTokens} · Modelo: {row.model || 'N/D'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">Chars pregunta/respuesta: {row.questionChars}/{row.answerChars}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}

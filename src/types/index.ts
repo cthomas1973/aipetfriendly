@@ -144,6 +144,28 @@ export interface PetAiUsageRow {
   usageCount: number;
 }
 
+export interface AdminAiAuditEntry {
+  createdAt: string;
+  userEmail: string;
+  petName: string;
+  tier: UserAccessLevel;
+  model?: string;
+  estimatedTotalTokens: number;
+  questionChars: number;
+  answerChars: number;
+}
+
+export interface AdminAiDashboardMetrics {
+  consultasHoy: number;
+  consultas7d: number;
+  tokens7d: number;
+  percentLimitesAgotados: number;
+  topMascotas: Array<{
+    petName: string;
+    count: number;
+  }>;
+}
+
 export interface DailyAiUsage {
   date: string;
   count: number;

@@ -87,6 +87,15 @@ type UsageRow = {
   usage_count: number;
 };
 
+function estimateTokensFromText(text: string): number {
+  if (!text || text.trim().length === 0) {
+    return 0;
+  }
+
+  // Estimacion simple: ~4 caracteres por token
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
 function resolveLimitByTier(settings: UsageSettingsRow, tier: Tier): number {
   if (tier === "guest") return settings.guest_limit_per_pet;
   if (tier === "premium") return settings.premium_limit_per_pet;
@@ -286,9 +295,28 @@ async function callAiModel(prompt: string) {
     throw new Error("AI provider returned an empty answer");
   }
 
+  const providerPromptTokens = Number(payload?.usage?.prompt_tokens || 0);
+  const providerCompletionTokens = Number(payload?.usage?.completion_tokens || 0);
+  const providerTotalTokens = Number(payload?.usage?.total_tokens || 0);
+
+  const estimatedPromptTokens = providerPromptTokens > 0
+    ? providerPromptTokens
+    : estimateTokensFromText(prompt);
+  const estimatedCompletionTokens = providerCompletionTokens > 0
+    ? providerCompletionTokens
+    : estimateTokensFromText(answer);
+  const estimatedTotalTokens = providerTotalTokens > 0
+    ? providerTotalTokens
+    : estimatedPromptTokens + estimatedCompletionTokens;
+
   return {
     answer: answer.trim(),
     model,
+    tokenUsage: {
+      promptTokens: estimatedPromptTokens,
+      completionTokens: estimatedCompletionTokens,
+      totalTokens: estimatedTotalTokens,
+    },
   };
 }
 
@@ -502,6 +530,24 @@ serve(async (req) => {
 
     if (upsertUsageError) {
       throw new Error(`Error updating AI usage: ${upsertUsageError.message}`);
+    }
+
+    const { error: auditError } = await admin
+      .from("ai_query_logs")
+      .insert({
+        user_id: user.id,
+        pet_id: pet.id,
+        tier,
+        model: ai.model,
+        question_chars: question.length,
+        answer_chars: ai.answer.length,
+        estimated_prompt_tokens: ai.tokenUsage.promptTokens,
+        estimated_completion_tokens: ai.tokenUsage.completionTokens,
+        estimated_total_tokens: ai.tokenUsage.totalTokens,
+      });
+
+    if (auditError) {
+      throw new Error(`Error writing AI query audit: ${auditError.message}`);
     }
 
     return new Response(JSON.stringify({
