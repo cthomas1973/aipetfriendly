@@ -3,6 +3,10 @@ export interface CountryDialOption {
   label: string;
 }
 
+export interface CountryDialPickerOption extends CountryDialOption {
+  detected?: boolean;
+}
+
 export const COUNTRY_DIAL_OPTIONS: CountryDialOption[] = [
   { code: '+54', label: 'AR (+54)' },
   { code: '+598', label: 'UY (+598)' },
@@ -167,4 +171,22 @@ export function getPhoneInputHint(countryCode: string): string {
     default:
       return 'Ingresa solo digitos, sin + ni 0 inicial.';
   }
+}
+
+export function buildCountryOptionsForPicker(detectedCode: string): CountryDialPickerOption[] {
+  const found = COUNTRY_DIAL_OPTIONS.find((option) => option.code === detectedCode);
+  const rest = COUNTRY_DIAL_OPTIONS.filter((option) => option.code !== detectedCode);
+
+  if (!found) {
+    return COUNTRY_DIAL_OPTIONS;
+  }
+
+  return [
+    {
+      ...found,
+      label: `${found.label} · Detectado`,
+      detected: true,
+    },
+    ...rest,
+  ];
 }

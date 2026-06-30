@@ -1,11 +1,11 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Bell, Check, Crown, Lock, Tags, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import {
+  buildCountryOptionsForPicker,
   buildE164Phone,
-  COUNTRY_DIAL_OPTIONS,
   detectDefaultCountryDialCode,
   getPhoneInputHint,
   getPhoneLocalPlaceholder,
@@ -69,6 +69,8 @@ export function PaywallCard() {
   const [defaultNotifPhoneLocal, setDefaultNotifPhoneLocal] = useState('');
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
+  const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
+  const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
 
   useEffect(() => {
     const profile = readNotificationProfile(user);
@@ -320,7 +322,7 @@ export function PaywallCard() {
                 onChange={(e) => setDefaultNotifPhoneCountry(e.target.value)}
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
               >
-                {COUNTRY_DIAL_OPTIONS.map((option) => (
+                {dialOptions.map((option) => (
                   <option key={option.code} value={option.code}>{option.label}</option>
                 ))}
               </select>

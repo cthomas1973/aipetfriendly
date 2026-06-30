@@ -4,8 +4,8 @@ import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
 import { readNotificationProfile } from '../lib/notificationProfile';
 import {
+  buildCountryOptionsForPicker,
   buildE164Phone,
-  COUNTRY_DIAL_OPTIONS,
   detectDefaultCountryDialCode,
   getPhoneInputHint,
   getPhoneLocalPlaceholder,
@@ -232,6 +232,8 @@ export function AgendaSection() {
     () => pets.filter((pet) => foodSelectedPetIds.includes(pet.id)),
     [foodSelectedPetIds, pets],
   );
+  const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
+  const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
 
   const selectedFoodPetCount = selectedFoodPets.length;
   const totalFoodPetsWeightKg = selectedFoodPets.reduce((acc, pet) => acc + (Number(pet.weightKg) || 0), 0);
@@ -687,7 +689,7 @@ export function AgendaSection() {
                             onChange={(e) => setPNotificationPhoneCountry(e.target.value)}
                             className={`${inp} col-span-1`}
                           >
-                            {COUNTRY_DIAL_OPTIONS.map((option) => (
+                            {dialOptions.map((option) => (
                               <option key={option.code} value={option.code}>{option.label}</option>
                             ))}
                           </select>
