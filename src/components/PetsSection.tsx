@@ -8,6 +8,17 @@ import { useClinical } from '../hooks/useClinical';
 import { usePets } from '../hooks/usePets';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
+import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
+import {
+  buildCountryOptionsForPicker,
+  buildE164Phone,
+  detectDefaultCountryDialCode,
+  getPhoneInputHint,
+  getPhoneLocalPlaceholder,
+  isValidE164Phone,
+  sanitizePhoneLocalInput,
+  splitPhoneByCountryCode,
+} from '../lib/phoneUtils';
 import type { ClinicalEntryCategory, PetFormData, PetSex, PreventiveCategory, Species } from '../types';
 
 const MAX_DIM = 1280;
@@ -97,26 +108,6 @@ const APPOINTMENT_LEAD_OPTIONS = [
 ] as const;
 
 const NOTIFICATION_CHANNEL_OPTIONS = ['Email', 'Push', 'WhatsApp'] as const;
-const NOTIFICATION_PHONE_KEY = 'apf_notification_whatsapp_phone';
-
-function normalizeNotificationPhone(value: string) {
-  const trimmed = value.trim();
-  const hasPlus = trimmed.startsWith('+');
-  const digits = trimmed.replace(/\D/g, '');
-  if (!digits) return '';
-  return `${hasPlus ? '+' : '+'}${digits}`;
-}
-
-function isValidNotificationPhone(value: string) {
-  return /^\+[1-9]\d{7,14}$/.test(value);
-}
-
-function getStoredNotificationPhone() {
-  if (typeof window === 'undefined') return '';
-  const raw = window.localStorage.getItem(NOTIFICATION_PHONE_KEY) || '';
-  const normalized = normalizeNotificationPhone(raw);
-  return isValidNotificationPhone(normalized) ? normalized : '';
-}
 
 function addMonthsToDateString(dateStr: string, months: number) {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -200,7 +191,8 @@ export function PetsSection() {
   const [pAppointmentNotifyEnabled, setPAppointmentNotifyEnabled] = useState(true);
   const [pAppointmentLeadTime, setPAppointmentLeadTime] = useState<string>(APPOINTMENT_LEAD_OPTIONS[2]);
   const [pAppointmentChannels, setPAppointmentChannels] = useState<string[]>(['Email']);
-  const [pAppointmentPhone, setPAppointmentPhone] = useState<string>(() => getStoredNotificationPhone());
+  const [pAppointmentPhoneCountry, setPAppointmentPhoneCountry] = useState(detectDefaultCountryDialCode());
+  const [pAppointmentPhoneLocal, setPAppointmentPhoneLocal] = useState('');
   const [pDewormingIntervalMonths, setPDewormingIntervalMonths] = useState<number>(3);
   const [pNextDewormingDate, setPNextDewormingDate] = useState('');
   const [pAutoScheduleNextDeworming, setPAutoScheduleNextDeworming] = useState(true);
@@ -209,8 +201,20 @@ export function PetsSection() {
 
   const photoRef       = useRef<HTMLInputElement>(null);
   const detailPhotoRef = useRef<HTMLInputElement>(null);
+  const detectedDialCode = useRef(detectDefaultCountryDialCode()).current;
+  const dialOptions = buildCountryOptionsForPicker(detectedDialCode);
 
   const pet = pets.find(p => p.id === selectedPetId) ?? null;
+
+  useEffect(() => {
+    const profile = readNotificationProfile(user);
+    const parsedPhone = profile.defaultPhone
+      ? splitPhoneByCountryCode(profile.defaultPhone)
+      : { countryCode: detectedDialCode, localNumber: '' };
+
+    setPAppointmentPhoneCountry(parsedPhone.countryCode);
+    setPAppointmentPhoneLocal(parsedPhone.localNumber);
+  }, [detectedDialCode, user]);
 
   const onPhoto = async (e: ChangeEvent<HTMLInputElement>, petId?: string) => {
     const file = e.target.files?.[0];
@@ -279,7 +283,7 @@ export function PetsSection() {
     const requireAppointmentDetail = pCat === 'appointment';
     const cleanedTimes = pScheduleTimes.map((t) => t.trim()).filter(Boolean);
     const cleanedAppointmentChannels = pAppointmentChannels.map((c) => c.trim()).filter(Boolean);
-    const normalizedAppointmentPhone = normalizeNotificationPhone(pAppointmentPhone);
+    const normalizedAppointmentPhone = buildE164Phone(pAppointmentPhoneCountry, pAppointmentPhoneLocal);
     const usesWhatsapp = cleanedAppointmentChannels.includes('WhatsApp');
     const isDeworming = pCat === 'deworming';
 
@@ -315,7 +319,7 @@ export function PetsSection() {
       setErr('Para WhatsApp debes indicar un celular.');
       return;
     }
-    if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && !isValidNotificationPhone(normalizedAppointmentPhone)) {
+    if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && !isValidE164Phone(normalizedAppointmentPhone)) {
       setErr('El celular de WhatsApp no es valido. Usa formato internacional, por ejemplo: +5491122334455.');
       return;
     }
@@ -327,8 +331,13 @@ export function PetsSection() {
     try {
       let followUpScheduleFailed = false;
 
-      if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && isValidNotificationPhone(normalizedAppointmentPhone) && typeof window !== 'undefined') {
-        window.localStorage.setItem(NOTIFICATION_PHONE_KEY, normalizedAppointmentPhone);
+      if (requireAppointmentDetail && pAppointmentNotifyEnabled && usesWhatsapp && isValidE164Phone(normalizedAppointmentPhone)) {
+        const currentProfile = readNotificationProfile(user);
+        writeNotificationProfile(user, {
+          defaultEmail: currentProfile.defaultEmail,
+          defaultPhone: normalizedAppointmentPhone,
+          channels: currentProfile.channels,
+        });
       }
 
       if (pCat === 'medication' && cleanedTimes.length > 0) {
@@ -421,7 +430,12 @@ export function PetsSection() {
       setPAppointmentNotifyEnabled(true);
       setPAppointmentLeadTime(APPOINTMENT_LEAD_OPTIONS[2]);
       setPAppointmentChannels(['Email']);
-      setPAppointmentPhone(getStoredNotificationPhone());
+      const profile = readNotificationProfile(user);
+      const parsedPhone = profile.defaultPhone
+        ? splitPhoneByCountryCode(profile.defaultPhone)
+        : { countryCode: detectedDialCode, localNumber: '' };
+      setPAppointmentPhoneCountry(parsedPhone.countryCode);
+      setPAppointmentPhoneLocal(parsedPhone.localNumber);
       setPDewormingIntervalMonths(3);
       setPNextDewormingDate('');
       setPAutoScheduleNextDeworming(true);
@@ -460,8 +474,8 @@ export function PetsSection() {
     ));
   };
   const appointmentUsesWhatsapp = pAppointmentChannels.includes('WhatsApp');
-  const normalizedAppointmentPhone = normalizeNotificationPhone(pAppointmentPhone);
-  const isAppointmentPhoneValid = isValidNotificationPhone(normalizedAppointmentPhone);
+  const normalizedAppointmentPhone = buildE164Phone(pAppointmentPhoneCountry, pAppointmentPhoneLocal);
+  const isAppointmentPhoneValid = isValidE164Phone(normalizedAppointmentPhone);
 
   useEffect(() => {
     if (!isDewormingPreventive) {
@@ -1228,14 +1242,27 @@ export function PetsSection() {
                       {appointmentUsesWhatsapp && (
                         <div>
                           <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular para WhatsApp *</label>
-                          <input
-                            value={pAppointmentPhone}
-                            onChange={e => setPAppointmentPhone(e.target.value)}
-                            placeholder="Ej: +5491122334455"
-                            className={inp}
-                            required={appointmentUsesWhatsapp}
-                          />
-                          {pAppointmentPhone.trim() && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <select
+                              value={pAppointmentPhoneCountry}
+                              onChange={e => setPAppointmentPhoneCountry(e.target.value)}
+                              className={`${inp} col-span-1`}
+                            >
+                              {dialOptions.map((option) => (
+                                <option key={option.code} value={option.code}>{option.label}</option>
+                              ))}
+                            </select>
+                            <input
+                              value={pAppointmentPhoneLocal}
+                              onChange={e => setPAppointmentPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
+                              placeholder={getPhoneLocalPlaceholder(pAppointmentPhoneCountry)}
+                              className={`${inp} col-span-2`}
+                              required={appointmentUsesWhatsapp}
+                              inputMode="numeric"
+                            />
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">{getPhoneInputHint(pAppointmentPhoneCountry)}</p>
+                          {pAppointmentPhoneLocal.trim() && (
                             <p className={`mt-1 text-xs ${isAppointmentPhoneValid ? 'text-emerald-600' : 'text-rose-600'}`}>
                               {isAppointmentPhoneValid ? 'Contacto valido para notificaciones.' : 'Numero invalido. Usa codigo de pais, por ejemplo +5491122334455.'}
                             </p>
@@ -1665,14 +1692,27 @@ export function PetsSection() {
                         {appointmentUsesWhatsapp && (
                           <div>
                             <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular para WhatsApp *</label>
-                            <input
-                              value={pAppointmentPhone}
-                              onChange={e => setPAppointmentPhone(e.target.value)}
-                              placeholder="Ej: +5491122334455"
-                              className={inp}
-                              required={appointmentUsesWhatsapp}
-                            />
-                            {pAppointmentPhone.trim() && (
+                            <div className="grid grid-cols-3 gap-2">
+                              <select
+                                value={pAppointmentPhoneCountry}
+                                onChange={e => setPAppointmentPhoneCountry(e.target.value)}
+                                className={`${inp} col-span-1`}
+                              >
+                                {dialOptions.map((option) => (
+                                  <option key={option.code} value={option.code}>{option.label}</option>
+                                ))}
+                              </select>
+                              <input
+                                value={pAppointmentPhoneLocal}
+                                onChange={e => setPAppointmentPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
+                                placeholder={getPhoneLocalPlaceholder(pAppointmentPhoneCountry)}
+                                className={`${inp} col-span-2`}
+                                required={appointmentUsesWhatsapp}
+                                inputMode="numeric"
+                              />
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">{getPhoneInputHint(pAppointmentPhoneCountry)}</p>
+                            {pAppointmentPhoneLocal.trim() && (
                               <p className={`mt-1 text-xs ${isAppointmentPhoneValid ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {isAppointmentPhoneValid ? 'Contacto valido para notificaciones.' : 'Numero invalido. Usa codigo de pais, por ejemplo +5491122334455.'}
                               </p>
