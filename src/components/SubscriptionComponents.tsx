@@ -3,6 +3,13 @@ import { Bell, Check, Crown, Lock, Tags, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
+import {
+  buildE164Phone,
+  COUNTRY_DIAL_OPTIONS,
+  isValidE164Phone,
+  sanitizePhoneLocalInput,
+  splitPhoneByCountryCode,
+} from '../lib/phoneUtils';
 
 /* ── SubscriptionBanner ─────────────────────────────── */
 export function SubscriptionBanner() {
@@ -55,14 +62,17 @@ export function PaywallCard() {
   const [success, setSuccess] = useState<string | null>(null);
   const [accountTab, setAccountTab] = useState<'plan' | 'data'>('plan');
   const [defaultNotifEmail, setDefaultNotifEmail] = useState(user?.email ?? '');
-  const [defaultNotifPhone, setDefaultNotifPhone] = useState('');
+  const [defaultNotifPhoneCountry, setDefaultNotifPhoneCountry] = useState('+54');
+  const [defaultNotifPhoneLocal, setDefaultNotifPhoneLocal] = useState('');
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const profile = readNotificationProfile(user);
     setDefaultNotifEmail(profile.defaultEmail);
-    setDefaultNotifPhone(profile.defaultPhone);
+    const parsedPhone = splitPhoneByCountryCode(profile.defaultPhone);
+    setDefaultNotifPhoneCountry(parsedPhone.countryCode);
+    setDefaultNotifPhoneLocal(parsedPhone.localNumber);
     setDefaultChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
   }, [user]);
 
@@ -299,12 +309,25 @@ export function PaywallCard() {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp predeterminado</label>
-            <input
-              value={defaultNotifPhone}
-              onChange={(e) => setDefaultNotifPhone(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
-              placeholder="Ej: +5491122334455"
-            />
+            <div className="grid grid-cols-3 gap-2">
+              <select
+                value={defaultNotifPhoneCountry}
+                onChange={(e) => setDefaultNotifPhoneCountry(e.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              >
+                {COUNTRY_DIAL_OPTIONS.map((option) => (
+                  <option key={option.code} value={option.code}>{option.label}</option>
+                ))}
+              </select>
+              <input
+                value={defaultNotifPhoneLocal}
+                onChange={(e) => setDefaultNotifPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
+                className="col-span-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                placeholder="Numero sin 0 ni +"
+                inputMode="numeric"
+              />
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Se guarda para usarlo por defecto en nuevas tareas.</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -336,9 +359,15 @@ export function PaywallCard() {
           <button
             type="button"
             onClick={() => {
-              writeNotificationProfile({
+              const normalizedPhone = buildE164Phone(defaultNotifPhoneCountry, defaultNotifPhoneLocal);
+              if (normalizedPhone && !isValidE164Phone(normalizedPhone)) {
+                setSaveProfileMessage('El celular de WhatsApp no es valido. Revisa prefijo y numero.');
+                return;
+              }
+
+              writeNotificationProfile(user, {
                 defaultEmail: defaultNotifEmail,
-                defaultPhone: defaultNotifPhone,
+                defaultPhone: normalizedPhone,
                 channels: defaultChannels.length > 0 ? defaultChannels : ['Push'],
               });
               setSaveProfileMessage('Mis datos guardados. Se usaran como predeterminados en nuevas tareas.');

@@ -3,6 +3,13 @@ import { Plus, X } from 'lucide-react';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
 import { readNotificationProfile } from '../lib/notificationProfile';
+import {
+  buildE164Phone,
+  COUNTRY_DIAL_OPTIONS,
+  isValidE164Phone,
+  sanitizePhoneLocalInput,
+  splitPhoneByCountryCode,
+} from '../lib/phoneUtils';
 import type { PreventiveCategory } from '../types';
 
 const PREV_MAP: Record<PreventiveCategory, { label: string; emoji: string }> = {
@@ -126,7 +133,8 @@ export function AgendaSection() {
   const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
   const [pNotificationChannels, setPNotificationChannels] = useState<string[]>(['Push']);
   const [pNotificationEmail, setPNotificationEmail] = useState('');
-  const [pNotificationPhone, setPNotificationPhone] = useState('');
+  const [pNotificationPhoneCountry, setPNotificationPhoneCountry] = useState('+54');
+  const [pNotificationPhoneLocal, setPNotificationPhoneLocal] = useState('');
   const [foodBrand, setFoodBrand] = useState<string>(FOOD_BRANDS[0]);
   const [foodCustomBrand, setFoodCustomBrand] = useState('');
   const [foodVariety, setFoodVariety] = useState('');
@@ -167,7 +175,9 @@ export function AgendaSection() {
     const profile = readNotificationProfile(user);
     setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
     setPNotificationEmail(profile.defaultEmail);
-    setPNotificationPhone(profile.defaultPhone);
+    const parsedPhone = splitPhoneByCountryCode(profile.defaultPhone);
+    setPNotificationPhoneCountry(parsedPhone.countryCode);
+    setPNotificationPhoneLocal(parsedPhone.localNumber);
   }, [showForm, tab, user]);
 
   useEffect(() => {
@@ -308,14 +318,20 @@ export function AgendaSection() {
     const normalizedChannels = pNotificationChannels.length > 0 ? pNotificationChannels : ['Push'];
     const wantsEmail = normalizedChannels.includes('Email');
     const wantsWhatsApp = normalizedChannels.includes('WhatsApp');
+    const normalizedWhatsAppPhone = buildE164Phone(pNotificationPhoneCountry, pNotificationPhoneLocal);
 
     if (!isFoodForm && pRemindersEnabled && wantsEmail && !pNotificationEmail.trim()) {
       setError('Debes indicar un email para el canal Email.');
       return;
     }
 
-    if (!isFoodForm && pRemindersEnabled && wantsWhatsApp && !pNotificationPhone.trim()) {
+    if (!isFoodForm && pRemindersEnabled && wantsWhatsApp && !normalizedWhatsAppPhone) {
       setError('Debes indicar un celular para el canal WhatsApp.');
+      return;
+    }
+
+    if (!isFoodForm && pRemindersEnabled && wantsWhatsApp && !isValidE164Phone(normalizedWhatsAppPhone)) {
+      setError('El celular de WhatsApp no es valido. Revisa prefijo y numero.');
       return;
     }
 
@@ -349,7 +365,7 @@ export function AgendaSection() {
           remindersEnabled: pRemindersEnabled,
           notificationChannels: normalizedChannels,
           notificationEmail: pNotificationEmail.trim() || undefined,
-          notificationPhone: pNotificationPhone.trim() || undefined,
+          notificationPhone: normalizedWhatsAppPhone || undefined,
           notificationLeadTime: 'en fecha',
         });
       } else {
@@ -433,7 +449,9 @@ export function AgendaSection() {
       setPRemindersEnabled(true);
       setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
       setPNotificationEmail(profile.defaultEmail);
-      setPNotificationPhone(profile.defaultPhone);
+      const parsedPhone = splitPhoneByCountryCode(profile.defaultPhone);
+      setPNotificationPhoneCountry(parsedPhone.countryCode);
+      setPNotificationPhoneLocal(parsedPhone.localNumber);
       setFoodBrand(FOOD_BRANDS[0]);
       setFoodCustomBrand('');
       setFoodVariety('');
@@ -656,12 +674,27 @@ export function AgendaSection() {
                     {pNotificationChannels.includes('WhatsApp') && (
                       <div className="mt-3">
                         <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp (con codigo pais)</label>
-                        <input
-                          value={pNotificationPhone}
-                          onChange={(e) => setPNotificationPhone(e.target.value)}
-                          className={inp}
-                          placeholder="Ej: +5491122334455"
-                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <select
+                            value={pNotificationPhoneCountry}
+                            onChange={(e) => setPNotificationPhoneCountry(e.target.value)}
+                            className={`${inp} col-span-1`}
+                          >
+                            {COUNTRY_DIAL_OPTIONS.map((option) => (
+                              <option key={option.code} value={option.code}>{option.label}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={pNotificationPhoneLocal}
+                            onChange={(e) => setPNotificationPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
+                            className={`${inp} col-span-2`}
+                            placeholder="Numero sin 0 ni +"
+                            inputMode="numeric"
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Para no cargarlo cada vez, guardalo en Mi Cuenta {'>'} Mis datos.
+                        </p>
                       </div>
                     )}
                   </div>

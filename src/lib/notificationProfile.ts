@@ -8,6 +8,13 @@ export interface NotificationProfile {
 
 const STORAGE_KEY = 'apf_notification_profile_v1';
 
+function resolveScopedKey(user: AppUser | null): string {
+  if (!user?.id) {
+    return `${STORAGE_KEY}:anonymous`;
+  }
+  return `${STORAGE_KEY}:${user.id}`;
+}
+
 function normalizeChannels(channels: string[] | undefined): string[] {
   const normalized = (channels ?? ['Push'])
     .map((channel) => String(channel).trim())
@@ -27,7 +34,8 @@ export function readNotificationProfile(user: AppUser | null): NotificationProfi
     return fallback;
   }
 
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const key = resolveScopedKey(user);
+  const raw = window.localStorage.getItem(key);
   if (!raw) {
     return fallback;
   }
@@ -44,13 +52,15 @@ export function readNotificationProfile(user: AppUser | null): NotificationProfi
   }
 }
 
-export function writeNotificationProfile(profile: NotificationProfile) {
+export function writeNotificationProfile(user: AppUser | null, profile: NotificationProfile) {
   if (typeof window === 'undefined') {
     return;
   }
 
+  const key = resolveScopedKey(user);
+
   window.localStorage.setItem(
-    STORAGE_KEY,
+    key,
     JSON.stringify({
       defaultEmail: profile.defaultEmail.trim(),
       defaultPhone: profile.defaultPhone.trim(),
