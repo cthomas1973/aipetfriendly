@@ -27,6 +27,7 @@ const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'AiPetFriendly <onboarding@rese
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? '';
+const TWILIO_STATUS_CALLBACK_URL = `${SUPABASE_URL}/functions/v1/twilio-whatsapp-status`;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +78,9 @@ async function alreadySent(taskId: string, channel: 'email' | 'whatsapp', date: 
     .eq('task_id', taskId)
     .eq('channel', channel)
     .eq('scheduled_date', date)
-    .eq('status', 'sent')
+    .in('status', channel === 'whatsapp'
+      ? ['accepted', 'queued', 'sending', 'sent', 'delivered', 'read']
+      : ['sent'])
     .limit(1);
 
   if (error) {
@@ -93,8 +96,9 @@ async function saveLog(args: {
   channel: 'email' | 'whatsapp';
   target: string;
   scheduledDate: string;
-  status: 'sent' | 'failed';
+  status: 'accepted' | 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'undelivered' | 'failed';
   providerMessageId?: string;
+  providerStatus?: string;
   providerResponse?: unknown;
 }) {
   const { error } = await supabase
@@ -107,7 +111,10 @@ async function saveLog(args: {
         scheduled_date: args.scheduledDate,
         status: args.status,
         provider_message_id: args.providerMessageId ?? null,
+        provider_status: args.providerStatus ?? args.status,
         provider_response: args.providerResponse ?? null,
+        delivered_at: args.status === 'delivered' || args.status === 'read' ? new Date().toISOString() : null,
+        last_status_at: new Date().toISOString(),
       },
       { onConflict: 'task_id,channel,scheduled_date' },
     );
@@ -154,6 +161,7 @@ async function sendWhatsApp(to: string, body: string) {
     From: TWILIO_WHATSAPP_FROM,
     To: normalizedTo,
     Body: body,
+    StatusCallback: TWILIO_STATUS_CALLBACK_URL,
   });
 
   const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
@@ -309,8 +317,9 @@ Deno.serve(async (req) => {
                 channel: 'whatsapp',
                 target: phone,
                 scheduledDate,
-                status: 'sent',
+                status: 'accepted',
                 providerMessageId: response.sid,
+                providerStatus: 'accepted',
                 providerResponse: response,
               });
               sentWhatsApp += 1;
