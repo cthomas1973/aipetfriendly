@@ -116,9 +116,10 @@ export function useChat() {
       ? limits.premiumLimitPerPet
       : limits.freeLimitPerPet;
 
-  const usedForSelectedPet = selectedPetId ? (usageByPet[selectedPetId] || 0) : 0;
+  const hasValidSelectedPet = Boolean(selectedPetId && pets.some((pet) => pet.id === selectedPetId));
+  const usedForSelectedPet = hasValidSelectedPet && selectedPetId ? (usageByPet[selectedPetId] || 0) : 0;
   const remainingForSelectedPet = Math.max(0, currentLimit - usedForSelectedPet);
-  const canUseAI = Boolean(selectedPetId) && remainingForSelectedPet > 0;
+  const canUseAI = hasValidSelectedPet && remainingForSelectedPet > 0;
 
   const messagesWithSystem = useMemo(() => {
     const hasSystem = chatMessages.some((message) => message.role === 'system');
@@ -266,6 +267,7 @@ export function useChat() {
   return {
     messages: messagesWithSystem,
     canUseAI,
+    hasValidSelectedPet,
     quota: {
       tier,
       limit: currentLimit,

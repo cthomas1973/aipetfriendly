@@ -14,7 +14,7 @@ const SUGGESTIONS = [
 
 export function ChatSection() {
   const { pets, selectedPetId, setSelectedPetId, subscription } = useAppState();
-  const { messages, canUseAI, quota, sendMessage } = useChat();
+  const { messages, canUseAI, hasValidSelectedPet, quota, sendMessage } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -32,6 +32,17 @@ export function ChatSection() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (pets.length === 0) {
+      return;
+    }
+
+    const selectedExists = Boolean(selectedPetId && pets.some((pet) => pet.id === selectedPetId));
+    if (!selectedExists) {
+      setSelectedPetId(pets[0].id);
+    }
+  }, [pets, selectedPetId, setSelectedPetId]);
 
   const doSend = async (text: string) => {
     const t = text.trim();
@@ -122,10 +133,17 @@ export function ChatSection() {
       </div>
 
       {/* paywall message */}
-      {!canUseAI && (
+      {hasValidSelectedPet && !canUseAI && (
         <div className="rounded-3xl bg-amber-50 px-4 py-4 text-center">
           <p className="font-semibold text-amber-800">Limite por mascota alcanzado</p>
           <p className="mt-1 text-sm text-amber-600">Selecciona otra mascota o ajusta el plan en Mi Cuenta.</p>
+        </div>
+      )}
+
+      {!hasValidSelectedPet && pets.length > 0 && (
+        <div className="rounded-3xl bg-sky-50 px-4 py-4 text-center">
+          <p className="font-semibold text-sky-800">Selecciona una mascota para comenzar</p>
+          <p className="mt-1 text-sm text-sky-700">Al recargar, se ajusta automaticamente si no habia seleccion activa.</p>
         </div>
       )}
 
@@ -134,9 +152,9 @@ export function ChatSection() {
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
-          disabled={!canUseAI || sending || !selectedPetId}
+          disabled={!canUseAI || sending || !hasValidSelectedPet}
           placeholder={
-            !selectedPetId
+            !hasValidSelectedPet
               ? 'Agrega o selecciona una mascota para comenzar'
               : canUseAI
                 ? 'Escribe tu consulta...'
@@ -144,7 +162,7 @@ export function ChatSection() {
           }
           className="flex-1 rounded-full bg-white px-5 py-3.5 text-sm ring-1 ring-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-50"
         />
-        <button type="submit" disabled={!canUseAI || !input.trim() || sending || !selectedPetId}
+        <button type="submit" disabled={!canUseAI || !input.trim() || sending || !hasValidSelectedPet}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition disabled:opacity-40">
           <Send size={18} />
         </button>
