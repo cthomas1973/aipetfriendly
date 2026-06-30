@@ -183,6 +183,10 @@ export interface AppUser {
   fullName?: string;
   avatarUrl?: string;
   wantsNewsletter?: boolean;
+  whatsappPhone?: string;
+  whatsappOptIn?: boolean;
+  whatsappOptInAt?: string | null;
+  whatsappOptInSource?: string | null;
   subscription: UserSubscription;
   isGuest?: boolean;
   isAdmin?: boolean;

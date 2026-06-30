@@ -139,10 +139,38 @@ export async function fetchUserProfile(userId: string): Promise<AppUser | null> 
     email: user.email,
     fullName: user.full_name,
     avatarUrl: user.avatar_url,
+    whatsappPhone: user.whatsapp_phone || undefined,
+    whatsappOptIn: Boolean(user.whatsapp_opt_in),
+    whatsappOptInAt: user.whatsapp_opt_in_at || null,
+    whatsappOptInSource: user.whatsapp_opt_in_source || null,
     isGuest: accessMode === 'guest',
     isAdmin: Boolean(adminRow?.user_id),
     subscription: resolvedSubscription,
   };
+}
+
+export async function updateUserNotificationProfile(args: {
+  userId: string;
+  whatsappPhone: string | null;
+  whatsappOptIn: boolean;
+  whatsappOptInSource: string | null;
+}): Promise<void> {
+  const payload = {
+    whatsapp_phone: args.whatsappPhone,
+    whatsapp_opt_in: args.whatsappOptIn,
+    whatsapp_opt_in_at: args.whatsappOptIn ? new Date().toISOString() : null,
+    whatsapp_opt_in_source: args.whatsappOptIn ? (args.whatsappOptInSource || 'mi_cuenta') : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('users')
+    .update(payload)
+    .eq('id', args.userId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function fetchPets(userId: string): Promise<Pet[]> {

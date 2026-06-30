@@ -26,7 +26,7 @@ function normalizeChannels(channels: string[] | undefined): string[] {
 export function readNotificationProfile(user: AppUser | null): NotificationProfile {
   const fallback: NotificationProfile = {
     defaultEmail: user?.email ?? '',
-    defaultPhone: '',
+    defaultPhone: user?.whatsappPhone ?? '',
     channels: ['Push'],
   };
 
@@ -44,7 +44,7 @@ export function readNotificationProfile(user: AppUser | null): NotificationProfi
     const parsed = JSON.parse(raw) as Partial<NotificationProfile>;
     return {
       defaultEmail: typeof parsed.defaultEmail === 'string' ? parsed.defaultEmail : fallback.defaultEmail,
-      defaultPhone: typeof parsed.defaultPhone === 'string' ? parsed.defaultPhone : '',
+      defaultPhone: typeof parsed.defaultPhone === 'string' && parsed.defaultPhone.trim().length > 0 ? parsed.defaultPhone : fallback.defaultPhone,
       channels: normalizeChannels(Array.isArray(parsed.channels) ? parsed.channels : fallback.channels),
     };
   } catch {

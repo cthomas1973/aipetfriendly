@@ -3,6 +3,7 @@ import { Bell, Check, Crown, Lock, Tags, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
+import { updateUserNotificationProfile } from '../lib/supabase';
 import {
   buildCountryOptionsForPicker,
   buildE164Phone,
@@ -68,6 +69,7 @@ export function PaywallCard() {
   const [defaultNotifPhoneCountry, setDefaultNotifPhoneCountry] = useState(detectDefaultCountryDialCode());
   const [defaultNotifPhoneLocal, setDefaultNotifPhoneLocal] = useState('');
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
+  const [whatsAppConsent, setWhatsAppConsent] = useState(false);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
@@ -81,6 +83,7 @@ export function PaywallCard() {
     setDefaultNotifPhoneCountry(parsedPhone.countryCode);
     setDefaultNotifPhoneLocal(parsedPhone.localNumber);
     setDefaultChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
+    setWhatsAppConsent(Boolean(user?.whatsappOptIn));
   }, [user]);
 
   const handleUpgrade = async (event: FormEvent<HTMLFormElement>) => {
@@ -338,6 +341,18 @@ export function PaywallCard() {
             <p className="mt-1 text-xs text-slate-500">Se guarda para usarlo por defecto en nuevas tareas.</p>
           </div>
 
+          <label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={whatsAppConsent}
+              onChange={(e) => setWhatsAppConsent(e.target.checked)}
+              className="mt-1 h-4 w-4"
+            />
+            <span className="text-sm text-emerald-900">
+              Acepto recibir recordatorios y avisos de AiPetFriendly por WhatsApp en el numero informado.
+            </span>
+          </label>
+
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm font-medium text-slate-700">Canales predeterminados para nuevas tareas</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
@@ -366,19 +381,38 @@ export function PaywallCard() {
 
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const normalizedPhone = buildE164Phone(defaultNotifPhoneCountry, defaultNotifPhoneLocal);
               if (normalizedPhone && !isValidE164Phone(normalizedPhone)) {
                 setSaveProfileMessage('El celular de WhatsApp no es valido. Revisa prefijo y numero.');
                 return;
               }
 
-              writeNotificationProfile(user, {
-                defaultEmail: defaultNotifEmail,
-                defaultPhone: normalizedPhone,
-                channels: defaultChannels.length > 0 ? defaultChannels : ['Push'],
-              });
-              setSaveProfileMessage('Mis datos guardados. Se usaran como predeterminados en nuevas tareas.');
+              if (whatsAppConsent && !normalizedPhone) {
+                setSaveProfileMessage('Para activar WhatsApp debes informar un numero valido.');
+                return;
+              }
+
+              try {
+                writeNotificationProfile(user, {
+                  defaultEmail: defaultNotifEmail,
+                  defaultPhone: normalizedPhone,
+                  channels: defaultChannels.length > 0 ? defaultChannels : ['Push'],
+                });
+
+                if (user && !user.isGuest) {
+                  await updateUserNotificationProfile({
+                    userId: user.id,
+                    whatsappPhone: normalizedPhone || null,
+                    whatsappOptIn: whatsAppConsent,
+                    whatsappOptInSource: 'mi_cuenta',
+                  });
+                }
+
+                setSaveProfileMessage('Mis datos guardados. Se usaran como predeterminados en nuevas tareas.');
+              } catch (error) {
+                setSaveProfileMessage(error instanceof Error ? error.message : 'No se pudieron guardar los datos de WhatsApp.');
+              }
             }}
             className="w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white"
           >
