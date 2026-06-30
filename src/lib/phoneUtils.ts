@@ -16,6 +16,37 @@ export const COUNTRY_DIAL_OPTIONS: CountryDialOption[] = [
   { code: '+1', label: 'US/CA (+1)' },
 ];
 
+const LOCALE_COUNTRY_TO_DIAL: Record<string, string> = {
+  AR: '+54',
+  UY: '+598',
+  CL: '+56',
+  PY: '+595',
+  BO: '+591',
+  PE: '+51',
+  MX: '+52',
+  BR: '+55',
+  ES: '+34',
+  US: '+1',
+  CA: '+1',
+};
+
+const TIMEZONE_TO_DIAL: Array<{ match: string; code: string }> = [
+  { match: 'Argentina', code: '+54' },
+  { match: 'Montevideo', code: '+598' },
+  { match: 'Santiago', code: '+56' },
+  { match: 'Asuncion', code: '+595' },
+  { match: 'La_Paz', code: '+591' },
+  { match: 'Lima', code: '+51' },
+  { match: 'Mexico', code: '+52' },
+  { match: 'Sao_Paulo', code: '+55' },
+  { match: 'Madrid', code: '+34' },
+  { match: 'New_York', code: '+1' },
+  { match: 'Chicago', code: '+1' },
+  { match: 'Los_Angeles', code: '+1' },
+  { match: 'Toronto', code: '+1' },
+  { match: 'Vancouver', code: '+1' },
+];
+
 function onlyDigits(value: string): string {
   return value.replace(/\D/g, '');
 }
@@ -72,4 +103,68 @@ export function splitPhoneByCountryCode(phone: string | undefined | null): {
     countryCode: matchedCode,
     localNumber: sanitizePhoneLocalInput(trimmed.slice(matchedCode.length)),
   };
+}
+
+export function detectDefaultCountryDialCode(): string {
+  const fallback = '+54';
+
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  const locale = String(window.navigator.language || '').toUpperCase();
+  const localeCountry = locale.includes('-') ? locale.split('-')[1] : '';
+  if (localeCountry && LOCALE_COUNTRY_TO_DIAL[localeCountry]) {
+    return LOCALE_COUNTRY_TO_DIAL[localeCountry];
+  }
+
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const matched = TIMEZONE_TO_DIAL.find((item) => timezone.includes(item.match));
+    if (matched) {
+      return matched.code;
+    }
+  } catch {
+    // noop
+  }
+
+  return fallback;
+}
+
+export function getPhoneLocalPlaceholder(countryCode: string): string {
+  switch (countryCode) {
+    case '+54':
+      return 'Ej: 91122334455';
+    case '+598':
+      return 'Ej: 91234567';
+    case '+56':
+      return 'Ej: 912345678';
+    case '+52':
+      return 'Ej: 5512345678';
+    case '+34':
+      return 'Ej: 612345678';
+    case '+1':
+      return 'Ej: 4155550123';
+    default:
+      return 'Numero sin 0 ni +';
+  }
+}
+
+export function getPhoneInputHint(countryCode: string): string {
+  switch (countryCode) {
+    case '+54':
+      return 'Argentina: ingresa el celular sin 0 ni 15. Ej final: +549...';
+    case '+598':
+      return 'Uruguay: ingresa el movil sin 0 inicial.';
+    case '+56':
+      return 'Chile: ingresa el movil sin 0 inicial.';
+    case '+52':
+      return 'Mexico: ingresa 10 digitos de celular, sin + ni espacios.';
+    case '+34':
+      return 'Espana: ingresa el movil nacional sin prefijo internacional.';
+    case '+1':
+      return 'EEUU/Canada: ingresa area code + numero, solo digitos.';
+    default:
+      return 'Ingresa solo digitos, sin + ni 0 inicial.';
+  }
 }

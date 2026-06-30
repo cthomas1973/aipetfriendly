@@ -6,6 +6,9 @@ import { readNotificationProfile, writeNotificationProfile } from '../lib/notifi
 import {
   buildE164Phone,
   COUNTRY_DIAL_OPTIONS,
+  detectDefaultCountryDialCode,
+  getPhoneInputHint,
+  getPhoneLocalPlaceholder,
   isValidE164Phone,
   sanitizePhoneLocalInput,
   splitPhoneByCountryCode,
@@ -62,7 +65,7 @@ export function PaywallCard() {
   const [success, setSuccess] = useState<string | null>(null);
   const [accountTab, setAccountTab] = useState<'plan' | 'data'>('plan');
   const [defaultNotifEmail, setDefaultNotifEmail] = useState(user?.email ?? '');
-  const [defaultNotifPhoneCountry, setDefaultNotifPhoneCountry] = useState('+54');
+  const [defaultNotifPhoneCountry, setDefaultNotifPhoneCountry] = useState(detectDefaultCountryDialCode());
   const [defaultNotifPhoneLocal, setDefaultNotifPhoneLocal] = useState('');
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
@@ -70,7 +73,9 @@ export function PaywallCard() {
   useEffect(() => {
     const profile = readNotificationProfile(user);
     setDefaultNotifEmail(profile.defaultEmail);
-    const parsedPhone = splitPhoneByCountryCode(profile.defaultPhone);
+    const parsedPhone = profile.defaultPhone
+      ? splitPhoneByCountryCode(profile.defaultPhone)
+      : { countryCode: detectDefaultCountryDialCode(), localNumber: '' };
     setDefaultNotifPhoneCountry(parsedPhone.countryCode);
     setDefaultNotifPhoneLocal(parsedPhone.localNumber);
     setDefaultChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
@@ -323,10 +328,11 @@ export function PaywallCard() {
                 value={defaultNotifPhoneLocal}
                 onChange={(e) => setDefaultNotifPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
                 className="col-span-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                placeholder="Numero sin 0 ni +"
+                placeholder={getPhoneLocalPlaceholder(defaultNotifPhoneCountry)}
                 inputMode="numeric"
               />
             </div>
+            <p className="mt-1 text-xs text-slate-500">{getPhoneInputHint(defaultNotifPhoneCountry)}</p>
             <p className="mt-1 text-xs text-slate-500">Se guarda para usarlo por defecto en nuevas tareas.</p>
           </div>
 

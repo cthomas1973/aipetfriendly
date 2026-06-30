@@ -6,6 +6,9 @@ import { readNotificationProfile } from '../lib/notificationProfile';
 import {
   buildE164Phone,
   COUNTRY_DIAL_OPTIONS,
+  detectDefaultCountryDialCode,
+  getPhoneInputHint,
+  getPhoneLocalPlaceholder,
   isValidE164Phone,
   sanitizePhoneLocalInput,
   splitPhoneByCountryCode,
@@ -133,7 +136,7 @@ export function AgendaSection() {
   const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
   const [pNotificationChannels, setPNotificationChannels] = useState<string[]>(['Push']);
   const [pNotificationEmail, setPNotificationEmail] = useState('');
-  const [pNotificationPhoneCountry, setPNotificationPhoneCountry] = useState('+54');
+  const [pNotificationPhoneCountry, setPNotificationPhoneCountry] = useState(detectDefaultCountryDialCode());
   const [pNotificationPhoneLocal, setPNotificationPhoneLocal] = useState('');
   const [foodBrand, setFoodBrand] = useState<string>(FOOD_BRANDS[0]);
   const [foodCustomBrand, setFoodCustomBrand] = useState('');
@@ -175,7 +178,9 @@ export function AgendaSection() {
     const profile = readNotificationProfile(user);
     setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
     setPNotificationEmail(profile.defaultEmail);
-    const parsedPhone = splitPhoneByCountryCode(profile.defaultPhone);
+    const parsedPhone = profile.defaultPhone
+      ? splitPhoneByCountryCode(profile.defaultPhone)
+      : { countryCode: detectDefaultCountryDialCode(), localNumber: '' };
     setPNotificationPhoneCountry(parsedPhone.countryCode);
     setPNotificationPhoneLocal(parsedPhone.localNumber);
   }, [showForm, tab, user]);
@@ -449,7 +454,9 @@ export function AgendaSection() {
       setPRemindersEnabled(true);
       setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
       setPNotificationEmail(profile.defaultEmail);
-      const parsedPhone = splitPhoneByCountryCode(profile.defaultPhone);
+      const parsedPhone = profile.defaultPhone
+        ? splitPhoneByCountryCode(profile.defaultPhone)
+        : { countryCode: detectDefaultCountryDialCode(), localNumber: '' };
       setPNotificationPhoneCountry(parsedPhone.countryCode);
       setPNotificationPhoneLocal(parsedPhone.localNumber);
       setFoodBrand(FOOD_BRANDS[0]);
@@ -688,10 +695,11 @@ export function AgendaSection() {
                             value={pNotificationPhoneLocal}
                             onChange={(e) => setPNotificationPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
                             className={`${inp} col-span-2`}
-                            placeholder="Numero sin 0 ni +"
+                            placeholder={getPhoneLocalPlaceholder(pNotificationPhoneCountry)}
                             inputMode="numeric"
                           />
                         </div>
+                        <p className="mt-1 text-xs text-slate-500">{getPhoneInputHint(pNotificationPhoneCountry)}</p>
                         <p className="mt-1 text-xs text-slate-500">
                           Para no cargarlo cada vez, guardalo en Mi Cuenta {'>'} Mis datos.
                         </p>
