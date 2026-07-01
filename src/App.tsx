@@ -3,6 +3,7 @@ import {
   CalendarDays,
   CreditCard,
   Gift,
+  MapPinned,
   MessageCircle,
   PawPrint,
   Shield,
@@ -11,6 +12,7 @@ import { AdminUsersSection } from './components/AdminUsersSection';
 import { AgendaSection } from './components/AgendaSection';
 import { AuthScreens } from './components/AuthScreens';
 import { ChatSection } from './components/ChatSection';
+import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetsSection } from './components/PetsSection';
 import {
   OffersSection,
@@ -76,6 +78,7 @@ function BottomNav({
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+    { id: 'map', label: 'Mapa Vet', icon: MapPinned },
     { id: 'offers', label: 'Beneficios', icon: Gift },
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
@@ -86,7 +89,7 @@ function BottomNav({
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden">
-      <ul className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'} gap-1`}>
+      <ul className={`grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} gap-1`}>
         {tabs.map((tab) => (
           <li key={tab.id} className="text-center">
             <button
@@ -127,6 +130,7 @@ function DesktopTabNav({
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+    { id: 'map', label: 'Mapa Vet', icon: MapPinned },
     { id: 'offers', label: 'Beneficios', icon: Gift },
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
@@ -137,7 +141,7 @@ function DesktopTabNav({
 
   return (
     <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'} gap-2`}>
+      <ul className={`grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} gap-2`}>
         {tabs.map((tab) => (
           <li key={tab.id}>
             <button
@@ -270,6 +274,10 @@ function AppContent() {
 
     if (activeTab === 'agenda') {
       return <AgendaSection />;
+    }
+
+    if (activeTab === 'map') {
+      return <NearbyVetsMapSection />;
     }
 
     if (activeTab === 'offers') {
