@@ -171,7 +171,6 @@ function AppContent() {
     preventiveTasks,
     setActiveTab,
     setUser,
-    subscription: subscriptionState,
   } = useAppState();
   const [showLogo, setShowLogo] = useState(true);
   const [switchingUser, setSwitchingUser] = useState(false);
@@ -281,14 +280,6 @@ function AppContent() {
     }
 
     if (activeTab === 'offers') {
-      if (!subscriptionState.isPremiumUser) {
-        return (
-          <div className="space-y-4">
-            <PaywallCard />
-            <OffersSection />
-          </div>
-        );
-      }
       return <OffersSection />;
     }
 
