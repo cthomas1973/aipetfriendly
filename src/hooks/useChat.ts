@@ -36,6 +36,12 @@ export function useChat() {
 
   const [limits, setLimits] = useState(DEFAULT_LIMITS);
   const [usageByPet, setUsageByPet] = useState<Record<string, number>>({});
+  const [sessionMessagesByPet, setSessionMessagesByPet] = useState<Record<string, ChatMessage[]>>({});
+
+  useEffect(() => {
+    // Cada inicio/cambio de sesion comienza con consultorio limpio.
+    setSessionMessagesByPet({});
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,13 +127,21 @@ export function useChat() {
   const remainingForSelectedPet = Math.max(0, currentLimit - usedForSelectedPet);
   const canUseAI = hasValidSelectedPet && remainingForSelectedPet > 0;
 
-  const selectedPetMessages = useMemo(() => {
+  const historyMessages = useMemo(() => {
     if (!hasValidSelectedPet || !selectedPetId) {
       return [] as ChatMessage[];
     }
 
     return chatMessages.filter((message) => message.petId === selectedPetId && message.role !== 'system');
   }, [chatMessages, hasValidSelectedPet, selectedPetId]);
+
+  const sessionMessages = useMemo(() => {
+    if (!hasValidSelectedPet || !selectedPetId) {
+      return [] as ChatMessage[];
+    }
+
+    return sessionMessagesByPet[selectedPetId] || [];
+  }, [hasValidSelectedPet, selectedPetId, sessionMessagesByPet]);
 
   const messagesWithSystem = useMemo(() => {
     const system: ChatMessage = {
@@ -137,8 +151,8 @@ export function useChat() {
       createdAt: new Date().toISOString(),
     };
 
-    return [system, ...selectedPetMessages];
-  }, [selectedPetMessages]);
+    return [system, ...sessionMessages];
+  }, [sessionMessages]);
 
   const sendMessage = useCallback(
     async (content: string, petId: string | null) => {
@@ -159,6 +173,11 @@ export function useChat() {
       };
 
       const nextMessages = [...messagesWithSystem, userMessage];
+      const nextSessionMessages = nextMessages.filter((message) => message.role !== 'system');
+      setSessionMessagesByPet((current) => ({
+        ...current,
+        [petId]: nextSessionMessages,
+      }));
       setChatMessages([...chatMessages, userMessage]);
 
       if (user && !user.isGuest) {
@@ -250,6 +269,10 @@ export function useChat() {
         createdAt: new Date().toISOString(),
       };
 
+      setSessionMessagesByPet((current) => ({
+        ...current,
+        [petId]: [...(current[petId] || []), assistantMessage],
+      }));
       setChatMessages([...chatMessages, userMessage, assistantMessage]);
 
       if (user && !user.isGuest) {
@@ -272,6 +295,7 @@ export function useChat() {
 
   return {
     messages: messagesWithSystem,
+    historyMessages,
     canUseAI,
     hasValidSelectedPet,
     quota: {

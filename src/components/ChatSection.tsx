@@ -14,10 +14,11 @@ const SUGGESTIONS = [
 
 export function ChatSection() {
   const { pets, selectedPetId, setSelectedPetId, subscription } = useAppState();
-  const { messages, canUseAI, hasValidSelectedPet, quota, sendMessage } = useChat();
+  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [view, setView] = useState<'new' | 'history'>('new');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isPremium = subscription?.isPremiumUser ?? false;
@@ -97,38 +98,88 @@ export function ChatSection() {
 
       {/* chat area */}
       <div className="min-h-64 rounded-3xl bg-emerald-50/60 p-4">
-        {visible.length === 0 ? (
-          <div className="space-y-3">
-            <p className="text-center text-sm text-slate-400">Preguntas frecuentes</p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {SUGGESTIONS.map(s => (
-                <button key={s} type="button" onClick={() => doSend(s)}
-                  className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-emerald-50 hover:text-emerald-700">
-                  {s}
-                </button>
+        <div className="mb-4 flex rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-100">
+          <button
+            type="button"
+            onClick={() => setView('new')}
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+              view === 'new'
+                ? 'bg-emerald-500 text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Nueva consulta
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('history')}
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+              view === 'history'
+                ? 'bg-emerald-500 text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Historial mascota
+          </button>
+        </div>
+
+        {view === 'new' ? (
+          visible.length === 0 ? (
+            <div className="space-y-3">
+              <p className="text-center text-sm text-slate-400">Chat limpio para nueva consulta</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {SUGGESTIONS.map(s => (
+                  <button key={s} type="button" onClick={() => doSend(s)}
+                    className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-emerald-50 hover:text-emerald-700">
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {visible.map(m => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    m.role === 'user'
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-white text-slate-700 shadow-sm'
+                  }`}>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              {sending && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-400 shadow-sm">Escribiendo...</div>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+          )
+        ) : (
+          historyMessages.length === 0 ? (
+            <div className="rounded-2xl bg-white/80 p-5 text-center text-sm text-slate-500 shadow-sm">
+              No hay historial guardado para esta mascota.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {historyMessages.map((m) => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    m.role === 'user'
+                      ? 'bg-sky-500 text-white'
+                      : 'bg-white text-slate-700 shadow-sm'
+                  }`}>
+                    <p>{m.content}</p>
+                    <p className={`mt-1 text-[11px] ${m.role === 'user' ? 'text-sky-100' : 'text-slate-400'}`}>
+                      {new Date(m.createdAt).toLocaleString('es-AR')}
+                    </p>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {visible.map(m => (
-              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  m.role === 'user'
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-white text-slate-700 shadow-sm'
-                }`}>
-                  {m.content}
-                </div>
-              </div>
-            ))}
-            {sending && (
-              <div className="flex justify-start">
-                <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-400 shadow-sm">Escribiendo...</div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
+          )
         )}
       </div>
 
@@ -152,17 +203,19 @@ export function ChatSection() {
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
-          disabled={!canUseAI || sending || !hasValidSelectedPet}
+          disabled={view !== 'new' || !canUseAI || sending || !hasValidSelectedPet}
           placeholder={
             !hasValidSelectedPet
               ? 'Agrega o selecciona una mascota para comenzar'
-              : canUseAI
+              : view !== 'new'
+                ? 'Cambia a "Nueva consulta" para escribir'
+                : canUseAI
                 ? 'Escribe tu consulta...'
                 : 'Limite alcanzado'
           }
           className="flex-1 rounded-full bg-white px-5 py-3.5 text-sm ring-1 ring-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-50"
         />
-        <button type="submit" disabled={!canUseAI || !input.trim() || sending || !hasValidSelectedPet}
+        <button type="submit" disabled={view !== 'new' || !canUseAI || !input.trim() || sending || !hasValidSelectedPet}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition disabled:opacity-40">
           <Send size={18} />
         </button>
