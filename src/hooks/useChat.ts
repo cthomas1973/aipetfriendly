@@ -121,12 +121,15 @@ export function useChat() {
   const remainingForSelectedPet = Math.max(0, currentLimit - usedForSelectedPet);
   const canUseAI = hasValidSelectedPet && remainingForSelectedPet > 0;
 
-  const messagesWithSystem = useMemo(() => {
-    const hasSystem = chatMessages.some((message) => message.role === 'system');
-    if (hasSystem) {
-      return chatMessages;
+  const selectedPetMessages = useMemo(() => {
+    if (!hasValidSelectedPet || !selectedPetId) {
+      return [] as ChatMessage[];
     }
 
+    return chatMessages.filter((message) => message.petId === selectedPetId && message.role !== 'system');
+  }, [chatMessages, hasValidSelectedPet, selectedPetId]);
+
+  const messagesWithSystem = useMemo(() => {
     const system: ChatMessage = {
       id: 'system-seed',
       role: 'system',
@@ -134,8 +137,8 @@ export function useChat() {
       createdAt: new Date().toISOString(),
     };
 
-    return [system, ...chatMessages];
-  }, [chatMessages]);
+    return [system, ...selectedPetMessages];
+  }, [selectedPetMessages]);
 
   const sendMessage = useCallback(
     async (content: string, petId: string | null) => {
@@ -151,14 +154,15 @@ export function useChat() {
         id: crypto.randomUUID(),
         role: 'user',
         content,
+        petId,
         createdAt: new Date().toISOString(),
       };
 
       const nextMessages = [...messagesWithSystem, userMessage];
-      setChatMessages(nextMessages);
+      setChatMessages([...chatMessages, userMessage]);
 
       if (user && !user.isGuest) {
-        void createChatMessage(user.id, 'user', content);
+        void createChatMessage(user.id, petId, 'user', content);
       }
 
       let assistantText = createAssistantFallback(content);
@@ -242,13 +246,14 @@ export function useChat() {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: assistantText,
+        petId,
         createdAt: new Date().toISOString(),
       };
 
-      setChatMessages([...nextMessages, assistantMessage]);
+      setChatMessages([...chatMessages, userMessage, assistantMessage]);
 
       if (user && !user.isGuest) {
-        void createChatMessage(user.id, 'assistant', assistantText);
+        void createChatMessage(user.id, petId, 'assistant', assistantText);
       }
 
       return assistantMessage;
@@ -257,6 +262,7 @@ export function useChat() {
       canUseAI,
       clinicalEntries,
       messagesWithSystem,
+      chatMessages,
       setChatMessages,
       pets,
       preventiveTasks,

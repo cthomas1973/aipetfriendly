@@ -111,7 +111,7 @@ async function migrateGuestSnapshot(userId: string, snapshot: GuestMigrationSnap
   }
 
   for (const message of snapshot.chatMessages) {
-    await createChatMessage(userId, message.role, message.content);
+    await createChatMessage(userId, message.petId ?? null, message.role, message.content);
   }
 }
 

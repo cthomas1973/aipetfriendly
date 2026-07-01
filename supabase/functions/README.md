@@ -18,6 +18,7 @@ Configurar en Supabase Dashboard:
 - `AI_API_KEY`: API key del proveedor de IA (OpenAI-compatible)
 - `AI_MODEL`: modelo a usar (ejemplo: `gpt-4o-mini`)
 - `AI_BASE_URL`: endpoint base de API compatible (por defecto `https://api.openai.com/v1`)
+- `TWILIO_WHATSAPP_CONTENT_SID`: Content SID `HX...` de la plantilla aprobada de WhatsApp. Si está presente, `send-preventive-reminders` la usa para enviar recordatorios.
 
 ## Storage Bucket
 

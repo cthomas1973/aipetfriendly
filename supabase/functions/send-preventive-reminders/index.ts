@@ -18,6 +18,7 @@ interface PetRow {
 interface UserRow {
   id: string;
   email: string;
+  full_name: string | null;
 }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -27,6 +28,7 @@ const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'AiPetFriendly <onboarding@rese
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? '';
+const TWILIO_WHATSAPP_CONTENT_SID = Deno.env.get('TWILIO_WHATSAPP_CONTENT_SID') ?? '';
 const TWILIO_STATUS_CALLBACK_URL = `${SUPABASE_URL}/functions/v1/twilio-whatsapp-status`;
 
 const corsHeaders = {
@@ -151,7 +153,7 @@ async function sendEmail(to: string, subject: string, html: string) {
   return payload as { id?: string };
 }
 
-async function sendWhatsApp(to: string, body: string) {
+async function sendWhatsApp(to: string, args: { body: string; contentSid?: string; contentVariables?: Record<string, string> }) {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM) {
     throw new Error('Missing Twilio WhatsApp env vars');
   }
@@ -160,9 +162,15 @@ async function sendWhatsApp(to: string, body: string) {
   const form = new URLSearchParams({
     From: TWILIO_WHATSAPP_FROM,
     To: normalizedTo,
-    Body: body,
     StatusCallback: TWILIO_STATUS_CALLBACK_URL,
   });
+
+  if (args.contentSid) {
+    form.set('ContentSid', args.contentSid);
+    form.set('ContentVariables', JSON.stringify(args.contentVariables ?? {}));
+  } else {
+    form.set('Body', args.body);
+  }
 
   const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
   const response = await fetch(
@@ -248,7 +256,7 @@ Deno.serve(async (req) => {
 
       const { data: user, error: userError } = await supabase
         .from('users')
-        .select('id, email')
+        .select('id, email, full_name')
         .eq('id', (pet as PetRow).user_id)
         .single();
 
@@ -259,9 +267,11 @@ Deno.serve(async (req) => {
 
       const petName = (pet as PetRow).name;
       const ownerEmail = (user as UserRow).email;
+      const ownerName = (user as UserRow).full_name?.trim() || 'tutor';
       const eventEmail = maybeEmail(metadata);
       const targetEmail = eventEmail ?? ownerEmail;
       const scheduledDate = task.due_date;
+      const formattedDate = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${scheduledDate}T12:00:00`));
 
       const messageText = `Recordatorio de ${petName}: ${task.title}. Vence el ${scheduledDate}.${task.notes ? ` Nota: ${task.notes}` : ''}`;
 
@@ -310,7 +320,19 @@ Deno.serve(async (req) => {
           const skip = await alreadySent(task.id, 'whatsapp', scheduledDate);
           if (!skip) {
             try {
-              const response = await sendWhatsApp(phone, messageText);
+              const hasApprovedTemplate = TWILIO_WHATSAPP_CONTENT_SID.trim().length > 0;
+              const response = await sendWhatsApp(phone, {
+                body: messageText,
+                contentSid: hasApprovedTemplate ? TWILIO_WHATSAPP_CONTENT_SID : undefined,
+                contentVariables: hasApprovedTemplate
+                  ? {
+                      '1': ownerName,
+                      '2': petName,
+                      '3': task.title,
+                      '4': formattedDate,
+                    }
+                  : undefined,
+              });
 
               await saveLog({
                 taskId: task.id,

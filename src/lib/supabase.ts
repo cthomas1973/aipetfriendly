@@ -463,12 +463,14 @@ export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> 
     id: msg.id,
     role: msg.role,
     content: msg.content,
+    petId: msg.pet_id || null,
     createdAt: msg.created_at,
   }));
 }
 
 export async function createChatMessage(
   userId: string,
+  petId: string | null,
   role: string,
   content: string,
 ): Promise<ChatMessage | null> {
@@ -477,6 +479,7 @@ export async function createChatMessage(
     .insert([
       {
         user_id: userId,
+        pet_id: petId,
         role,
         content,
       },
@@ -493,6 +496,7 @@ export async function createChatMessage(
     id: data.id,
     role: data.role,
     content: data.content,
+    petId: data.pet_id || null,
     createdAt: data.created_at,
   };
 }

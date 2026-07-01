@@ -130,6 +130,7 @@ export interface ChatMessage {
   id: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  petId?: string | null;
   createdAt: string;
 }
 
