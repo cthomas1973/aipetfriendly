@@ -322,12 +322,15 @@ export function AgendaSection() {
     }
 
     const resolvedFoodBrand = foodBrand === 'Otro' ? foodCustomBrand.trim() : foodBrand;
-    const normalizedChannels = pNotificationChannels.length > 0 ? pNotificationChannels : ['Push'];
+    const profile = readNotificationProfile(user);
+    const profileChannels = profile.channels.length > 0 ? profile.channels : ['Push'];
+    const normalizedChannels = pNotificationChannels.length > 0 ? pNotificationChannels : profileChannels;
     const wantsEmail = normalizedChannels.includes('Email');
     const wantsWhatsApp = normalizedChannels.includes('WhatsApp');
-    const normalizedWhatsAppPhone = buildE164Phone(pNotificationPhoneCountry, pNotificationPhoneLocal);
+    const normalizedWhatsAppPhone = buildE164Phone(pNotificationPhoneCountry, pNotificationPhoneLocal) || profile.defaultPhone || '';
+    const normalizedEmail = (pNotificationEmail.trim() || profile.defaultEmail || '').trim();
 
-    if (!isFoodForm && pRemindersEnabled && wantsEmail && !pNotificationEmail.trim()) {
+    if (!isFoodForm && pRemindersEnabled && wantsEmail && !normalizedEmail) {
       setError('Debes indicar un email para el canal Email.');
       return;
     }
@@ -371,7 +374,7 @@ export function AgendaSection() {
           completed: false,
           remindersEnabled: pRemindersEnabled,
           notificationChannels: normalizedChannels,
-          notificationEmail: pNotificationEmail.trim() || undefined,
+          notificationEmail: normalizedEmail || undefined,
           notificationPhone: normalizedWhatsAppPhone || undefined,
           notificationLeadTime: 'en fecha',
         });
@@ -452,7 +455,6 @@ export function AgendaSection() {
 
       setPTitle('');
       setPCat('vaccine');
-      const profile = readNotificationProfile(user);
       setPRemindersEnabled(true);
       setPNotificationChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
       setPNotificationEmail(profile.defaultEmail);
