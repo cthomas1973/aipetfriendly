@@ -104,7 +104,9 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
 
       await resetPassword(email.trim().toLowerCase());
       setSuccess('Se envió un enlace de recuperación a tu email. Revisa tu bandeja.');
-      setTimeout(() => setMode('login'), 3000);
+      setPassword('');
+      setConfirmPassword('');
+      setMode('login');
     } catch (err) {
       const errorMessage =
         err instanceof Error
