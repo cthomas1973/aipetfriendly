@@ -58,9 +58,16 @@ function createAffiliateLink(affiliateId, redirectUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
 
   if (template.includes('{url}')) {
-    return template
+    const candidate = template
       .replaceAll('{id}', encodeURIComponent(affiliateId))
       .replaceAll('{url}', encodeURIComponent(redirectUrl));
+
+    // Prevent known broken domain from producing dead outbound links.
+    if (candidate.includes('click.mercadolibre.com/')) {
+      return redirectUrl;
+    }
+
+    return candidate;
   }
 
   return redirectUrl;
