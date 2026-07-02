@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Bell, Check, Crown, Lock, Tags, X } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { Bell, Check, Crown, ExternalLink, LocateFixed, Lock, Tags, Truck, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
@@ -433,24 +433,110 @@ export function PaywallCard() {
 }
 
 /* ── OffersSection (Tienda y Beneficios) ────────────── */
-const HIGHLIGHTS = [
-  { emoji: '🐾', name: 'PetShop Plus',     discount: '-20%', bg: 'bg-emerald-100' },
-  { emoji: '🏥', name: 'VetCare Online',   discount: '-15%', bg: 'bg-blue-100'    },
-  { emoji: '🍗', name: 'Nutricion Premium',discount: '-10%', bg: 'bg-amber-100'   },
-  { emoji: '✂️', name: 'Grooming Pro',     discount: '-25%', bg: 'bg-purple-100'  },
+type OfferGroup = 'alimentos' | 'accesorios' | 'higiene' | 'descanso';
+type OfferSort = 'relevance' | 'price_asc' | 'price_desc';
+
+interface AffiliateProduct {
+  id: string;
+  title: string;
+  price: number;
+  original_price: number | null;
+  discount: number;
+  thumbnail: string;
+  link: string;
+  free_shipping: boolean;
+  fast_delivery: boolean;
+  state: string;
+}
+
+const OFFER_GROUPS: Array<{ id: OfferGroup; label: string; emoji: string }> = [
+  { id: 'alimentos', label: 'Alimentos', emoji: '🍗' },
+  { id: 'accesorios', label: 'Accesorios y Paseo', emoji: '🦮' },
+  { id: 'higiene', label: 'Estetica e Higiene', emoji: '🧴' },
+  { id: 'descanso', label: 'Descanso y Juguetes', emoji: '🧸' },
 ];
 
-const ALL_OFFERS = [
-  { emoji: '🐾', name: 'PetShop Plus',      provider: 'Tienda online',   desc: 'Accesorios y juguetes para tu mascota', tag: 'Exclusivo Premium', discount: '-20%' },
-  { emoji: '🏥', name: 'VetCare Online',    provider: 'Teleconsulta',    desc: 'Consultas veterinarias online 24/7',    tag: 'Premium',          discount: '-15%' },
-  { emoji: '🍗', name: 'Nutricion Premium', provider: 'Balanceados',     desc: 'Alimentos premium para tu mascota',     tag: 'Premium',          discount: '-10%' },
-  { emoji: '✂️', name: 'Grooming Pro',      provider: 'Peluqueria',      desc: 'Servicios de estetica canina y felina', tag: 'Premium',          discount: '-25%' },
-  { emoji: '💊', name: 'Farmacia Veterinaria', provider: 'Medicamentos', desc: 'Medicamentos y suplementos para mascotas', tag: 'Premium',        discount: '-12%' },
-];
+const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
 
 export function OffersSection() {
   const { subscription } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
+  const [group, setGroup] = useState<OfferGroup>('alimentos');
+  const [sort, setSort] = useState<OfferSort>('relevance');
+  const [freeShipping, setFreeShipping] = useState(false);
+  const [fastDelivery, setFastDelivery] = useState(false);
+  const [products, setProducts] = useState<AffiliateProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [errorProducts, setErrorProducts] = useState<string | null>(null);
+
+  const loadProducts = useCallback(async () => {
+    setLoadingProducts(true);
+    setErrorProducts(null);
+
+    try {
+      const params = new URLSearchParams();
+      params.set('grupo', group);
+      if (sort !== 'relevance') {
+        params.set('sort', sort);
+      }
+      if (freeShipping) {
+        params.set('shipping', 'true');
+      }
+      if (fastDelivery) {
+        params.set('delivery', 'true');
+      }
+      if (location) {
+        params.set('lat', String(location.lat));
+        params.set('lon', String(location.lon));
+      }
+
+      const response = await fetch(`/api/beneficios?${params.toString()}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || 'No se pudieron cargar los productos de Mercado Libre.');
+      }
+
+      const data = await response.json();
+      setProducts(Array.isArray(data?.products) ? data.products : []);
+    } catch (error) {
+      setProducts([]);
+      setErrorProducts(error instanceof Error ? error.message : 'No se pudieron cargar productos en este momento.');
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, [fastDelivery, freeShipping, group, location, sort]);
+
+  useEffect(() => {
+    void loadProducts();
+  }, [loadProducts]);
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
+      setErrorProducts('Tu navegador no soporta geolocalizacion para filtrar por zona.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+        });
+      },
+      () => {
+        setErrorProducts('No se pudo acceder a tu ubicacion. Puedes seguir usando filtros sin GPS.');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      },
+    );
+  };
 
   return (
     <section className="space-y-4 pb-2">
@@ -476,47 +562,128 @@ export function OffersSection() {
         </div>
       )}
 
-      {/* destacados */}
-      <div>
-        <p className="mb-3 font-bold text-slate-800">⭐ Destacados</p>
-        <div className="grid grid-cols-2 gap-3">
-          {HIGHLIGHTS.map(h => (
-            <div key={h.name} className={`relative rounded-3xl ${h.bg} p-4 shadow-sm`}>
-              {!isPremium && <Lock size={14} className="absolute right-3 top-3 text-slate-400" />}
-              <p className="text-3xl">{h.emoji}</p>
-              <p className="mt-2 font-bold text-slate-800 text-sm">{h.name}</p>
-              <span className="mt-1 inline-block rounded-full bg-white/70 px-2 py-0.5 text-xs font-bold text-emerald-700">{h.discount}</span>
-            </div>
+      <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-bold text-slate-800">Grupo de productos</p>
+          <button
+            type="button"
+            onClick={requestLocation}
+            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+          >
+            <LocateFixed size={13} />
+            {location ? 'GPS activo' : 'Usar GPS'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {OFFER_GROUPS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setGroup(item.id)}
+              className={`rounded-2xl px-3 py-2 text-left text-sm font-semibold ${
+                group === item.id
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-slate-100 text-slate-700'
+              }`}
+            >
+              <span className="mr-2">{item.emoji}</span>
+              {item.label}
+            </button>
           ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as OfferSort)}
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+          >
+            <option value="relevance">Relevancia</option>
+            <option value="price_asc">Menor precio</option>
+            <option value="price_desc">Mayor precio</option>
+          </select>
+
+          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+            <input type="checkbox" checked={freeShipping} onChange={(e) => setFreeShipping(e.target.checked)} className="h-4 w-4" />
+            Envio gratis
+          </label>
+
+          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+            <input type="checkbox" checked={fastDelivery} onChange={(e) => setFastDelivery(e.target.checked)} className="h-4 w-4" />
+            <Truck size={15} />
+            Envio rapido
+          </label>
         </div>
       </div>
 
-      {/* all offers */}
       <div>
-        <p className="mb-3 font-bold text-slate-800">Todas las ofertas</p>
+        <p className="mb-3 font-bold text-slate-800">Productos recomendados</p>
+        {errorProducts && (
+          <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorProducts}</p>
+        )}
+
+        {loadingProducts ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-28 animate-pulse rounded-3xl bg-slate-100" />
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="rounded-3xl bg-white p-4 shadow-sm">
+            <p className="text-sm text-slate-600">No hay productos para este filtro por ahora. Prueba con otro grupo o desactiva filtros.</p>
+          </div>
+        ) : (
         <div className="space-y-3">
-          {ALL_OFFERS.map(o => (
-            <div key={o.name} className="rounded-3xl bg-white p-4 shadow-sm">
+          {products.map((item) => (
+            <div key={item.id} className="rounded-3xl bg-white p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-2xl">{o.emoji}</span>
+                <img
+                  src={item.thumbnail}
+                  alt={item.title}
+                  className="h-16 w-16 shrink-0 rounded-2xl object-cover bg-slate-100"
+                  loading="lazy"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-bold text-slate-900">{o.name}</p>
-                      <p className="text-xs text-slate-400">{o.provider}</p>
+                      <p className="font-bold text-slate-900 line-clamp-2">{item.title}</p>
+                      <p className="text-xs text-slate-400">{item.state || 'Mercado Libre Argentina'}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">{o.discount}</span>
+                    {item.discount > 0 && (
+                      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">-{item.discount}%</span>
+                    )}
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">{o.desc}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-extrabold text-slate-900">{PRICE_FORMATTER.format(item.price)}</span>
+                    {item.original_price ? (
+                      <span className="text-xs text-slate-400 line-through">{PRICE_FORMATTER.format(item.original_price)}</span>
+                    ) : null}
+                    {item.free_shipping ? (
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">Envio gratis</span>
+                    ) : null}
+                    {item.fast_delivery ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Rapido</span>
+                    ) : null}
+                  </div>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{o.tag}</span>
-                    <span className="text-xs font-semibold text-emerald-600">Ver detalles &gt;</span>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Afiliado AiPetFriendly</span>
+                    <a
+                      href={item.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"
+                    >
+                      Ver producto
+                      <ExternalLink size={13} />
+                    </a>
                   </div>
                 </div>
               </div>
             </div>
           ))}
         </div>
+        )}
       </div>
     </section>
   );
