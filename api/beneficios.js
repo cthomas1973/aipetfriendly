@@ -70,6 +70,34 @@ function createAffiliateLink(affiliateId, redirectUrl) {
     return candidate;
   }
 
+  // Some ML affiliate links are profile/social URLs without {url}. In that case,
+  // copy their tracking query params into the real product URL.
+  if (template.startsWith('http://') || template.startsWith('https://')) {
+    try {
+      const templateUrl = new URL(template);
+      const destination = new URL(redirectUrl);
+
+      for (const [key, value] of templateUrl.searchParams.entries()) {
+        if (!value) {
+          continue;
+        }
+        const lowerKey = key.toLowerCase();
+        const isTrackingParam =
+          lowerKey.startsWith('matt_') ||
+          lowerKey === 'ref' ||
+          lowerKey.startsWith('utm_');
+
+        if (isTrackingParam && !destination.searchParams.has(key)) {
+          destination.searchParams.set(key, value);
+        }
+      }
+
+      return destination.toString();
+    } catch {
+      return redirectUrl;
+    }
+  }
+
   return redirectUrl;
 }
 
