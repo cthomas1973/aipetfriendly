@@ -7,32 +7,32 @@ const GROUP_QUERIES = {
 
 const GROUP_KEYS = new Set(Object.keys(GROUP_QUERIES));
 
-const PLACEHOLDER_IMAGE = 'https://placehold.co/200x200/f1f5f9/475569?text=AiPetFriendly';
+const PLACEHOLDER_IMAGE = 'https://placehold.co/300x300/f1f5f9/475569?text=AiPetFriendly';
 
 const FALLBACK_CATALOG = {
   alimentos: [
-    { id: 'fb-a-1', title: 'Alimento balanceado perro adulto 20kg', price: 28990, original_price: 32990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'alimento balanceado perro adulto 20kg' },
-    { id: 'fb-a-2', title: 'Alimento balanceado gato adulto 15kg', price: 31200, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'alimento balanceado gato adulto 15kg' },
-    { id: 'fb-a-3', title: 'Snack premium para perro x 1kg', price: 8990, original_price: 10990, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'snack premium perro 1kg' },
-    { id: 'fb-a-4', title: 'Comida humeda para gato pack x 24', price: 21990, original_price: 24990, free_shipping: true, fast_delivery: false, state: 'Mendoza', search: 'comida humeda gato pack 24' },
+    { id: 'fb-a-1', title: 'Alimento balanceado perro adulto 20kg', price: 28990, original_price: 32990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'alimento balanceado perro adulto 20kg', thumbnail: 'https://images.unsplash.com/photo-1583511655826-05700442b31b?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-2', title: 'Alimento balanceado gato adulto 15kg', price: 31200, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'alimento balanceado gato adulto 15kg', thumbnail: 'https://images.unsplash.com/photo-1511044568932-338cba0ad803?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-3', title: 'Snack premium para perro x 1kg', price: 8990, original_price: 10990, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'snack premium perro 1kg', thumbnail: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-4', title: 'Comida humeda para gato pack x 24', price: 21990, original_price: 24990, free_shipping: true, fast_delivery: false, state: 'Mendoza', search: 'comida humeda gato pack 24', thumbnail: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=400&q=80' },
   ],
   accesorios: [
-    { id: 'fb-b-1', title: 'Correa reforzada antitirones para perro', price: 15490, original_price: 18990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'correa antitirones perro' },
-    { id: 'fb-b-2', title: 'Pretal acolchado ajustable', price: 12890, original_price: 0, free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pretal acolchado ajustable perro' },
-    { id: 'fb-b-3', title: 'Bolso transportador mascota mediana', price: 38990, original_price: 42990, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'bolso transportador mascota mediana' },
-    { id: 'fb-b-4', title: 'Bebedero portatil para paseo', price: 6990, original_price: 0, free_shipping: false, fast_delivery: true, state: 'Rosario', search: 'bebedero portatil perro paseo' },
+    { id: 'fb-b-1', title: 'Correa reforzada antitirones para perro', price: 15490, original_price: 18990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'correa antitirones perro', thumbnail: 'https://images.unsplash.com/photo-1529429617124-aee7112e5f2f?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-2', title: 'Pretal acolchado ajustable', price: 12890, original_price: 0, free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pretal acolchado ajustable perro', thumbnail: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-3', title: 'Bolso transportador mascota mediana', price: 38990, original_price: 42990, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'bolso transportador mascota mediana', thumbnail: 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-4', title: 'Bebedero portatil para paseo', price: 6990, original_price: 0, free_shipping: false, fast_delivery: true, state: 'Rosario', search: 'bebedero portatil perro paseo', thumbnail: 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=400&q=80' },
   ],
   higiene: [
-    { id: 'fb-c-1', title: 'Shampoo hipoalergenico para mascotas', price: 8990, original_price: 10990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'shampoo hipoalergenico mascotas' },
-    { id: 'fb-c-2', title: 'Pipeta antipulgas perro mediano', price: 13990, original_price: 15990, free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pipeta antipulgas perro mediano' },
-    { id: 'fb-c-3', title: 'Arena sanitaria aglutinante 10kg', price: 11890, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'arena sanitaria aglutinante 10kg' },
-    { id: 'fb-c-4', title: 'Kit cepillo + guante de limpieza', price: 7590, original_price: 0, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'kit cepillo guante mascotas' },
+    { id: 'fb-c-1', title: 'Shampoo hipoalergenico para mascotas', price: 8990, original_price: 10990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'shampoo hipoalergenico mascotas', thumbnail: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-2', title: 'Pipeta antipulgas perro mediano', price: 13990, original_price: 15990, free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pipeta antipulgas perro mediano', thumbnail: 'https://images.unsplash.com/photo-1581888227599-779811939961?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-3', title: 'Arena sanitaria aglutinante 10kg', price: 11890, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'arena sanitaria aglutinante 10kg', thumbnail: 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-4', title: 'Kit cepillo + guante de limpieza', price: 7590, original_price: 0, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'kit cepillo guante mascotas', thumbnail: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?auto=format&fit=crop&w=400&q=80' },
   ],
   descanso: [
-    { id: 'fb-d-1', title: 'Cucha termica impermeable', price: 45990, original_price: 51990, free_shipping: true, fast_delivery: false, state: 'Buenos Aires', search: 'cucha termica impermeable perro' },
-    { id: 'fb-d-2', title: 'Cama colchon viscoelastica mascota', price: 27990, original_price: 0, free_shipping: true, fast_delivery: true, state: 'CABA', search: 'cama colchon viscoelastica mascota' },
-    { id: 'fb-d-3', title: 'Rascador para gato con cueva', price: 34990, original_price: 39990, free_shipping: false, fast_delivery: false, state: 'Cordoba', search: 'rascador gato con cueva' },
-    { id: 'fb-d-4', title: 'Juguete interactivo inteligente', price: 12490, original_price: 14990, free_shipping: false, fast_delivery: true, state: 'Mendoza', search: 'juguete interactivo mascota' },
+    { id: 'fb-d-1', title: 'Cucha termica impermeable', price: 45990, original_price: 51990, free_shipping: true, fast_delivery: false, state: 'Buenos Aires', search: 'cucha termica impermeable perro', thumbnail: 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-2', title: 'Cama colchon viscoelastica mascota', price: 27990, original_price: 0, free_shipping: true, fast_delivery: true, state: 'CABA', search: 'cama colchon viscoelastica mascota', thumbnail: 'https://images.unsplash.com/photo-1530281700549-e82e7bf110d6?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-3', title: 'Rascador para gato con cueva', price: 34990, original_price: 39990, free_shipping: false, fast_delivery: false, state: 'Cordoba', search: 'rascador gato con cueva', thumbnail: 'https://images.unsplash.com/photo-1545249390-6bdfa286032f?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-4', title: 'Juguete interactivo inteligente', price: 12490, original_price: 14990, free_shipping: false, fast_delivery: true, state: 'Mendoza', search: 'juguete interactivo mascota', thumbnail: 'https://images.unsplash.com/photo-1560743173-567a3b5658b1?auto=format&fit=crop&w=400&q=80' },
   ],
 };
 
@@ -55,7 +55,15 @@ function normalizeGroup(raw) {
 }
 
 function createAffiliateLink(affiliateId, redirectUrl) {
-  return `https://click.mercadolibre.com/tracking/click?id=${encodeURIComponent(affiliateId)}&redirect=${encodeURIComponent(redirectUrl)}`;
+  const template = process.env.ML_AFFILIATE_TEMPLATE || '';
+
+  if (template.includes('{url}')) {
+    return template
+      .replaceAll('{id}', encodeURIComponent(affiliateId))
+      .replaceAll('{url}', encodeURIComponent(redirectUrl));
+  }
+
+  return redirectUrl;
 }
 
 function applyFiltersAndSort(items, shipping, delivery, sort) {
@@ -92,7 +100,7 @@ function fallbackProducts(group, affiliateId, shipping, delivery, sort) {
       price: product.price,
       original_price: product.original_price || null,
       discount,
-      thumbnail: PLACEHOLDER_IMAGE,
+      thumbnail: product.thumbnail || PLACEHOLDER_IMAGE,
       link: createAffiliateLink(affiliateId, listingUrl),
       free_shipping: product.free_shipping,
       fast_delivery: product.fast_delivery,
@@ -195,11 +203,11 @@ export default async function handler(req, res) {
       };
     });
 
-      const filtered = applyFiltersAndSort(mapped, shipping, delivery, sort);
+    const filtered = applyFiltersAndSort(mapped, shipping, delivery, sort);
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
     res.setHeader('X-Products-Source', 'api');
-      return res.status(200).json({ products: filtered, source: 'api' });
+    return res.status(200).json({ products: filtered, source: 'api' });
   } catch (error) {
     return res.status(500).json({
       error: 'Error al conectar con Mercado Libre',

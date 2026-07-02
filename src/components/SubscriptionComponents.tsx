@@ -638,16 +638,31 @@ export function OffersSection() {
           {products.map((item) => (
             <div key={item.id} className="rounded-3xl bg-white p-4 shadow-sm">
               <div className="flex items-start gap-3">
-                <img
-                  src={item.thumbnail}
-                  alt={item.title}
-                  className="h-16 w-16 shrink-0 rounded-2xl object-cover bg-slate-100"
-                  loading="lazy"
-                />
+                <a
+                  href={item.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0"
+                  aria-label={`Ver ${item.title} en Mercado Libre`}
+                >
+                  <img
+                    src={item.thumbnail}
+                    alt={item.title}
+                    className="h-16 w-16 rounded-2xl object-cover bg-slate-100"
+                    loading="lazy"
+                  />
+                </a>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-bold text-slate-900 line-clamp-2">{item.title}</p>
+                      <a
+                        href={item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-slate-900 line-clamp-2 hover:text-emerald-600"
+                      >
+                        {item.title}
+                      </a>
                       <p className="text-xs text-slate-400">{item.state || 'Mercado Libre Argentina'}</p>
                     </div>
                     {item.discount > 0 && (
