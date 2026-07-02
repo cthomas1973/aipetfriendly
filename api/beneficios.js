@@ -57,14 +57,35 @@ function normalizeGroup(raw) {
 function createAffiliateLink(affiliateId, redirectUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
 
+  const appendSafeTrackingParams = (baseUrl, sourceTemplate) => {
+    try {
+      const templateUrl = new URL(sourceTemplate);
+      const destination = new URL(baseUrl);
+      const allowedParams = new Set(['matt_word', 'matt_tool']);
+
+      for (const [key, value] of templateUrl.searchParams.entries()) {
+        if (!value || !allowedParams.has(key)) {
+          continue;
+        }
+        if (!destination.searchParams.has(key)) {
+          destination.searchParams.set(key, value);
+        }
+      }
+
+      return destination.toString();
+    } catch {
+      return baseUrl;
+    }
+  };
+
   if (template.includes('{url}')) {
     const candidate = template
       .replaceAll('{id}', encodeURIComponent(affiliateId))
       .replaceAll('{url}', encodeURIComponent(redirectUrl));
 
     // Prevent known broken domain from producing dead outbound links.
-    if (candidate.includes('click.mercadolibre.com/')) {
-      return redirectUrl;
+    if (candidate.includes('click.mercadolibre.com/') || candidate.includes('/social/')) {
+      return appendSafeTrackingParams(redirectUrl, template);
     }
 
     return candidate;
@@ -73,29 +94,7 @@ function createAffiliateLink(affiliateId, redirectUrl) {
   // Some ML affiliate links are profile/social URLs without {url}. In that case,
   // copy their tracking query params into the real product URL.
   if (template.startsWith('http://') || template.startsWith('https://')) {
-    try {
-      const templateUrl = new URL(template);
-      const destination = new URL(redirectUrl);
-
-      for (const [key, value] of templateUrl.searchParams.entries()) {
-        if (!value) {
-          continue;
-        }
-        const lowerKey = key.toLowerCase();
-        const isTrackingParam =
-          lowerKey.startsWith('matt_') ||
-          lowerKey === 'ref' ||
-          lowerKey.startsWith('utm_');
-
-        if (isTrackingParam && !destination.searchParams.has(key)) {
-          destination.searchParams.set(key, value);
-        }
-      }
-
-      return destination.toString();
-    } catch {
-      return redirectUrl;
-    }
+    return appendSafeTrackingParams(redirectUrl, template);
   }
 
   return redirectUrl;
