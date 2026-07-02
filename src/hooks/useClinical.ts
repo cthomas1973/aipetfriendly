@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import { jsPDF } from 'jspdf';
 import { useAppState } from '../context/AppStateContext';
 import { createClinicalEntry } from '../lib/supabase';
 import type {
@@ -107,6 +106,7 @@ export function useClinical() {
         throw new Error('La descarga de PDF avanzada es exclusiva para Premium.');
       }
 
+      const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
