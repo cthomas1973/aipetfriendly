@@ -52,6 +52,21 @@ En Supabase Dashboard > Edge Functions > Secrets, agregar:
 - `AI_BASE_URL`: opcional, default `https://api.openai.com/v1`
 - `SUPABASE_SERVICE_ROLE_KEY`: necesaria para que la function lea historial por usuario
 
+### 8. Recuperación de contraseña por email
+
+Para que el enlace de recuperación salga por email, revisa en Supabase Dashboard:
+
+1. Authentication > Providers > Email.
+2. Verifica que el proveedor Email esté habilitado.
+3. Si usas SMTP propio, carga Host, Port, User y Password.
+4. Authentication > URL Configuration.
+5. Agrega a la lista de redirect URLs la ruta de recuperación de tu app, por ejemplo:
+   - `https://www.aipetfriendly.ar/reset-password`
+   - `https://aipetfriendly.vercel.app/reset-password`
+6. Revisa también Spam/Promociones en el correo destino.
+
+Si esta parte no está configurada, la app puede disparar la solicitud correctamente pero el email no saldrá.
+
 ## Variables de entorno requeridas
 
 ```

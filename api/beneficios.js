@@ -54,6 +54,15 @@ function normalizeGroup(raw) {
   return GROUP_KEYS.has(raw) ? raw : 'alimentos';
 }
 
+function buildMeliSearchUrl(search) {
+  const normalized = String(search || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+
+  return `https://listado.mercadolibre.com.ar/${encodeURIComponent(normalized)}`;
+}
+
 function createAffiliateLink(affiliateId, redirectUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
 
@@ -120,10 +129,45 @@ function applyFiltersAndSort(items, shipping, delivery, sort) {
   return filtered;
 }
 
-function fallbackProducts(group, affiliateId, shipping, delivery, sort) {
+async function resolvePermalinkFromApi(search, mlAccessToken) {
+  if (!mlAccessToken) {
+    return '';
+  }
+
+  try {
+    const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
+    url.searchParams.set('q', search);
+    url.searchParams.set('limit', '1');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${mlAccessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      return '';
+    }
+
+    const data = await response.json();
+    const first = Array.isArray(data?.results) ? data.results[0] : null;
+    return String(first?.permalink || '');
+  } catch {
+    return '';
+  }
+}
+
+async function fallbackProducts(group, affiliateId, shipping, delivery, sort, mlAccessToken) {
   const base = FALLBACK_CATALOG[group] || FALLBACK_CATALOG.alimentos;
-  const mapped = base.map((product) => {
-    const listingUrl = `https://listado.mercadolibre.com.ar/${encodeURIComponent(product.search).replace(/%20/g, '-')}`;
+
+  const resolvedPermalinks = await Promise.all(
+    base.map((product) => resolvePermalinkFromApi(product.search, mlAccessToken)),
+  );
+
+  const mapped = base.map((product, index) => {
+    const listingUrl = buildMeliSearchUrl(product.search);
+    const directUrl = resolvedPermalinks[index] || listingUrl;
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
@@ -135,7 +179,7 @@ function fallbackProducts(group, affiliateId, shipping, delivery, sort) {
       original_price: product.original_price || null,
       discount,
       thumbnail: product.thumbnail || PLACEHOLDER_IMAGE,
-      link: createAffiliateLink(affiliateId, listingUrl),
+      link: createAffiliateLink(affiliateId, directUrl),
       free_shipping: product.free_shipping,
       fast_delivery: product.fast_delivery,
       state: product.state,
@@ -188,7 +232,7 @@ export default async function handler(req, res) {
       const text = await response.text();
 
       if (response.status === 401 || response.status === 403 || response.status >= 500) {
-        const fallback = fallbackProducts(grupo, affiliateId, shipping, delivery, sort);
+        const fallback = await fallbackProducts(grupo, affiliateId, shipping, delivery, sort, mlAccessToken);
         res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
         res.setHeader('X-Products-Source', 'fallback');
         res.setHeader('X-ML-Status', String(response.status));
@@ -208,7 +252,9 @@ export default async function handler(req, res) {
 
     const mapped = products.map((product) => {
       const urlOriginal = product?.permalink || '';
-      const linkAfiliado = createAffiliateLink(affiliateId, urlOriginal);
+      const fallbackSearchUrl = buildMeliSearchUrl(product?.title || query);
+      const destinationUrl = urlOriginal || fallbackSearchUrl;
+      const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();

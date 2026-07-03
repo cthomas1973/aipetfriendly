@@ -57,6 +57,14 @@ interface PetAssistantResponse {
   };
 }
 
+type MercadoPagoPlanCode = 'monthly' | 'annual';
+
+interface MercadoPagoInitPointResponse {
+  initPoint: string;
+  mode: 'recurring' | 'one_time';
+  planCode: string;
+}
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
@@ -625,6 +633,57 @@ export async function fetchAdminAiQueryAudit(limit = 20): Promise<AdminAiAuditEn
     questionChars: Number(row.question_chars || 0),
     answerChars: Number(row.answer_chars || 0),
   }));
+}
+
+async function getAuthTokenOrThrow(): Promise<string> {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo validar la sesion actual.');
+  }
+
+  const token = session?.access_token;
+  if (!token) {
+    throw new Error('Debes iniciar sesion para continuar con la suscripcion.');
+  }
+
+  return token;
+}
+
+async function postMercadoPagoEndpoint<TResponse>(path: string, payload: Record<string, unknown>): Promise<TResponse> {
+  const token = await getAuthTokenOrThrow();
+
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof body?.error === 'string' ? body.error : '';
+    throw new Error(detail || 'No se pudo iniciar el checkout de Mercado Pago.');
+  }
+
+  return body as TResponse;
+}
+
+export async function createMercadoPagoRecurringSubscription(planCode: MercadoPagoPlanCode): Promise<MercadoPagoInitPointResponse> {
+  return postMercadoPagoEndpoint<MercadoPagoInitPointResponse>('/api/mercadopago/create-subscription', {
+    planCode,
+  });
+}
+
+export async function createMercadoPagoOneTimeMonthlyPayment(): Promise<MercadoPagoInitPointResponse> {
+  return postMercadoPagoEndpoint<MercadoPagoInitPointResponse>('/api/mercadopago/create-checkout', {
+    planCode: 'monthly_manual',
+  });
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {

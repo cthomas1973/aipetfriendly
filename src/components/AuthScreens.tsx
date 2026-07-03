@@ -9,6 +9,29 @@ const labelCls = 'block text-sm font-medium text-slate-700';
 
 type AuthMode = 'login' | 'register' | 'forgot-password' | 'reset-password';
 
+function formatAuthError(err: unknown, fallback: string) {
+  if (err instanceof Error) {
+    const message = err.message.trim();
+    if (message && message !== '[object Object]') {
+      return message;
+    }
+  }
+
+  if (typeof err === 'object' && err !== null) {
+    const anyErr = err as Record<string, unknown>;
+    const message = typeof anyErr.message === 'string' ? anyErr.message.trim() : '';
+    if (message && message !== '[object Object]') {
+      return message;
+    }
+
+    const code = typeof anyErr.code === 'string' ? ` (${anyErr.code})` : '';
+    const status = typeof anyErr.status === 'number' ? ` [${anyErr.status}]` : '';
+    return `${fallback}${code}${status}`;
+  }
+
+  return fallback;
+}
+
 export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode }) {
   const { setUser } = useAppState();
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -81,13 +104,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
         await signInWithEmail(email.trim().toLowerCase(), password);
       }
     } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : typeof err === 'object' && err !== null && 'message' in err
-            ? String((err as { message: unknown }).message)
-            : 'No se pudo completar la autenticación.';
-      setError(errorMessage);
+      setError(formatAuthError(err, 'No se pudo completar la autenticación.'));
     } finally {
       setLoading(false);
     }
@@ -108,13 +125,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
       setConfirmPassword('');
       setMode('login');
     } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : typeof err === 'object' && err !== null && 'message' in err
-            ? String((err as { message: unknown }).message)
-            : 'No se pudo enviar el email de recuperación.';
-      setError(errorMessage);
+      setError(formatAuthError(err, 'No se pudo enviar el email de recuperación.'));
     } finally {
       setLoading(false);
     }
@@ -156,13 +167,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
       setSuccess('Contraseña actualizada correctamente. Ya puedes continuar en la app.');
       setPasswordUpdated(true);
     } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : typeof err === 'object' && err !== null && 'message' in err
-            ? String((err as { message: unknown }).message)
-            : 'No se pudo actualizar la contraseña.';
-      setError(errorMessage);
+      setError(formatAuthError(err, 'No se pudo actualizar la contraseña.'));
     } finally {
       setLoading(false);
     }

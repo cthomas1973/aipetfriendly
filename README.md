@@ -161,6 +161,53 @@ Genera carpeta `dist/` lista para deploy en Vercel, Netlify, GitHub Pages, etc.
 ### Setup Supabase Detallado
 Ver [SUPABASE_SETUP.md](SUPABASE_SETUP.md)
 
+### Integracion Mercado Pago (suscripciones y cobro manual)
+
+La app ya incluye:
+
+- Suscripcion mensual automatica (debito automatico)
+- Suscripcion anual automatica (debito automatico)
+- Pago mensual manual (debito/credito)
+- Webhook idempotente para activar/desactivar Premium en Supabase
+
+#### Variables de entorno requeridas (Vercel)
+
+```
+MP_ACCESS_TOKEN=APP_USR-...
+APP_BASE_URL=https://tu-dominio.com
+MP_WEBHOOK_KEY=clave-segura-unica
+
+MP_PLAN_MONTHLY_ID=            # opcional
+MP_PLAN_ANNUAL_ID=             # opcional
+MP_MONTHLY_AMOUNT_ARS=9900
+MP_ANNUAL_AMOUNT_ARS=99900
+
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+#### Endpoint de webhook
+
+Configurar en Mercado Pago:
+
+```
+https://tu-dominio.com/api/mercadopago/webhook?webhook_key=MP_WEBHOOK_KEY
+```
+
+#### Migracion SQL nueva
+
+Aplicar `supabase/migrations/012_mercadopago_billing.sql` para crear:
+
+- `payment_subscriptions`
+- `payment_webhook_events`
+
+#### Flujo de activacion Premium
+
+- El frontend redirige al checkout de Mercado Pago.
+- El estado Premium se confirma por webhook (no por redirect).
+- El webhook actualiza `subscriptions` y `users.access_mode`.
+
 ### Crear nueva mascota
 1. Ir a tab "Mascotas"
 2. Llenar formulario con datos del animal

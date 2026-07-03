@@ -5,6 +5,10 @@ import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import { updateUserNotificationProfile } from '../lib/supabase';
 import {
+  createMercadoPagoOneTimeMonthlyPayment,
+  createMercadoPagoRecurringSubscription,
+} from '../lib/supabase';
+import {
   buildCountryOptionsForPicker,
   buildE164Phone,
   detectDefaultCountryDialCode,
@@ -71,6 +75,8 @@ export function PaywallCard() {
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
   const [whatsAppConsent, setWhatsAppConsent] = useState(false);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
+  const [checkoutLoadingMode, setCheckoutLoadingMode] = useState<'monthly' | 'annual' | 'monthly_manual' | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
 
@@ -121,6 +127,32 @@ export function PaywallCard() {
       setError(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startRecurringCheckout = async (planCode: 'monthly' | 'annual') => {
+    try {
+      setCheckoutError(null);
+      setCheckoutLoadingMode(planCode);
+      const checkout = await createMercadoPagoRecurringSubscription(planCode);
+      window.location.href = checkout.initPoint;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo iniciar la suscripcion automatica.';
+      setCheckoutError(message);
+      setCheckoutLoadingMode(null);
+    }
+  };
+
+  const startOneTimeMonthlyCheckout = async () => {
+    try {
+      setCheckoutError(null);
+      setCheckoutLoadingMode('monthly_manual');
+      const checkout = await createMercadoPagoOneTimeMonthlyPayment();
+      window.location.href = checkout.initPoint;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo iniciar el pago mensual.';
+      setCheckoutError(message);
+      setCheckoutLoadingMode(null);
     }
   };
 
@@ -268,11 +300,49 @@ export function PaywallCard() {
               })}
             </div>
             {!isPremium && (
-              <button type="button"
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 font-bold text-emerald-700">
-                <Crown size={18} className="text-yellow-400" />
-                Actualizar a Premium
-              </button>
+              <div className="mt-5 space-y-2">
+                <button
+                  type="button"
+                  disabled={checkoutLoadingMode !== null}
+                  onClick={() => {
+                    void startRecurringCheckout('monthly');
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 font-bold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Crown size={18} className="text-yellow-400" />
+                  {checkoutLoadingMode === 'monthly' ? 'Redirigiendo...' : 'Premium mensual (debito automatico)'}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={checkoutLoadingMode !== null}
+                  onClick={() => {
+                    void startRecurringCheckout('annual');
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-full border border-white/80 py-3.5 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {checkoutLoadingMode === 'annual' ? 'Redirigiendo...' : 'Premium anual (debito automatico)'}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={checkoutLoadingMode !== null}
+                  onClick={() => {
+                    void startOneTimeMonthlyCheckout();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-full border border-white/80 py-3.5 font-semibold text-white/95 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {checkoutLoadingMode === 'monthly_manual' ? 'Redirigiendo...' : 'Pago mensual manual (debito o credito)'}
+                </button>
+
+                <p className="px-2 text-xs text-white/85">
+                  El plan automatico renueva cada periodo. El pago mensual manual requiere renovacion cada mes.
+                </p>
+
+                {checkoutError && (
+                  <p className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-medium text-rose-700">{checkoutError}</p>
+                )}
+              </div>
             )}
           </div>
 
@@ -636,33 +706,29 @@ export function OffersSection() {
         ) : (
         <div className="space-y-3">
           {products.map((item) => (
-            <div key={item.id} className="rounded-3xl bg-white p-4 shadow-sm">
+            <a
+              key={item.id}
+              href={item.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-3xl bg-white p-4 shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              aria-label={`Ver ${item.title} en Mercado Libre`}
+            >
               <div className="flex items-start gap-3">
-                <a
-                  href={item.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0"
-                  aria-label={`Ver ${item.title} en Mercado Libre`}
-                >
+                <div className="shrink-0">
                   <img
                     src={item.thumbnail}
                     alt={item.title}
                     className="h-16 w-16 rounded-2xl object-cover bg-slate-100"
                     loading="lazy"
                   />
-                </a>
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-bold text-slate-900 line-clamp-2 hover:text-emerald-600"
-                      >
+                      <p className="font-bold text-slate-900 line-clamp-2 hover:text-emerald-600">
                         {item.title}
-                      </a>
+                      </p>
                       <p className="text-xs text-slate-400">{item.state || 'Mercado Libre Argentina'}</p>
                     </div>
                     {item.discount > 0 && (
@@ -683,19 +749,14 @@ export function OffersSection() {
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Afiliado AiPetFriendly</span>
-                    <a
-                      href={item.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"
-                    >
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
                       Ver producto
                       <ExternalLink size={13} />
-                    </a>
+                    </span>
                   </div>
                 </div>
               </div>
-            </div>
+            </a>
           ))}
         </div>
         )}
