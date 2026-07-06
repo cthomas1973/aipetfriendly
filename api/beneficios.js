@@ -6,6 +6,7 @@ const GROUP_QUERIES = {
 };
 
 const GROUP_KEYS = new Set(Object.keys(GROUP_QUERIES));
+const BENEFITS_DEBUG = String(process.env.BENEFITS_DEBUG || '').toLowerCase() === 'true';
 
 const PLACEHOLDER_IMAGE = 'https://placehold.co/300x300/f1f5f9/475569?text=AiPetFriendly';
 
@@ -217,23 +218,34 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   const mapped = base.map((product, index) => {
     const listingUrl = buildMeliSearchUrl(product.search);
     const directUrl = resolvedPermalinks[index] || listingUrl;
+    const linkSource = resolvedPermalinks[index] ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
 
-    return {
+    const affiliateLink = createAffiliateLink(affiliateId, directUrl);
+
+    const payload = {
       id: product.id,
       title: product.title,
       price: product.price,
       original_price: product.original_price || null,
       discount,
       thumbnail: product.thumbnail || PLACEHOLDER_IMAGE,
-      link: createAffiliateLink(affiliateId, directUrl),
+      link: affiliateLink,
       free_shipping: product.free_shipping,
       fast_delivery: product.fast_delivery,
       state: product.state,
       seller_loc: null,
     };
+
+    if (BENEFITS_DEBUG) {
+      payload.link_source = linkSource;
+      payload.destination_url = directUrl;
+      payload.affiliate_url = affiliateLink;
+    }
+
+    return payload;
   });
 
   return applyFiltersAndSort(mapped, shipping, delivery, sort);
@@ -304,6 +316,11 @@ export default async function handler(req, res) {
       const fallbackSearchUrl = buildMeliSearchUrl(product?.title || query);
       const destinationUrl = urlOriginal || permalinkById || fallbackSearchUrl;
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
+      const linkSource = urlOriginal
+        ? 'api_permalink'
+        : permalinkById
+          ? 'item_permalink'
+          : 'search_fallback';
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
@@ -317,7 +334,7 @@ export default async function handler(req, res) {
 
       const thumbnail = String(product?.thumbnail || '');
 
-      return {
+      const payload = {
         id: itemId,
         title: String(product?.title || 'Producto sin titulo'),
         price,
@@ -330,13 +347,21 @@ export default async function handler(req, res) {
         state: String(product?.address?.state_name || ''),
         seller_loc: product?.seller_address?.location || null,
       };
+
+      if (BENEFITS_DEBUG) {
+        payload.link_source = linkSource;
+        payload.destination_url = destinationUrl;
+        payload.affiliate_url = linkAfiliado;
+      }
+
+      return payload;
     }));
 
     const filtered = applyFiltersAndSort(mapped, shipping, delivery, sort);
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
     res.setHeader('X-Products-Source', 'api');
-    return res.status(200).json({ products: filtered, source: 'api' });
+    return res.status(200).json({ products: filtered, source: 'api', debug: BENEFITS_DEBUG });
   } catch (error) {
     return res.status(500).json({
       error: 'Error al conectar con Mercado Libre',

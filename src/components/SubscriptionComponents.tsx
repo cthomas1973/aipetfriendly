@@ -620,6 +620,9 @@ interface AffiliateProduct {
   free_shipping: boolean;
   fast_delivery: boolean;
   state: string;
+  link_source?: string;
+  destination_url?: string;
+  affiliate_url?: string;
 }
 
 const OFFER_GROUPS: Array<{ id: OfferGroup; label: string; emoji: string }> = [
@@ -646,6 +649,7 @@ export function OffersSection() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [errorProducts, setErrorProducts] = useState<string | null>(null);
+  const [benefitsDebug, setBenefitsDebug] = useState(false);
 
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
@@ -676,8 +680,10 @@ export function OffersSection() {
 
       const data = await response.json();
       setProducts(Array.isArray(data?.products) ? data.products : []);
+      setBenefitsDebug(Boolean(data?.debug));
     } catch (error) {
       setProducts([]);
+      setBenefitsDebug(false);
       setErrorProducts(error instanceof Error ? error.message : 'No se pudieron cargar productos en este momento.');
     } finally {
       setLoadingProducts(false);
@@ -857,6 +863,9 @@ export function OffersSection() {
                       <ExternalLink size={13} />
                     </span>
                   </div>
+                  {benefitsDebug && item.link_source ? (
+                    <p className="mt-1 text-[11px] font-medium text-slate-400">Debug link: {item.link_source}</p>
+                  ) : null}
                 </div>
               </div>
             </a>
