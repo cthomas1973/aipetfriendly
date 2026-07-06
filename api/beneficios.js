@@ -158,6 +158,31 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
   }
 }
 
+async function resolvePermalinkByItemId(itemId, mlAccessToken) {
+  const normalizedId = String(itemId || '').trim();
+  if (!normalizedId) {
+    return '';
+  }
+
+  try {
+    const response = await fetch(`https://api.mercadolibre.com/items/${encodeURIComponent(normalizedId)}`, {
+      headers: {
+        Accept: 'application/json',
+        ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      return '';
+    }
+
+    const data = await response.json();
+    return String(data?.permalink || '');
+  } catch {
+    return '';
+  }
+}
+
 async function fallbackProducts(group, affiliateId, shipping, delivery, sort, mlAccessToken) {
   const base = FALLBACK_CATALOG[group] || FALLBACK_CATALOG.alimentos;
 
@@ -250,10 +275,14 @@ export default async function handler(req, res) {
     const data = await response.json();
     const products = Array.isArray(data?.results) ? data.results : [];
 
-    const mapped = products.map((product) => {
+    const mapped = await Promise.all(products.map(async (product) => {
+      const itemId = String(product?.id || '').trim();
       const urlOriginal = product?.permalink || '';
+      const permalinkById = !urlOriginal && itemId
+        ? await resolvePermalinkByItemId(itemId, mlAccessToken)
+        : '';
       const fallbackSearchUrl = buildMeliSearchUrl(product?.title || query);
-      const destinationUrl = urlOriginal || fallbackSearchUrl;
+      const destinationUrl = urlOriginal || permalinkById || fallbackSearchUrl;
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
 
       const shippingInfo = product?.shipping || {};
@@ -269,7 +298,7 @@ export default async function handler(req, res) {
       const thumbnail = String(product?.thumbnail || '');
 
       return {
-        id: String(product?.id || ''),
+        id: itemId,
         title: String(product?.title || 'Producto sin titulo'),
         price,
         original_price: originalPrice || null,
@@ -281,7 +310,7 @@ export default async function handler(req, res) {
         state: String(product?.address?.state_name || ''),
         seller_loc: product?.seller_address?.location || null,
       };
-    });
+    }));
 
     const filtered = applyFiltersAndSort(mapped, shipping, delivery, sort);
 
