@@ -45,6 +45,36 @@ function resolveUsdAmount(planCode, pricing) {
   return Number(pricing.premiumMonthlyAutoUsd || 9.9);
 }
 
+function buildMpPreapprovalPayload(args) {
+  const payload = {
+    reason: `AiPetFriendly ${args.plan.title}`,
+    external_reference: args.user.id,
+    payer_email: args.user.email,
+    back_url: `${args.appBaseUrl}/?payment=mercadopago`,
+    notification_url: args.notificationUrl,
+    auto_recurring: {
+      frequency: args.plan.frequency,
+      frequency_type: args.plan.frequencyType,
+      transaction_amount: args.plan.amount,
+      currency_id: 'ARS',
+    },
+    status: 'pending',
+  };
+
+  if (args.includeProviderPlanId && args.plan.providerPlanId) {
+    payload.preapproval_plan_id = args.plan.providerPlanId;
+  }
+
+  return payload;
+}
+
+function resolveErrorMessage(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error || 'unknown');
+}
+
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, 'POST')) {
     return;
@@ -107,26 +137,42 @@ export default async function handler(req, res) {
       });
     }
 
-    const mpPayload = {
-      reason: `AiPetFriendly ${plan.title}`,
-      external_reference: user.id,
-      payer_email: user.email,
-      back_url: `${appBaseUrl}/?payment=mercadopago`,
-      notification_url: notificationUrl,
-      auto_recurring: {
-        frequency: plan.frequency,
-        frequency_type: plan.frequencyType,
-        transaction_amount: plan.amount,
-        currency_id: 'ARS',
-      },
-      status: 'pending',
-    };
+    let preapproval;
+    let fallbackWithoutPlanId = false;
 
-    if (plan.providerPlanId) {
-      mpPayload.preapproval_plan_id = plan.providerPlanId;
+    try {
+      const withPlanPayload = buildMpPreapprovalPayload({
+        plan,
+        user,
+        appBaseUrl,
+        notificationUrl,
+        includeProviderPlanId: true,
+      });
+      preapproval = await mpRequest('/preapproval', 'POST', withPlanPayload);
+    } catch (errorWithPlanId) {
+      if (!plan.providerPlanId) {
+        throw errorWithPlanId;
+      }
+
+      try {
+        const withoutPlanPayload = buildMpPreapprovalPayload({
+          plan,
+          user,
+          appBaseUrl,
+          notificationUrl,
+          includeProviderPlanId: false,
+        });
+        preapproval = await mpRequest('/preapproval', 'POST', withoutPlanPayload);
+        fallbackWithoutPlanId = true;
+      } catch (errorWithoutPlanId) {
+        const withPlanMessage = resolveErrorMessage(errorWithPlanId);
+        const withoutPlanMessage = resolveErrorMessage(errorWithoutPlanId);
+        throw new Error(
+          `No se pudo crear la suscripcion automatica. MP con plan: ${withPlanMessage}. MP sin plan: ${withoutPlanMessage}`,
+        );
+      }
     }
 
-    const preapproval = await mpRequest('/preapproval', 'POST', mpPayload);
     const initPoint = preapproval?.init_point || preapproval?.sandbox_init_point;
 
     if (!initPoint) {
@@ -150,6 +196,7 @@ export default async function handler(req, res) {
         settlementCountry: countryCode,
         pricingArs: plan.amount,
         pricingUsd: plan.planCode === 'annual' ? pricing.premiumAnnualAutoUsd : pricing.premiumMonthlyAutoUsd,
+        fallbackWithoutPlanId,
         checkout: preapproval,
       },
     });
