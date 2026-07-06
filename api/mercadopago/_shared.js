@@ -254,23 +254,67 @@ export async function upsertBillingRecord(admin, payload) {
   };
 
   if (payload.providerPreapprovalId) {
-    const { error } = await admin
+    const { data: existing, error: findError } = await admin
       .from('payment_subscriptions')
-      .upsert(record, { onConflict: 'provider_preapproval_id' });
+      .select('id')
+      .eq('provider_preapproval_id', payload.providerPreapprovalId)
+      .maybeSingle();
 
-    if (error) {
-      throw error;
+    if (findError) {
+      throw findError;
+    }
+
+    if (existing?.id) {
+      const { error: updateError } = await admin
+        .from('payment_subscriptions')
+        .update(record)
+        .eq('id', existing.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+      return;
+    }
+
+    const { error: insertError } = await admin
+      .from('payment_subscriptions')
+      .insert([record]);
+
+    if (insertError) {
+      throw insertError;
     }
     return;
   }
 
   if (payload.providerPaymentId) {
-    const { error } = await admin
+    const { data: existing, error: findError } = await admin
       .from('payment_subscriptions')
-      .upsert(record, { onConflict: 'provider_payment_id' });
+      .select('id')
+      .eq('provider_payment_id', payload.providerPaymentId)
+      .maybeSingle();
 
-    if (error) {
-      throw error;
+    if (findError) {
+      throw findError;
+    }
+
+    if (existing?.id) {
+      const { error: updateError } = await admin
+        .from('payment_subscriptions')
+        .update(record)
+        .eq('id', existing.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+      return;
+    }
+
+    const { error: insertError } = await admin
+      .from('payment_subscriptions')
+      .insert([record]);
+
+    if (insertError) {
+      throw insertError;
     }
     return;
   }
