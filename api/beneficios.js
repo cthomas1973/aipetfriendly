@@ -64,6 +64,15 @@ function buildMeliSearchUrl(search) {
   return `https://listado.mercadolibre.com.ar/${encodeURIComponent(normalized)}`;
 }
 
+function buildCanonicalItemUrl(itemId) {
+  const raw = String(itemId || '').trim().toUpperCase();
+  const match = raw.match(/^MLA-?(\d+)$/);
+  if (!match) {
+    return '';
+  }
+  return `https://articulo.mercadolibre.com.ar/MLA-${match[1]}`;
+}
+
 function createAffiliateLink(affiliateId, redirectUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
 
@@ -216,12 +225,15 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   );
 
   const mapped = base.map((product, index) => {
-    const listingUrl = buildMeliSearchUrl(product.search);
-    const directUrl = resolvedPermalinks[index] || listingUrl;
+    const directUrl = resolvedPermalinks[index] || '';
     const linkSource = resolvedPermalinks[index] ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
+
+    if (!directUrl) {
+      return null;
+    }
 
     const affiliateLink = createAffiliateLink(affiliateId, directUrl);
 
@@ -246,7 +258,7 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
     }
 
     return payload;
-  });
+  }).filter(Boolean);
 
   return applyFiltersAndSort(mapped, shipping, delivery, sort);
 }
@@ -307,20 +319,25 @@ export default async function handler(req, res) {
     const data = await response.json();
     const products = Array.isArray(data?.results) ? data.results : [];
 
-    const mapped = await Promise.all(products.map(async (product) => {
+    const mappedRaw = await Promise.all(products.map(async (product) => {
       const itemId = String(product?.id || '').trim();
       const urlOriginal = product?.permalink || '';
       const permalinkById = !urlOriginal && itemId
         ? await resolvePermalinkByItemId(itemId, mlAccessToken)
         : '';
-      const fallbackSearchUrl = buildMeliSearchUrl(product?.title || query);
-      const destinationUrl = urlOriginal || permalinkById || fallbackSearchUrl;
+      const canonicalItemUrl = buildCanonicalItemUrl(itemId);
+      const destinationUrl = urlOriginal || permalinkById || canonicalItemUrl;
+
+      if (!destinationUrl) {
+        return null;
+      }
+
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
       const linkSource = urlOriginal
         ? 'api_permalink'
         : permalinkById
           ? 'item_permalink'
-          : 'search_fallback';
+          : 'canonical_item_url';
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
@@ -356,6 +373,8 @@ export default async function handler(req, res) {
 
       return payload;
     }));
+
+    const mapped = mappedRaw.filter(Boolean);
 
     const filtered = applyFiltersAndSort(mapped, shipping, delivery, sort);
 
