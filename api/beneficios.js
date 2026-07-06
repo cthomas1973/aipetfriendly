@@ -133,9 +133,14 @@ function applyFiltersAndSort(items, shipping, delivery, sort) {
   return filtered;
 }
 
+const ML_DEFAULT_HEADERS = {
+  Accept: 'application/json',
+  'User-Agent': 'AiPetFriendly/1.0 (+https://www.aipetfriendly.ar)',
+};
+
 async function mlFetch(url, mlAccessToken, extraHeaders = {}) {
   const headersWithToken = {
-    Accept: 'application/json',
+    ...ML_DEFAULT_HEADERS,
     ...extraHeaders,
     ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
   };
@@ -143,7 +148,7 @@ async function mlFetch(url, mlAccessToken, extraHeaders = {}) {
   const firstResponse = await fetch(url, { headers: headersWithToken });
   if ((firstResponse.status === 401 || firstResponse.status === 403) && mlAccessToken) {
     const headersWithoutToken = {
-      Accept: 'application/json',
+      ...ML_DEFAULT_HEADERS,
       ...extraHeaders,
     };
     return fetch(url, { headers: headersWithoutToken });
@@ -166,7 +171,17 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
 
     const data = await response.json();
     const first = Array.isArray(data?.results) ? data.results[0] : null;
-    return String(first?.permalink || '');
+    const permalink = String(first?.permalink || '');
+    if (permalink) {
+      return permalink;
+    }
+
+    const itemId = String(first?.id || '').trim();
+    if (!itemId) {
+      return '';
+    }
+
+    return resolvePermalinkByItemId(itemId, mlAccessToken);
   } catch {
     return '';
   }
