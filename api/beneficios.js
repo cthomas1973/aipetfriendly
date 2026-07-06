@@ -70,7 +70,11 @@ function createAffiliateLink(affiliateId, redirectUrl) {
     try {
       const templateUrl = new URL(sourceTemplate);
       const destination = new URL(baseUrl);
-      const allowedParams = new Set(['matt_word', 'matt_tool']);
+      const allowedParams = new Set(['matt_tool']);
+
+      // `matt_word` can force Mercado Libre to open a generic search instead of
+      // the exact item permalink, so we explicitly remove it from destination links.
+      destination.searchParams.delete('matt_word');
 
       for (const [key, value] of templateUrl.searchParams.entries()) {
         if (!value || !allowedParams.has(key)) {
