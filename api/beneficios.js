@@ -225,15 +225,12 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   );
 
   const mapped = base.map((product, index) => {
-    const directUrl = resolvedPermalinks[index] || '';
+    const listingUrl = buildMeliSearchUrl(product.search);
+    const directUrl = resolvedPermalinks[index] || listingUrl;
     const linkSource = resolvedPermalinks[index] ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
-
-    if (!directUrl) {
-      return null;
-    }
 
     const affiliateLink = createAffiliateLink(affiliateId, directUrl);
 
@@ -258,7 +255,7 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
     }
 
     return payload;
-  }).filter(Boolean);
+  });
 
   return applyFiltersAndSort(mapped, shipping, delivery, sort);
 }
