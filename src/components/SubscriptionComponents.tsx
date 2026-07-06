@@ -93,6 +93,7 @@ export function PaywallCard() {
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
   const [checkoutLoadingMode, setCheckoutLoadingMode] = useState<'monthly' | 'annual' | 'monthly_manual' | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
   const [countryCode] = useState<string>(detectUserCountryCode());
   const [pricing, setPricing] = useState<BillingPricingSettings>({
     premiumMonthlyAutoArs: 9900,
@@ -139,6 +140,45 @@ export function PaywallCard() {
     setWhatsAppConsent(Boolean(user?.whatsappOptIn));
   }, [user]);
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const payment = url.searchParams.get('payment');
+    const mpParams = [
+      'collection_id',
+      'collection_status',
+      'payment_id',
+      'status',
+      'external_reference',
+      'payment_type',
+      'merchant_order_id',
+      'preference_id',
+    ];
+    const hasMpParams = mpParams.some((key) => url.searchParams.has(key));
+
+    if (!payment && !hasMpParams) {
+      return;
+    }
+
+    setCheckoutLoadingMode(null);
+
+    if (payment === 'failure') {
+      setCheckoutNotice(null);
+      setCheckoutError('Pago cancelado o rechazado. Puedes reintentar cuando quieras.');
+    } else if (payment === 'pending') {
+      setCheckoutNotice(null);
+      setCheckoutError('El pago quedo pendiente de acreditacion.');
+    } else if (payment === 'success') {
+      setCheckoutError(null);
+      setCheckoutNotice('Pago procesado. La activacion puede demorar unos segundos hasta que llegue el webhook.');
+    } else if (payment === 'mercadopago') {
+      setCheckoutError(null);
+      setCheckoutNotice('Regresaste desde Mercado Pago. Si confirmaste, aguarda unos segundos para la activacion.');
+    }
+
+    const cleanUrl = `${url.pathname}${url.hash || ''}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }, []);
+
   const handleUpgrade = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -180,6 +220,7 @@ export function PaywallCard() {
   const startRecurringCheckout = async (planCode: 'monthly' | 'annual') => {
     try {
       setCheckoutError(null);
+      setCheckoutNotice(null);
       setCheckoutLoadingMode(planCode);
       const checkout = await createMercadoPagoRecurringSubscription(planCode, {
         countryCode,
@@ -195,6 +236,7 @@ export function PaywallCard() {
   const startOneTimeMonthlyCheckout = async () => {
     try {
       setCheckoutError(null);
+      setCheckoutNotice(null);
       setCheckoutLoadingMode('monthly_manual');
       const checkout = await createMercadoPagoOneTimeMonthlyPayment({
         countryCode,
@@ -395,6 +437,10 @@ export function PaywallCard() {
                 <p className="px-2 text-xs text-white/85">
                   El plan automatico renueva cada periodo. El pago mensual manual requiere renovacion cada mes.
                 </p>
+
+                {checkoutNotice && (
+                  <p className="rounded-xl bg-emerald-100 px-3 py-2 text-sm font-medium text-emerald-800">{checkoutNotice}</p>
+                )}
 
                 {checkoutError && (
                   <p className="rounded-xl bg-rose-100 px-3 py-2 text-sm font-medium text-rose-700">{checkoutError}</p>
