@@ -7,7 +7,23 @@ import { updateUserNotificationProfile } from '../lib/supabase';
 import {
   createMercadoPagoOneTimeMonthlyPayment,
   createMercadoPagoRecurringSubscription,
+  fetchBillingPricingSettings,
 } from '../lib/supabase';
+import type { BillingPricingSettings } from '../types';
+
+function detectUserCountryCode(): string {
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale || navigator.language || '';
+    const parts = locale.split('-');
+    if (parts.length >= 2) {
+      return String(parts[1]).toUpperCase();
+    }
+  } catch {
+    // no-op
+  }
+
+  return 'AR';
+}
 import {
   buildCountryOptionsForPicker,
   buildE164Phone,
@@ -77,8 +93,39 @@ export function PaywallCard() {
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
   const [checkoutLoadingMode, setCheckoutLoadingMode] = useState<'monthly' | 'annual' | 'monthly_manual' | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [countryCode] = useState<string>(detectUserCountryCode());
+  const [pricing, setPricing] = useState<BillingPricingSettings>({
+    premiumMonthlyAutoArs: 9900,
+    premiumMonthlyAutoUsd: 9.9,
+    premiumAnnualAutoArs: 99900,
+    premiumAnnualAutoUsd: 99.9,
+    premiumMonthlyManualArs: 9900,
+    premiumMonthlyManualUsd: 9.9,
+  });
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
+  const arsFormatter = useMemo(() => new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }), []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPricing = async () => {
+      const data = await fetchBillingPricingSettings();
+      if (!cancelled) {
+        setPricing(data);
+      }
+    };
+
+    void loadPricing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const profile = readNotificationProfile(user);
@@ -134,7 +181,9 @@ export function PaywallCard() {
     try {
       setCheckoutError(null);
       setCheckoutLoadingMode(planCode);
-      const checkout = await createMercadoPagoRecurringSubscription(planCode);
+      const checkout = await createMercadoPagoRecurringSubscription(planCode, {
+        countryCode,
+      });
       window.location.href = checkout.initPoint;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo iniciar la suscripcion automatica.';
@@ -147,7 +196,9 @@ export function PaywallCard() {
     try {
       setCheckoutError(null);
       setCheckoutLoadingMode('monthly_manual');
-      const checkout = await createMercadoPagoOneTimeMonthlyPayment();
+      const checkout = await createMercadoPagoOneTimeMonthlyPayment({
+        countryCode,
+      });
       window.location.href = checkout.initPoint;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo iniciar el pago mensual.';
@@ -310,7 +361,9 @@ export function PaywallCard() {
                   className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 font-bold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Crown size={18} className="text-yellow-400" />
-                  {checkoutLoadingMode === 'monthly' ? 'Redirigiendo...' : 'Premium mensual (debito automatico)'}
+                  {checkoutLoadingMode === 'monthly'
+                    ? 'Redirigiendo...'
+                    : `Premium mensual (debito automatico) · ${arsFormatter.format(pricing.premiumMonthlyAutoArs)} / U$S ${pricing.premiumMonthlyAutoUsd.toFixed(2)}`}
                 </button>
 
                 <button
@@ -321,7 +374,9 @@ export function PaywallCard() {
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/80 py-3.5 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {checkoutLoadingMode === 'annual' ? 'Redirigiendo...' : 'Premium anual (debito automatico)'}
+                  {checkoutLoadingMode === 'annual'
+                    ? 'Redirigiendo...'
+                    : `Premium anual (debito automatico) · ${arsFormatter.format(pricing.premiumAnnualAutoArs)} / U$S ${pricing.premiumAnnualAutoUsd.toFixed(2)}`}
                 </button>
 
                 <button
@@ -332,7 +387,9 @@ export function PaywallCard() {
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/80 py-3.5 font-semibold text-white/95 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {checkoutLoadingMode === 'monthly_manual' ? 'Redirigiendo...' : 'Pago mensual manual (debito o credito)'}
+                  {checkoutLoadingMode === 'monthly_manual'
+                    ? 'Redirigiendo...'
+                    : `Premium pago mensual manual (debito, credito, transferencia) · ${arsFormatter.format(pricing.premiumMonthlyManualArs)} / U$S ${pricing.premiumMonthlyManualUsd.toFixed(2)}`}
                 </button>
 
                 <p className="px-2 text-xs text-white/85">

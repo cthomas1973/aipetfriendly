@@ -4,6 +4,7 @@ import type {
   AdminAiDashboardMetrics,
   AiUsageSettings,
   AdminUserRow,
+  BillingPricingSettings,
   Pet,
   PetAiUsageRow,
   ClinicalTimelineEntry,
@@ -63,6 +64,10 @@ interface MercadoPagoInitPointResponse {
   initPoint: string;
   mode: 'recurring' | 'one_time';
   planCode: string;
+}
+
+interface CheckoutContext {
+  countryCode?: string;
 }
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -592,6 +597,75 @@ export async function updateAdminAiUsageSettings(settings: AiUsageSettings): Pro
   }
 }
 
+const DEFAULT_BILLING_PRICING: BillingPricingSettings = {
+  premiumMonthlyAutoArs: 9900,
+  premiumMonthlyAutoUsd: 9.9,
+  premiumAnnualAutoArs: 99900,
+  premiumAnnualAutoUsd: 99.9,
+  premiumMonthlyManualArs: 9900,
+  premiumMonthlyManualUsd: 9.9,
+};
+
+export async function fetchBillingPricingSettings(): Promise<BillingPricingSettings> {
+  const { data, error } = await supabase.rpc('get_billing_pricing_settings');
+
+  if (error) {
+    console.error('No se pudo cargar pricing de planes:', error);
+    return { ...DEFAULT_BILLING_PRICING };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return { ...DEFAULT_BILLING_PRICING };
+  }
+
+  return {
+    premiumMonthlyAutoArs: Number(row.premium_monthly_auto_ars ?? DEFAULT_BILLING_PRICING.premiumMonthlyAutoArs),
+    premiumMonthlyAutoUsd: Number(row.premium_monthly_auto_usd ?? DEFAULT_BILLING_PRICING.premiumMonthlyAutoUsd),
+    premiumAnnualAutoArs: Number(row.premium_annual_auto_ars ?? DEFAULT_BILLING_PRICING.premiumAnnualAutoArs),
+    premiumAnnualAutoUsd: Number(row.premium_annual_auto_usd ?? DEFAULT_BILLING_PRICING.premiumAnnualAutoUsd),
+    premiumMonthlyManualArs: Number(row.premium_monthly_manual_ars ?? DEFAULT_BILLING_PRICING.premiumMonthlyManualArs),
+    premiumMonthlyManualUsd: Number(row.premium_monthly_manual_usd ?? DEFAULT_BILLING_PRICING.premiumMonthlyManualUsd),
+  };
+}
+
+export async function fetchAdminBillingPricingSettings(): Promise<BillingPricingSettings> {
+  const { data, error } = await supabase.rpc('admin_get_billing_pricing_settings');
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    throw new Error('No se encontro configuracion de precios de planes.');
+  }
+
+  return {
+    premiumMonthlyAutoArs: Number(row.premium_monthly_auto_ars),
+    premiumMonthlyAutoUsd: Number(row.premium_monthly_auto_usd),
+    premiumAnnualAutoArs: Number(row.premium_annual_auto_ars),
+    premiumAnnualAutoUsd: Number(row.premium_annual_auto_usd),
+    premiumMonthlyManualArs: Number(row.premium_monthly_manual_ars),
+    premiumMonthlyManualUsd: Number(row.premium_monthly_manual_usd),
+  };
+}
+
+export async function updateAdminBillingPricingSettings(settings: BillingPricingSettings): Promise<void> {
+  const { error } = await supabase.rpc('admin_update_billing_pricing_settings', {
+    p_premium_monthly_auto_ars: settings.premiumMonthlyAutoArs,
+    p_premium_monthly_auto_usd: settings.premiumMonthlyAutoUsd,
+    p_premium_annual_auto_ars: settings.premiumAnnualAutoArs,
+    p_premium_annual_auto_usd: settings.premiumAnnualAutoUsd,
+    p_premium_monthly_manual_ars: settings.premiumMonthlyManualArs,
+    p_premium_monthly_manual_usd: settings.premiumMonthlyManualUsd,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function fetchAdminAiDashboardMetrics(): Promise<AdminAiDashboardMetrics> {
   const { data, error } = await supabase.rpc('admin_get_ai_dashboard_metrics');
 
@@ -674,15 +748,20 @@ async function postMercadoPagoEndpoint<TResponse>(path: string, payload: Record<
   return body as TResponse;
 }
 
-export async function createMercadoPagoRecurringSubscription(planCode: MercadoPagoPlanCode): Promise<MercadoPagoInitPointResponse> {
+export async function createMercadoPagoRecurringSubscription(
+  planCode: MercadoPagoPlanCode,
+  context?: CheckoutContext,
+): Promise<MercadoPagoInitPointResponse> {
   return postMercadoPagoEndpoint<MercadoPagoInitPointResponse>('/api/mercadopago/create-subscription', {
     planCode,
+    countryCode: context?.countryCode,
   });
 }
 
-export async function createMercadoPagoOneTimeMonthlyPayment(): Promise<MercadoPagoInitPointResponse> {
+export async function createMercadoPagoOneTimeMonthlyPayment(context?: CheckoutContext): Promise<MercadoPagoInitPointResponse> {
   return postMercadoPagoEndpoint<MercadoPagoInitPointResponse>('/api/mercadopago/create-checkout', {
     planCode: 'monthly_manual',
+    countryCode: context?.countryCode,
   });
 }
 

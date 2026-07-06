@@ -1,17 +1,21 @@
 import {
+  createUsdGatewaySession,
   ensureMethod,
+  getBillingPricingSettings,
   getAppBaseUrl,
   getAuthenticatedContext,
   getWebhookNotificationUrl,
+  isArgentinaCountry,
   mpRequest,
+  normalizeCountryCode,
   readBody,
   sendJson,
   upsertBillingRecord,
 } from './_shared.js';
 
-function resolvePlan(planCode) {
-  const monthlyAmount = Number(process.env.MP_MONTHLY_AMOUNT_ARS || 9900);
-  const annualAmount = Number(process.env.MP_ANNUAL_AMOUNT_ARS || 99900);
+function resolvePlan(planCode, pricing) {
+  const monthlyAmount = Number(pricing.premiumMonthlyAutoArs || 9900);
+  const annualAmount = Number(pricing.premiumAnnualAutoArs || 99900);
 
   if (planCode === 'annual') {
     return {
@@ -34,6 +38,13 @@ function resolvePlan(planCode) {
   };
 }
 
+function resolveUsdAmount(planCode, pricing) {
+  if (planCode === 'annual') {
+    return Number(pricing.premiumAnnualAutoUsd || 99.9);
+  }
+  return Number(pricing.premiumMonthlyAutoUsd || 9.9);
+}
+
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, 'POST')) {
     return;
@@ -42,15 +53,59 @@ export default async function handler(req, res) {
   try {
     const payload = await readBody(req);
     const selectedPlanCode = payload?.planCode === 'annual' ? 'annual' : 'monthly';
-    const plan = resolvePlan(selectedPlanCode);
+    const countryCode = normalizeCountryCode(payload?.countryCode);
 
     const {
       user,
       admin,
     } = await getAuthenticatedContext(req);
+    const pricing = await getBillingPricingSettings(admin);
+    const plan = resolvePlan(selectedPlanCode, pricing);
 
     const appBaseUrl = getAppBaseUrl().replace(/\/$/, '');
     const notificationUrl = getWebhookNotificationUrl();
+
+    if (!isArgentinaCountry(countryCode)) {
+      const amountUsd = resolveUsdAmount(selectedPlanCode, pricing);
+      const usdCheckout = await createUsdGatewaySession({
+        mode: 'recurring',
+        planCode: selectedPlanCode,
+        userId: user.id,
+        email: user.email,
+        amount: amountUsd,
+        countryCode,
+        successUrl: `${appBaseUrl}/?payment=success`,
+        cancelUrl: `${appBaseUrl}/?payment=failure`,
+        metadata: {
+          origin: 'aipetfriendly',
+          settlementCountry: countryCode,
+        },
+      });
+
+      await upsertBillingRecord(admin, {
+        userId: user.id,
+        mode: 'recurring',
+        planCode: plan.planCode,
+        status: 'pending',
+        externalReference: user.id,
+        payerEmail: user.email,
+        amount: amountUsd,
+        currency: 'USD',
+        metadata: {
+          pricingArsReference: plan.amount,
+          pricingUsd: amountUsd,
+          checkoutProvider: process.env.USD_GATEWAY_PROVIDER || 'stripe',
+          providerReference: usdCheckout.providerReference,
+          checkout: usdCheckout.raw,
+        },
+      });
+
+      return sendJson(res, 200, {
+        initPoint: usdCheckout.initPoint,
+        mode: 'recurring',
+        planCode: plan.planCode,
+      });
+    }
 
     const mpPayload = {
       reason: `AiPetFriendly ${plan.title}`,
@@ -92,6 +147,9 @@ export default async function handler(req, res) {
       currentPeriodStart: preapproval?.auto_recurring?.start_date || null,
       currentPeriodEnd: preapproval?.next_payment_date || null,
       metadata: {
+        settlementCountry: countryCode,
+        pricingArs: plan.amount,
+        pricingUsd: plan.planCode === 'annual' ? pricing.premiumAnnualAutoUsd : pricing.premiumMonthlyAutoUsd,
         checkout: preapproval,
       },
     });

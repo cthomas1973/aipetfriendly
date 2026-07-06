@@ -36,6 +36,17 @@ export function getWebhookNotificationUrl() {
   return `${appBaseUrl}/api/mercadopago/webhook?webhook_key=${encodeURIComponent(webhookKey)}`;
 }
 
+export function normalizeCountryCode(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return 'AR';
+  if (raw.length === 2) return raw;
+  return raw.slice(0, 2);
+}
+
+export function isArgentinaCountry(countryCode) {
+  return normalizeCountryCode(countryCode) === 'AR';
+}
+
 export async function readBody(req) {
   if (!req.body) {
     return {};
@@ -112,6 +123,81 @@ export async function mpRequest(path, method = 'GET', body) {
   }
 
   return payload;
+}
+
+export async function getBillingPricingSettings(admin) {
+  const fallback = {
+    premiumMonthlyAutoArs: Number(process.env.MP_MONTHLY_AMOUNT_ARS || 9900),
+    premiumMonthlyAutoUsd: Number(process.env.MP_MONTHLY_AMOUNT_USD || 9.9),
+    premiumAnnualAutoArs: Number(process.env.MP_ANNUAL_AMOUNT_ARS || 99900),
+    premiumAnnualAutoUsd: Number(process.env.MP_ANNUAL_AMOUNT_USD || 99.9),
+    premiumMonthlyManualArs: Number(process.env.MP_MONTHLY_MANUAL_AMOUNT_ARS || process.env.MP_MONTHLY_AMOUNT_ARS || 9900),
+    premiumMonthlyManualUsd: Number(process.env.MP_MONTHLY_MANUAL_AMOUNT_USD || process.env.MP_MONTHLY_AMOUNT_USD || 9.9),
+  };
+
+  const { data, error } = await admin.rpc('get_billing_pricing_settings');
+  if (error) {
+    return fallback;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return fallback;
+  }
+
+  return {
+    premiumMonthlyAutoArs: Number(row.premium_monthly_auto_ars ?? fallback.premiumMonthlyAutoArs),
+    premiumMonthlyAutoUsd: Number(row.premium_monthly_auto_usd ?? fallback.premiumMonthlyAutoUsd),
+    premiumAnnualAutoArs: Number(row.premium_annual_auto_ars ?? fallback.premiumAnnualAutoArs),
+    premiumAnnualAutoUsd: Number(row.premium_annual_auto_usd ?? fallback.premiumAnnualAutoUsd),
+    premiumMonthlyManualArs: Number(row.premium_monthly_manual_ars ?? fallback.premiumMonthlyManualArs),
+    premiumMonthlyManualUsd: Number(row.premium_monthly_manual_usd ?? fallback.premiumMonthlyManualUsd),
+  };
+}
+
+export async function createUsdGatewaySession(args) {
+  const endpoint = process.env.USD_GATEWAY_CREATE_SESSION_URL || '';
+  if (!endpoint) {
+    throw new Error('Pasarela USD no configurada para usuarios fuera de Argentina.');
+  }
+
+  const apiKey = process.env.USD_GATEWAY_API_KEY || '';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-gateway-key': apiKey } : {}),
+    },
+    body: JSON.stringify({
+      provider: process.env.USD_GATEWAY_PROVIDER || 'stripe',
+      mode: args.mode,
+      planCode: args.planCode,
+      userId: args.userId,
+      email: args.email,
+      amount: args.amount,
+      currency: 'USD',
+      countryCode: normalizeCountryCode(args.countryCode),
+      successUrl: args.successUrl,
+      cancelUrl: args.cancelUrl,
+      metadata: args.metadata || {},
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || 'No se pudo crear checkout en la pasarela USD.');
+  }
+
+  const initPoint = payload?.initPoint || payload?.checkoutUrl;
+  if (!initPoint) {
+    throw new Error('La pasarela USD no devolvio una URL de checkout valida.');
+  }
+
+  return {
+    initPoint,
+    providerReference: payload?.providerReference || null,
+    raw: payload,
+  };
 }
 
 export async function upsertSubscriptionState(admin, userId, args) {

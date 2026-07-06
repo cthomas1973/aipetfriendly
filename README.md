@@ -181,6 +181,12 @@ MP_PLAN_MONTHLY_ID=            # opcional
 MP_PLAN_ANNUAL_ID=             # opcional
 MP_MONTHLY_AMOUNT_ARS=9900
 MP_ANNUAL_AMOUNT_ARS=99900
+MP_MONTHLY_AMOUNT_USD=9.90
+MP_ANNUAL_AMOUNT_USD=99.90
+
+USD_GATEWAY_PROVIDER=stripe
+USD_GATEWAY_CREATE_SESSION_URL=
+USD_GATEWAY_API_KEY=
 
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
@@ -202,11 +208,22 @@ Aplicar `supabase/migrations/012_mercadopago_billing.sql` para crear:
 - `payment_subscriptions`
 - `payment_webhook_events`
 
+Aplicar `supabase/migrations/013_billing_pricing_settings.sql` para crear:
+
+- `billing_pricing_settings`
+- RPCs de admin/public para precios ARS/USD
+
 #### Flujo de activacion Premium
 
 - El frontend redirige al checkout de Mercado Pago.
 - El estado Premium se confirma por webhook (no por redirect).
 - El webhook actualiza `subscriptions` y `users.access_mode`.
+
+#### Ruteo por pais y moneda
+
+- Usuarios AR: checkout via Mercado Pago en ARS.
+- Usuarios no-AR: checkout preparado para pasarela USD externa (`USD_GATEWAY_CREATE_SESSION_URL`).
+- Precios ARS/USD se gestionan desde la pestaña Admin y se muestran en Mi Plan.
 
 ### Crear nueva mascota
 1. Ir a tab "Mascotas"

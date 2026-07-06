@@ -4,8 +4,10 @@ import { useAppState } from '../context/AppStateContext';
 import {
   fetchAdminAiDashboardMetrics,
   fetchAdminAiQueryAudit,
+  fetchAdminBillingPricingSettings,
   fetchAdminAiUsageSettings,
   fetchAdminUsers,
+  updateAdminBillingPricingSettings,
   updateAdminAiUsageSettings,
   updateAdminUserAccess,
 } from '../lib/supabase';
@@ -13,6 +15,7 @@ import type {
   AdminAiAuditEntry,
   AdminAiDashboardMetrics,
   AiUsageSettings,
+  BillingPricingSettings,
   UserAccessLevel,
 } from '../types';
 
@@ -29,6 +32,7 @@ export function AdminUsersSection() {
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
+  const [savingPricing, setSavingPricing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -45,6 +49,14 @@ export function AdminUsersSection() {
     freeLimitPerPet: 10,
     premiumLimitPerPet: 100,
   });
+  const [pricing, setPricing] = useState<BillingPricingSettings>({
+    premiumMonthlyAutoArs: 9900,
+    premiumMonthlyAutoUsd: 9.9,
+    premiumAnnualAutoArs: 99900,
+    premiumAnnualAutoUsd: 99.9,
+    premiumMonthlyManualArs: 9900,
+    premiumMonthlyManualUsd: 9.9,
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -59,14 +71,16 @@ export function AdminUsersSection() {
     try {
       setLoading(true);
       setError(null);
-      const [rows, limitsData, metricsData, auditData] = await Promise.all([
+      const [rows, limitsData, pricingData, metricsData, auditData] = await Promise.all([
         fetchAdminUsers(),
         fetchAdminAiUsageSettings(),
+        fetchAdminBillingPricingSettings(),
         fetchAdminAiDashboardMetrics(),
         fetchAdminAiQueryAudit(20),
       ]);
       setAdminUsers(rows);
       setLimits(limitsData);
+      setPricing(pricingData);
       setMetrics(metricsData);
       setAuditRows(auditData);
     } catch (ex) {
@@ -92,6 +106,34 @@ export function AdminUsersSection() {
       setError(ex instanceof Error ? ex.message : 'No se pudieron guardar los limites IA.');
     } finally {
       setSavingLimits(false);
+    }
+  };
+
+  const savePricing = async () => {
+    try {
+      setSavingPricing(true);
+      setError(null);
+      setMsg(null);
+
+      const values = [
+        pricing.premiumMonthlyAutoArs,
+        pricing.premiumMonthlyAutoUsd,
+        pricing.premiumAnnualAutoArs,
+        pricing.premiumAnnualAutoUsd,
+        pricing.premiumMonthlyManualArs,
+        pricing.premiumMonthlyManualUsd,
+      ];
+
+      if (values.some((value) => Number.isNaN(value) || value < 0)) {
+        throw new Error('Los precios deben ser numeros validos y no negativos.');
+      }
+
+      await updateAdminBillingPricingSettings(pricing);
+      setMsg('Precios de planes actualizados correctamente.');
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudieron guardar los precios de planes.');
+    } finally {
+      setSavingPricing(false);
     }
   };
 
@@ -204,6 +246,123 @@ export function AdminUsersSection() {
           className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-70"
         >
           {savingLimits ? 'Guardando limites...' : 'Guardar limites IA'}
+        </button>
+      </div>
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+        <div>
+          <p className="font-bold text-slate-900">Precios de suscripcion Premium</p>
+          <p className="text-sm text-slate-500">Define valores en ARS y U$S para Mi Plan y checkout.</p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-800">Premium mensual debito automatico</p>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <label className="text-sm text-slate-700">
+                ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.premiumMonthlyAutoArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    premiumMonthlyAutoArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                U$S
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={pricing.premiumMonthlyAutoUsd}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    premiumMonthlyAutoUsd: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-800">Premium anual debito automatico</p>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <label className="text-sm text-slate-700">
+                ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.premiumAnnualAutoArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    premiumAnnualAutoArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                U$S
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={pricing.premiumAnnualAutoUsd}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    premiumAnnualAutoUsd: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-800">Premium pago mensual manual (debito, credito, transferencia)</p>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <label className="text-sm text-slate-700">
+                ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.premiumMonthlyManualArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    premiumMonthlyManualArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+              <label className="text-sm text-slate-700">
+                U$S
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={pricing.premiumMonthlyManualUsd}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    premiumMonthlyManualUsd: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={savePricing}
+          disabled={savingPricing}
+          className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-70"
+        >
+          {savingPricing ? 'Guardando precios...' : 'Guardar precios de planes'}
         </button>
       </div>
 

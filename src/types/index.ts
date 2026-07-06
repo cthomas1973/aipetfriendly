@@ -140,6 +140,15 @@ export interface AiUsageSettings {
   premiumLimitPerPet: number;
 }
 
+export interface BillingPricingSettings {
+  premiumMonthlyAutoArs: number;
+  premiumMonthlyAutoUsd: number;
+  premiumAnnualAutoArs: number;
+  premiumAnnualAutoUsd: number;
+  premiumMonthlyManualArs: number;
+  premiumMonthlyManualUsd: number;
+}
+
 export interface PetAiUsageRow {
   petId: string;
   usageCount: number;
