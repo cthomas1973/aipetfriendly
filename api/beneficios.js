@@ -134,10 +134,6 @@ function applyFiltersAndSort(items, shipping, delivery, sort) {
 }
 
 async function resolvePermalinkFromApi(search, mlAccessToken) {
-  if (!mlAccessToken) {
-    return '';
-  }
-
   try {
     const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
     url.searchParams.set('q', search);
@@ -146,7 +142,7 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
     const response = await fetch(url.toString(), {
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${mlAccessToken}`,
+        ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
       },
     });
 
