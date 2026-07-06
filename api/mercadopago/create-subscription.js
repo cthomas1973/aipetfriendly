@@ -72,7 +72,33 @@ function resolveErrorMessage(error) {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return String(error || 'unknown');
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === 'object') {
+    const candidate = error;
+    const parts = [
+      typeof candidate.message === 'string' ? candidate.message : '',
+      typeof candidate.error === 'string' ? candidate.error : '',
+      typeof candidate.details === 'string' ? candidate.details : '',
+      typeof candidate.hint === 'string' ? candidate.hint : '',
+      typeof candidate.code === 'string' ? `code=${candidate.code}` : '',
+    ].filter(Boolean);
+
+    if (parts.length > 0) {
+      return parts.join(' | ');
+    }
+
+    try {
+      return JSON.stringify(candidate).slice(0, 400);
+    } catch {
+      return '[object error]';
+    }
+  }
+
+  return 'unknown';
 }
 
 export default async function handler(req, res) {
@@ -209,7 +235,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('create-subscription error:', error);
     return sendJson(res, 500, {
-      error: error instanceof Error ? error.message : 'No se pudo crear la suscripcion.',
+      error: resolveErrorMessage(error) || 'No se pudo crear la suscripcion.',
     });
   }
 }
