@@ -133,18 +133,32 @@ function applyFiltersAndSort(items, shipping, delivery, sort) {
   return filtered;
 }
 
+async function mlFetch(url, mlAccessToken, extraHeaders = {}) {
+  const headersWithToken = {
+    Accept: 'application/json',
+    ...extraHeaders,
+    ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
+  };
+
+  const firstResponse = await fetch(url, { headers: headersWithToken });
+  if ((firstResponse.status === 401 || firstResponse.status === 403) && mlAccessToken) {
+    const headersWithoutToken = {
+      Accept: 'application/json',
+      ...extraHeaders,
+    };
+    return fetch(url, { headers: headersWithoutToken });
+  }
+
+  return firstResponse;
+}
+
 async function resolvePermalinkFromApi(search, mlAccessToken) {
   try {
     const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
     url.searchParams.set('q', search);
     url.searchParams.set('limit', '1');
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        Accept: 'application/json',
-        ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
-      },
-    });
+    const response = await mlFetch(url.toString(), mlAccessToken);
 
     if (!response.ok) {
       return '';
@@ -165,12 +179,7 @@ async function resolvePermalinkByItemId(itemId, mlAccessToken) {
   }
 
   try {
-    const response = await fetch(`https://api.mercadolibre.com/items/${encodeURIComponent(normalizedId)}`, {
-      headers: {
-        Accept: 'application/json',
-        ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
-      },
-    });
+    const response = await mlFetch(`https://api.mercadolibre.com/items/${encodeURIComponent(normalizedId)}`, mlAccessToken);
 
     if (!response.ok) {
       return '';
@@ -245,12 +254,8 @@ export default async function handler(req, res) {
       meliUrl.searchParams.set('state', region);
     }
 
-    const response = await fetch(meliUrl.toString(), {
-      headers: {
-        'User-Agent': 'AiPetFriendly/1.0 (+https://www.aipetfriendly.ar)',
-        Accept: 'application/json',
-        ...(mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {}),
-      },
+    const response = await mlFetch(meliUrl.toString(), mlAccessToken, {
+      'User-Agent': 'AiPetFriendly/1.0 (+https://www.aipetfriendly.ar)',
     });
 
     if (!response.ok) {
