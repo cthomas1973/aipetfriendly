@@ -372,15 +372,11 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
 
   const mapped = base.map((product, index) => {
     const specificUrl = pickSpecificProductUrl(resolvedPermalinks[index]);
-    const directUrl = specificUrl;
+    const directUrl = specificUrl || buildMeliSearchUrl(product.search);
     const linkSource = specificUrl ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
-
-    if (!directUrl) {
-      return null;
-    }
 
     const affiliateLink = createAffiliateLink(affiliateId, directUrl);
 
