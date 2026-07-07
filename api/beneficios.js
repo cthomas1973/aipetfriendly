@@ -75,6 +75,16 @@ function buildCanonicalItemUrl(itemId) {
   return `https://articulo.mercadolibre.com.ar/MLA-${match[1]}`;
 }
 
+function extractMlaId(value) {
+  const raw = String(value || '').toUpperCase();
+  const match = raw.match(/MLA-?(\d{6,})/);
+  if (!match) {
+    return '';
+  }
+
+  return `MLA-${match[1]}`;
+}
+
 function slugifyTitle(value) {
   return String(value || '')
     .toLowerCase()
@@ -86,7 +96,8 @@ function slugifyTitle(value) {
 }
 
 function buildForcedArticleUrl(itemId, title) {
-  const canonical = buildCanonicalItemUrl(itemId);
+  const normalizedItemId = extractMlaId(itemId);
+  const canonical = buildCanonicalItemUrl(normalizedItemId);
   if (!canonical) {
     return '';
   }
@@ -97,6 +108,18 @@ function buildForcedArticleUrl(itemId, title) {
   }
 
   return `${canonical}-${slug}-_JM`;
+}
+
+function sanitizeMercadoLibreProductUrl(urlOriginal, fallbackItemId, fallbackTitle) {
+  const fromUrl = extractMlaId(urlOriginal);
+  const fromFallback = extractMlaId(fallbackItemId);
+  const resolvedItemId = fromUrl || fromFallback;
+
+  if (!resolvedItemId) {
+    return '';
+  }
+
+  return buildForcedArticleUrl(resolvedItemId, fallbackTitle || 'producto');
 }
 
 function isSpecificProductUrl(url) {
@@ -160,13 +183,14 @@ function createAffiliateLink(affiliateId, redirectUrl) {
   };
 
   if (template.includes('{url}')) {
+    const cleanedRedirectUrl = sanitizeMercadoLibreProductUrl(redirectUrl, '', 'producto') || redirectUrl;
     const candidate = template
       .replaceAll('{id}', encodeURIComponent(affiliateId))
-      .replaceAll('{url}', encodeURIComponent(redirectUrl));
+      .replaceAll('{url}', encodeURIComponent(cleanedRedirectUrl));
 
     // Prevent known broken domain from producing dead outbound links.
     if (candidate.includes('click.mercadolibre.com/') || isSocialTemplate) {
-      return appendSafeTrackingParams(redirectUrl, template);
+      return appendSafeTrackingParams(cleanedRedirectUrl, template);
     }
 
     return candidate;
@@ -175,7 +199,8 @@ function createAffiliateLink(affiliateId, redirectUrl) {
   // Some ML affiliate links are profile/social URLs without {url}. In that case,
   // copy their tracking query params into the real product URL.
   if (template.startsWith('http://') || template.startsWith('https://')) {
-    return appendSafeTrackingParams(redirectUrl, template);
+    const cleanedRedirectUrl = sanitizeMercadoLibreProductUrl(redirectUrl, '', 'producto') || redirectUrl;
+    return appendSafeTrackingParams(cleanedRedirectUrl, template);
   }
 
   return redirectUrl;
@@ -474,8 +499,8 @@ export default async function handler(req, res) {
     const mappedRaw = await Promise.all(products.map(async (product) => {
       const directPermalink = String(product?.permalink || '').trim();
       const itemId = String(product?.id || '').trim();
-      const forcedUrl = buildForcedArticleUrl(itemId, product?.title || '');
-      const destinationUrl = pickSpecificProductUrl(directPermalink, forcedUrl, buildCanonicalItemUrl(itemId));
+      const forcedUrl = sanitizeMercadoLibreProductUrl(directPermalink, itemId, product?.title || 'producto');
+      const destinationUrl = pickSpecificProductUrl(forcedUrl, directPermalink, buildCanonicalItemUrl(itemId));
 
       if (!destinationUrl) {
         return null;
