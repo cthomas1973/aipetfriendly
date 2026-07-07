@@ -300,15 +300,13 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   );
 
   const mapped = base.map((product, index) => {
-    const directUrl = pickSpecificProductUrl(resolvedPermalinks[index]);
-    const linkSource = directUrl ? 'search_permalink' : 'search_fallback';
+    const specificUrl = pickSpecificProductUrl(resolvedPermalinks[index]);
+    const fallbackSearchUrl = buildMeliSearchUrl(product.search);
+    const directUrl = specificUrl || fallbackSearchUrl;
+    const linkSource = specificUrl ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
-
-    if (!directUrl) {
-      return null;
-    }
 
     const affiliateLink = createAffiliateLink(affiliateId, directUrl);
 
@@ -403,18 +401,18 @@ export default async function handler(req, res) {
         ? await resolvePermalinkByItemId(itemId, mlAccessToken)
         : '';
       const canonicalItemUrl = buildCanonicalItemUrl(itemId);
-      const destinationUrl = pickSpecificProductUrl(urlOriginal, permalinkById, canonicalItemUrl);
-
-      if (!destinationUrl) {
-        return null;
-      }
+      const specificDestinationUrl = pickSpecificProductUrl(urlOriginal, permalinkById, canonicalItemUrl);
+      const titleSearchUrl = buildMeliSearchUrl(String(product?.title || query));
+      const destinationUrl = specificDestinationUrl || titleSearchUrl;
 
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
-      const linkSource = urlOriginal
+      const linkSource = specificDestinationUrl
+        ? (urlOriginal
         ? 'api_permalink'
         : permalinkById
           ? 'item_permalink'
-          : 'canonical_item_url';
+          : 'canonical_item_url')
+        : 'api_search_fallback';
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
