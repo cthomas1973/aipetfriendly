@@ -204,11 +204,12 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
     const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
     url.searchParams.set('q', search);
     url.searchParams.set('limit', '1');
+    url.searchParams.set('sort', 'sold_quantity_desc');
 
     const response = await mlFetch(url.toString(), mlAccessToken);
 
     if (!response.ok) {
-      return '';
+      return resolvePermalinkFromHtmlSearch(search);
     }
 
     const data = await response.json();
@@ -249,7 +250,18 @@ async function resolvePermalinkFromHtmlSearch(search) {
       return directMatch[0];
     }
 
-    const idMatch = html.match(/MLA-\d{7,}/i);
+    const hrefPathMatch = html.match(/href=["'](\/MLA-\d+[^"']*)["']/i);
+    if (hrefPathMatch && hrefPathMatch[1]) {
+      const path = hrefPathMatch[1].startsWith('/') ? hrefPathMatch[1] : `/${hrefPathMatch[1]}`;
+      return `https://articulo.mercadolibre.com.ar${path}`;
+    }
+
+    const dataIdMatch = html.match(/(?:data-item-id|"id")\s*[:=]\s*["'](MLA-?\d{7,})["']/i);
+    if (dataIdMatch && dataIdMatch[1]) {
+      return buildCanonicalItemUrl(dataIdMatch[1]);
+    }
+
+    const idMatch = html.match(/MLA-?\d{7,}/i);
     if (idMatch && idMatch[0]) {
       return buildCanonicalItemUrl(idMatch[0]);
     }
@@ -349,6 +361,8 @@ export default async function handler(req, res) {
 
     if (sort === 'price_asc' || sort === 'price_desc') {
       meliUrl.searchParams.set('sort', sort);
+    } else {
+      meliUrl.searchParams.set('sort', 'sold_quantity_desc');
     }
 
     // Filtro por region si el frontend no tiene coordenadas activas.
