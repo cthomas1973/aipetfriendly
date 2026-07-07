@@ -75,6 +75,30 @@ function buildCanonicalItemUrl(itemId) {
   return `https://articulo.mercadolibre.com.ar/MLA-${match[1]}`;
 }
 
+function slugifyTitle(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+function buildForcedArticleUrl(itemId, title) {
+  const canonical = buildCanonicalItemUrl(itemId);
+  if (!canonical) {
+    return '';
+  }
+
+  const slug = slugifyTitle(title);
+  if (!slug) {
+    return canonical;
+  }
+
+  return `${canonical}-${slug}-_JM`;
+}
+
 function isSpecificProductUrl(url) {
   const value = String(url || '').trim();
   if (!value) {
@@ -212,7 +236,7 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
     const response = await mlFetch(url.toString(), mlAccessToken);
 
     if (!response.ok) {
-      return resolvePermalinkFromHtmlSearch(search);
+      return resolvePermalinkFromDuckDuckGo(search);
     }
 
     const data = await response.json();
@@ -234,8 +258,52 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
 
     return buildCanonicalItemUrl(itemId);
   } catch {
-    return resolvePermalinkFromHtmlSearch(search);
+    return resolvePermalinkFromDuckDuckGo(search);
   }
+}
+
+async function resolvePermalinkFromDuckDuckGo(search) {
+  const candidateQueries = [
+    `site:articulo.mercadolibre.com.ar ${search}`,
+    `${search} articulo mercadolibre`,
+    `${search} mercadolibre MLA`,
+  ];
+
+  for (const query of candidateQueries) {
+    try {
+      const url = new URL('https://duckduckgo.com/html/');
+      url.searchParams.set('q', query);
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AiPetFriendlyBot/1.0; +https://www.aipetfriendly.ar)',
+          Accept: 'text/html',
+        },
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const html = await response.text();
+      const uddgMatches = Array.from(html.matchAll(/uddg=([^&"']+)/gi));
+      for (const match of uddgMatches) {
+        const decoded = decodeURIComponent(match[1]);
+        if (isSpecificProductUrl(decoded)) {
+          return decoded;
+        }
+      }
+
+      const directMatch = html.match(/https:\/\/articulo\.mercadolibre\.com\.ar\/MLA-\d+[^"'\s]*/i);
+      if (directMatch?.[0] && isSpecificProductUrl(directMatch[0])) {
+        return directMatch[0];
+      }
+    } catch {
+      // continue with next query
+    }
+  }
+
+  return resolvePermalinkFromHtmlSearch(search);
 }
 
 async function resolvePermalinkFromHtmlSearch(search) {
@@ -304,12 +372,15 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
 
   const mapped = base.map((product, index) => {
     const specificUrl = pickSpecificProductUrl(resolvedPermalinks[index]);
-    const fallbackSearchUrl = buildMeliSearchUrl(product.search);
-    const directUrl = specificUrl || fallbackSearchUrl;
+    const directUrl = specificUrl;
     const linkSource = specificUrl ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
+
+    if (!directUrl) {
+      return null;
+    }
 
     const affiliateLink = createAffiliateLink(affiliateId, directUrl);
 
@@ -406,14 +477,19 @@ export default async function handler(req, res) {
 
     const mappedRaw = await Promise.all(products.map(async (product) => {
       const directPermalink = String(product?.permalink || '').trim();
+      const itemId = String(product?.id || '').trim();
+      const forcedUrl = buildForcedArticleUrl(itemId, product?.title || '');
+      const destinationUrl = pickSpecificProductUrl(directPermalink, forcedUrl, buildCanonicalItemUrl(itemId));
 
-      if (!isSpecificProductUrl(directPermalink)) {
+      if (!destinationUrl) {
         return null;
       }
-
-      const destinationUrl = directPermalink;
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
-      const linkSource = 'api_permalink';
+      const linkSource = isSpecificProductUrl(directPermalink)
+        ? 'api_permalink'
+        : isSpecificProductUrl(forcedUrl)
+          ? 'forced_from_id'
+          : 'canonical_item_url';
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
