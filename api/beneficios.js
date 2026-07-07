@@ -426,7 +426,7 @@ export default async function handler(req, res) {
     const meliUrl = new URL('https://api.mercadolibre.com/sites/MLA/search');
     meliUrl.searchParams.set('category', ML_PETS_CATEGORY);
     meliUrl.searchParams.set('q', query);
-    meliUrl.searchParams.set('limit', '20');
+    meliUrl.searchParams.set('limit', '10');
 
     if (sort === 'price_asc' || sort === 'price_desc') {
       meliUrl.searchParams.set('sort', sort);
@@ -522,7 +522,7 @@ export default async function handler(req, res) {
       return payload;
     }));
 
-    const mapped = mappedRaw.filter(Boolean);
+    const mapped = mappedRaw.filter(Boolean).slice(0, 10);
 
     const filtered = applyFiltersAndSort(mapped, shipping, delivery, sort);
 
