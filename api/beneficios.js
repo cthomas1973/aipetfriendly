@@ -73,6 +73,16 @@ function buildCanonicalItemUrl(itemId) {
   return `https://articulo.mercadolibre.com.ar/MLA-${match[1]}`;
 }
 
+function isSpecificProductUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) {
+    return false;
+  }
+
+  return /articulo\.mercadolibre\.com\.ar\/MLA-\d+/i.test(value)
+    || /mercadolibre\.com\.ar\/p\/MLA\d+/i.test(value);
+}
+
 function createAffiliateLink(affiliateId, redirectUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
   const isSocialTemplate = template.includes('/social/');
@@ -199,6 +209,32 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
 
     return buildCanonicalItemUrl(itemId);
   } catch {
+    return resolvePermalinkFromHtmlSearch(search);
+  }
+}
+
+async function resolvePermalinkFromHtmlSearch(search) {
+  try {
+    const searchUrl = buildMeliSearchUrl(search);
+    const response = await fetch(searchUrl, { headers: ML_DEFAULT_HEADERS });
+
+    if (!response.ok) {
+      return '';
+    }
+
+    const html = await response.text();
+    const directMatch = html.match(/https:\/\/articulo\.mercadolibre\.com\.ar\/MLA-\d+[^"'\s]*/i);
+    if (directMatch && directMatch[0]) {
+      return directMatch[0];
+    }
+
+    const idMatch = html.match(/MLA-\d{7,}/i);
+    if (idMatch && idMatch[0]) {
+      return buildCanonicalItemUrl(idMatch[0]);
+    }
+
+    return '';
+  } catch {
     return '';
   }
 }
@@ -238,6 +274,10 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
 
+    if (!isSpecificProductUrl(directUrl)) {
+      return null;
+    }
+
     const affiliateLink = createAffiliateLink(affiliateId, directUrl);
 
     const payload = {
@@ -263,7 +303,7 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
     return payload;
   });
 
-  return applyFiltersAndSort(mapped, shipping, delivery, sort);
+  return applyFiltersAndSort(mapped.filter(Boolean), shipping, delivery, sort);
 }
 
 export default async function handler(req, res) {
@@ -331,7 +371,7 @@ export default async function handler(req, res) {
       const canonicalItemUrl = buildCanonicalItemUrl(itemId);
       const destinationUrl = urlOriginal || permalinkById || canonicalItemUrl;
 
-      if (!destinationUrl) {
+      if (!destinationUrl || !isSpecificProductUrl(destinationUrl)) {
         return null;
       }
 
