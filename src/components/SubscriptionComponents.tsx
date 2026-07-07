@@ -13,6 +13,27 @@ import type { BillingPricingSettings } from '../types';
 
 function detectUserCountryCode(): string {
   try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (timezone.includes('Argentina')) {
+      return 'AR';
+    }
+  } catch {
+    // no-op
+  }
+
+  try {
+    const browserLocales = navigator.languages || [];
+    for (const locale of browserLocales) {
+      const parts = String(locale).split('-');
+      if (parts.length >= 2 && parts[1]) {
+        return String(parts[1]).toUpperCase();
+      }
+    }
+  } catch {
+    // no-op
+  }
+
+  try {
     const locale = Intl.DateTimeFormat().resolvedOptions().locale || navigator.language || '';
     const parts = locale.split('-');
     if (parts.length >= 2) {
@@ -34,6 +55,24 @@ import {
   sanitizePhoneLocalInput,
   splitPhoneByCountryCode,
 } from '../lib/phoneUtils';
+
+const DIAL_TO_COUNTRY_CODE: Record<string, string> = {
+  '+54': 'AR',
+  '+598': 'UY',
+  '+56': 'CL',
+  '+595': 'PY',
+  '+591': 'BO',
+  '+51': 'PE',
+  '+52': 'MX',
+  '+55': 'BR',
+  '+34': 'ES',
+  '+1': 'US',
+};
+
+function countryCodeFromDial(dialCode: string): string | null {
+  const normalized = String(dialCode || '').trim();
+  return DIAL_TO_COUNTRY_CODE[normalized] || null;
+}
 
 /* ── SubscriptionBanner ─────────────────────────────── */
 export function SubscriptionBanner() {
@@ -94,7 +133,7 @@ export function PaywallCard() {
   const [checkoutLoadingMode, setCheckoutLoadingMode] = useState<'monthly' | 'annual' | 'monthly_manual' | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
-  const [countryCode] = useState<string>(detectUserCountryCode());
+  const [detectedCountryCode] = useState<string>(detectUserCountryCode());
   const [pricing, setPricing] = useState<BillingPricingSettings>({
     premiumMonthlyAutoArs: 9900,
     premiumMonthlyAutoUsd: 9.9,
@@ -105,6 +144,14 @@ export function PaywallCard() {
   });
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
+  const checkoutCountryCode = useMemo(() => {
+    const fromProfilePhone = countryCodeFromDial(defaultNotifPhoneCountry);
+    if (fromProfilePhone) {
+      return fromProfilePhone;
+    }
+
+    return detectedCountryCode;
+  }, [defaultNotifPhoneCountry, detectedCountryCode]);
   const arsFormatter = useMemo(() => new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
@@ -223,7 +270,7 @@ export function PaywallCard() {
       setCheckoutNotice(null);
       setCheckoutLoadingMode(planCode);
       const checkout = await createMercadoPagoRecurringSubscription(planCode, {
-        countryCode,
+        countryCode: checkoutCountryCode,
       });
       window.location.href = checkout.initPoint;
     } catch (err) {
@@ -239,7 +286,7 @@ export function PaywallCard() {
       setCheckoutNotice(null);
       setCheckoutLoadingMode('monthly_manual');
       const checkout = await createMercadoPagoOneTimeMonthlyPayment({
-        countryCode,
+        countryCode: checkoutCountryCode,
       });
       window.location.href = checkout.initPoint;
     } catch (err) {
