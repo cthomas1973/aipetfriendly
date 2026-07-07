@@ -405,24 +405,15 @@ export default async function handler(req, res) {
     }
 
     const mappedRaw = await Promise.all(products.map(async (product) => {
-      const itemId = String(product?.id || '').trim();
-      const urlOriginal = product?.permalink || '';
-      const permalinkById = !urlOriginal && itemId
-        ? await resolvePermalinkByItemId(itemId, mlAccessToken)
-        : '';
-      const canonicalItemUrl = buildCanonicalItemUrl(itemId);
-      const specificDestinationUrl = pickSpecificProductUrl(urlOriginal, permalinkById, canonicalItemUrl);
-      const titleSearchUrl = buildMeliSearchUrl(String(product?.title || query));
-      const destinationUrl = specificDestinationUrl || titleSearchUrl;
+      const directPermalink = String(product?.permalink || '').trim();
 
+      if (!isSpecificProductUrl(directPermalink)) {
+        return null;
+      }
+
+      const destinationUrl = directPermalink;
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
-      const linkSource = specificDestinationUrl
-        ? (urlOriginal
-        ? 'api_permalink'
-        : permalinkById
-          ? 'item_permalink'
-          : 'canonical_item_url')
-        : 'api_search_fallback';
+      const linkSource = 'api_permalink';
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
