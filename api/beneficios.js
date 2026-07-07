@@ -14,28 +14,28 @@ const PLACEHOLDER_IMAGE = 'https://placehold.co/300x300/f1f5f9/475569?text=AiPet
 
 const FALLBACK_CATALOG = {
   alimentos: [
-    { id: 'fb-a-1', ml_item_id: 'MLA1400852755', title: 'Alimento Biopet cordero perro adulto 20kg', price: 28990, original_price: 32990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'alimento balanceado perro adulto 20kg', thumbnail: 'https://images.unsplash.com/photo-1583511655826-05700442b31b?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-a-2', ml_item_id: 'MLA1377054556', title: 'Alimento perro Nutricare Vitalpet adulto 20kg', price: 31200, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'alimento balanceado gato adulto 15kg', thumbnail: 'https://images.unsplash.com/photo-1511044568932-338cba0ad803?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-a-3', ml_item_id: 'MLA2049127794', title: 'Alimento humedo Balanced Souffle perro x12', price: 8990, original_price: 10990, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'snack premium perro 1kg', thumbnail: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-a-4', ml_item_id: 'MLA1713117471', title: 'Cama ortopedica para perros y mascotas', price: 21990, original_price: 24990, free_shipping: true, fast_delivery: false, state: 'Mendoza', search: 'comida humeda gato pack 24', thumbnail: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-1', title: 'Alimento balanceado perro adulto 20kg', free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'alimento balanceado perro adulto 20kg', thumbnail: 'https://images.unsplash.com/photo-1583511655826-05700442b31b?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-2', title: 'Alimento balanceado gato adulto 15kg', free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'alimento balanceado gato adulto 15kg', thumbnail: 'https://images.unsplash.com/photo-1511044568932-338cba0ad803?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-3', title: 'Snack premium para perro x 1kg', free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'snack premium perro 1kg', thumbnail: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-4', title: 'Comida humeda para gato pack x 24', free_shipping: true, fast_delivery: false, state: 'Mendoza', search: 'comida humeda gato pack x24', thumbnail: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=400&q=80' },
   ],
   accesorios: [
-    { id: 'fb-b-1', title: 'Correa reforzada antitirones para perro', price: 15490, original_price: 18990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'correa antitirones perro', thumbnail: 'https://images.unsplash.com/photo-1529429617124-aee7112e5f2f?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-b-2', title: 'Pretal acolchado ajustable', price: 12890, original_price: 0, free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pretal acolchado ajustable perro', thumbnail: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-b-3', title: 'Bolso transportador mascota mediana', price: 38990, original_price: 42990, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'bolso transportador mascota mediana', thumbnail: 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-b-4', title: 'Bebedero portatil para paseo', price: 6990, original_price: 0, free_shipping: false, fast_delivery: true, state: 'Rosario', search: 'bebedero portatil perro paseo', thumbnail: 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-1', title: 'Correa reforzada antitirones para perro', free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'correa antitirones perro', thumbnail: 'https://images.unsplash.com/photo-1529429617124-aee7112e5f2f?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-2', title: 'Pretal acolchado ajustable para perro', free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pretal acolchado ajustable perro', thumbnail: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-3', title: 'Bolso transportador mascota mediana', free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'bolso transportador mascota mediana', thumbnail: 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-b-4', title: 'Bebedero portatil para mascotas en paseo', free_shipping: false, fast_delivery: true, state: 'Rosario', search: 'bebedero portatil perro paseo', thumbnail: 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=400&q=80' },
   ],
   higiene: [
-    { id: 'fb-c-1', title: 'Shampoo hipoalergenico para mascotas', price: 8990, original_price: 10990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'shampoo hipoalergenico mascotas', thumbnail: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-c-2', title: 'Pipeta antipulgas perro mediano', price: 13990, original_price: 15990, free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pipeta antipulgas perro mediano', thumbnail: 'https://images.unsplash.com/photo-1581888227599-779811939961?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-c-3', title: 'Arena sanitaria aglutinante 10kg', price: 11890, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'arena sanitaria aglutinante 10kg', thumbnail: 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-c-4', title: 'Kit cepillo + guante de limpieza', price: 7590, original_price: 0, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'kit cepillo guante mascotas', thumbnail: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-1', title: 'Shampoo hipoalergenico para mascotas', free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'shampoo hipoalergenico mascotas', thumbnail: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-2', title: 'Pipeta antipulgas perro mediano', free_shipping: false, fast_delivery: true, state: 'CABA', search: 'pipeta antipulgas perro mediano', thumbnail: 'https://images.unsplash.com/photo-1581888227599-779811939961?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-3', title: 'Arena sanitaria aglutinante 10kg', free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'arena sanitaria aglutinante 10kg', thumbnail: 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-c-4', title: 'Kit cepillo y guante de limpieza mascotas', free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'kit cepillo guante mascotas', thumbnail: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?auto=format&fit=crop&w=400&q=80' },
   ],
   descanso: [
-    { id: 'fb-d-1', title: 'Cucha termica impermeable', price: 45990, original_price: 51990, free_shipping: true, fast_delivery: false, state: 'Buenos Aires', search: 'cucha termica impermeable perro', thumbnail: 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-d-2', title: 'Cama colchon viscoelastica mascota', price: 27990, original_price: 0, free_shipping: true, fast_delivery: true, state: 'CABA', search: 'cama colchon viscoelastica mascota', thumbnail: 'https://images.unsplash.com/photo-1530281700549-e82e7bf110d6?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-d-3', title: 'Rascador para gato con cueva', price: 34990, original_price: 39990, free_shipping: false, fast_delivery: false, state: 'Cordoba', search: 'rascador gato con cueva', thumbnail: 'https://images.unsplash.com/photo-1545249390-6bdfa286032f?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-d-4', title: 'Juguete interactivo inteligente', price: 12490, original_price: 14990, free_shipping: false, fast_delivery: true, state: 'Mendoza', search: 'juguete interactivo mascota', thumbnail: 'https://images.unsplash.com/photo-1560743173-567a3b5658b1?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-1', title: 'Cucha termica impermeable para perro', free_shipping: true, fast_delivery: false, state: 'Buenos Aires', search: 'cucha termica impermeable perro', thumbnail: 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-2', title: 'Cama ortopedica lavable para mascotas', free_shipping: true, fast_delivery: true, state: 'CABA', search: 'cama ortopedica lavable mascotas', thumbnail: 'https://images.unsplash.com/photo-1530281700549-e82e7bf110d6?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-3', title: 'Rascador para gato con cueva', free_shipping: false, fast_delivery: false, state: 'Cordoba', search: 'rascador gato con cueva', thumbnail: 'https://images.unsplash.com/photo-1545249390-6bdfa286032f?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-d-4', title: 'Juguete interactivo para mascotas', free_shipping: false, fast_delivery: true, state: 'Mendoza', search: 'juguete interactivo mascota', thumbnail: 'https://images.unsplash.com/photo-1560743173-567a3b5658b1?auto=format&fit=crop&w=400&q=80' },
   ],
 };
 
@@ -396,9 +396,8 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   );
 
   const mapped = base.map((product, index) => {
-    const forcedFromCatalog = sanitizeMercadoLibreProductUrl('', product.ml_item_id || '', product.title);
-    const directUrl = forcedFromCatalog || buildMeliSearchUrl(product.search);
-    const linkSource = forcedFromCatalog ? 'catalog_item_id' : 'search_fallback';
+    const directUrl = buildMeliSearchUrl(product.search);
+    const linkSource = 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
@@ -408,7 +407,7 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
     const payload = {
       id: product.id,
       title: product.title,
-      price: product.price,
+      price: product.price || null,
       original_price: product.original_price || null,
       discount,
       thumbnail: product.thumbnail || PLACEHOLDER_IMAGE,
