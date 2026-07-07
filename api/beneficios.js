@@ -107,7 +107,7 @@ function createAffiliateLink(affiliateId, redirectUrl) {
       .replaceAll('{url}', encodeURIComponent(redirectUrl));
 
     // Prevent known broken domain from producing dead outbound links.
-    if (candidate.includes('click.mercadolibre.com/') || candidate.includes('/social/')) {
+    if (candidate.includes('click.mercadolibre.com/')) {
       return appendSafeTrackingParams(redirectUrl, template);
     }
 
@@ -191,7 +191,12 @@ async function resolvePermalinkFromApi(search, mlAccessToken) {
       return '';
     }
 
-    return resolvePermalinkByItemId(itemId, mlAccessToken);
+    const permalinkById = await resolvePermalinkByItemId(itemId, mlAccessToken);
+    if (permalinkById) {
+      return permalinkById;
+    }
+
+    return buildCanonicalItemUrl(itemId);
   } catch {
     return '';
   }
