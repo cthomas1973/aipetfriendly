@@ -75,6 +75,7 @@ function buildCanonicalItemUrl(itemId) {
 
 function createAffiliateLink(affiliateId, redirectUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
+  const isSocialTemplate = template.includes('/social/');
 
   const appendSafeTrackingParams = (baseUrl, sourceTemplate) => {
     try {
@@ -107,7 +108,7 @@ function createAffiliateLink(affiliateId, redirectUrl) {
       .replaceAll('{url}', encodeURIComponent(redirectUrl));
 
     // Prevent known broken domain from producing dead outbound links.
-    if (candidate.includes('click.mercadolibre.com/')) {
+    if (candidate.includes('click.mercadolibre.com/') || isSocialTemplate) {
       return appendSafeTrackingParams(redirectUrl, template);
     }
 
