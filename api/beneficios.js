@@ -14,10 +14,10 @@ const PLACEHOLDER_IMAGE = 'https://placehold.co/300x300/f1f5f9/475569?text=AiPet
 
 const FALLBACK_CATALOG = {
   alimentos: [
-    { id: 'fb-a-1', ml_item_id: 'MLA1400852755', title: 'Alimento balanceado perro adulto 20kg', price: 28990, original_price: 32990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'alimento balanceado perro adulto 20kg', thumbnail: 'https://images.unsplash.com/photo-1583511655826-05700442b31b?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-a-2', ml_item_id: 'MLA1377054556', title: 'Alimento balanceado gato adulto 15kg', price: 31200, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'alimento balanceado gato adulto 15kg', thumbnail: 'https://images.unsplash.com/photo-1511044568932-338cba0ad803?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-a-3', ml_item_id: 'MLA2049127794', title: 'Snack premium para perro x 1kg', price: 8990, original_price: 10990, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'snack premium perro 1kg', thumbnail: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&w=400&q=80' },
-    { id: 'fb-a-4', ml_item_id: 'MLA1713117471', title: 'Comida humeda para gato pack x 24', price: 21990, original_price: 24990, free_shipping: true, fast_delivery: false, state: 'Mendoza', search: 'comida humeda gato pack 24', thumbnail: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-1', ml_item_id: 'MLA1400852755', title: 'Alimento Biopet cordero perro adulto 20kg', price: 28990, original_price: 32990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'alimento balanceado perro adulto 20kg', thumbnail: 'https://images.unsplash.com/photo-1583511655826-05700442b31b?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-2', ml_item_id: 'MLA1377054556', title: 'Alimento perro Nutricare Vitalpet adulto 20kg', price: 31200, original_price: 0, free_shipping: true, fast_delivery: false, state: 'Cordoba', search: 'alimento balanceado gato adulto 15kg', thumbnail: 'https://images.unsplash.com/photo-1511044568932-338cba0ad803?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-3', ml_item_id: 'MLA2049127794', title: 'Alimento humedo Balanced Souffle perro x12', price: 8990, original_price: 10990, free_shipping: false, fast_delivery: true, state: 'Santa Fe', search: 'snack premium perro 1kg', thumbnail: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&w=400&q=80' },
+    { id: 'fb-a-4', ml_item_id: 'MLA1713117471', title: 'Cama ortopedica para perros y mascotas', price: 21990, original_price: 24990, free_shipping: true, fast_delivery: false, state: 'Mendoza', search: 'comida humeda gato pack 24', thumbnail: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=400&q=80' },
   ],
   accesorios: [
     { id: 'fb-b-1', title: 'Correa reforzada antitirones para perro', price: 15490, original_price: 18990, free_shipping: true, fast_delivery: true, state: 'Buenos Aires', search: 'correa antitirones perro', thumbnail: 'https://images.unsplash.com/photo-1529429617124-aee7112e5f2f?auto=format&fit=crop&w=400&q=80' },
@@ -396,8 +396,9 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   );
 
   const mapped = base.map((product, index) => {
-    const directUrl = buildMeliSearchUrl(product.search);
-    const linkSource = 'search_fallback';
+    const forcedFromCatalog = sanitizeMercadoLibreProductUrl('', product.ml_item_id || '', product.title);
+    const directUrl = forcedFromCatalog || buildMeliSearchUrl(product.search);
+    const linkSource = forcedFromCatalog ? 'catalog_item_id' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
