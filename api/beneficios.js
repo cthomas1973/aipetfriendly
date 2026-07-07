@@ -1,8 +1,10 @@
+const ML_PETS_CATEGORY = 'MLA1071';
+
 const GROUP_QUERIES = {
-  alimentos: 'alimento mascotas',
-  accesorios: 'correa collar pretal mascotas',
-  higiene: 'shampoo pipeta mascotas',
-  descanso: 'cucha rascador juguetes mascotas',
+  alimentos: 'alimento',
+  accesorios: 'paseo correa pretal collar',
+  higiene: 'shampoo higienico piedras bano',
+  descanso: 'juguete rascador cama colchoneta',
 };
 
 const GROUP_KEYS = new Set(Object.keys(GROUP_QUERIES));
@@ -202,6 +204,7 @@ async function mlFetch(url, mlAccessToken, extraHeaders = {}) {
 async function resolvePermalinkFromApi(search, mlAccessToken) {
   try {
     const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
+    url.searchParams.set('category', ML_PETS_CATEGORY);
     url.searchParams.set('q', search);
     url.searchParams.set('limit', '1');
     url.searchParams.set('sort', 'sold_quantity_desc');
@@ -354,6 +357,7 @@ export default async function handler(req, res) {
     const query = GROUP_QUERIES[grupo] || 'alimento mascotas';
 
     const meliUrl = new URL('https://api.mercadolibre.com/sites/MLA/search');
+    meliUrl.searchParams.set('category', ML_PETS_CATEGORY);
     meliUrl.searchParams.set('q', query);
     meliUrl.searchParams.set('limit', '20');
 
@@ -374,25 +378,31 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const text = await response.text();
-
-      if (response.status === 401 || response.status === 403 || response.status >= 500) {
-        const fallback = await fallbackProducts(grupo, affiliateId, shipping, delivery, sort, mlAccessToken);
-        res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
-        res.setHeader('X-Products-Source', 'fallback');
-        res.setHeader('X-ML-Status', String(response.status));
-        return res.status(200).json({
-          products: fallback,
-          source: 'fallback',
-          warning: 'Mercado Libre API temporalmente no disponible, se muestran sugerencias afiliadas.',
-          details: text.slice(0, 200),
-        });
-      }
-
-      return res.status(502).json({ error: 'Mercado Libre API error', details: text.slice(0, 200) });
+      const fallback = await fallbackProducts(grupo, affiliateId, shipping, delivery, sort, mlAccessToken);
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+      res.setHeader('X-Products-Source', 'fallback');
+      res.setHeader('X-ML-Status', String(response.status));
+      return res.status(200).json({
+        products: fallback,
+        source: 'fallback',
+        warning: 'Mercado Libre API temporalmente no disponible, se muestran sugerencias afiliadas.',
+        details: text.slice(0, 200),
+      });
     }
 
     const data = await response.json();
     const products = Array.isArray(data?.results) ? data.results : [];
+
+    if (products.length === 0) {
+      const fallback = await fallbackProducts(grupo, affiliateId, shipping, delivery, sort, mlAccessToken);
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+      res.setHeader('X-Products-Source', 'fallback-empty');
+      return res.status(200).json({
+        products: fallback,
+        source: 'fallback',
+        warning: 'Mercado Libre devolvio 0 resultados; se muestran sugerencias afiliadas.',
+      });
+    }
 
     const mappedRaw = await Promise.all(products.map(async (product) => {
       const itemId = String(product?.id || '').trim();
