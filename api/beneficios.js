@@ -79,8 +79,29 @@ function isSpecificProductUrl(url) {
     return false;
   }
 
-  return /articulo\.mercadolibre\.com\.ar\/MLA-\d+/i.test(value)
-    || /mercadolibre\.com\.ar\/p\/MLA\d+/i.test(value);
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname;
+
+    if (!host.includes('mercadolibre.com.ar')) {
+      return false;
+    }
+
+    return /MLA-?\d{7,}/i.test(path) || /\/p\/MLA\d{7,}/i.test(path);
+  } catch {
+    return /mercadolibre\.com\.ar\/.+MLA-?\d{7,}/i.test(value);
+  }
+}
+
+function pickSpecificProductUrl(...candidates) {
+  for (const candidate of candidates) {
+    if (isSpecificProductUrl(candidate)) {
+      return String(candidate);
+    }
+  }
+
+  return '';
 }
 
 function createAffiliateLink(affiliateId, redirectUrl) {
@@ -267,14 +288,13 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
   );
 
   const mapped = base.map((product, index) => {
-    const listingUrl = buildMeliSearchUrl(product.search);
-    const directUrl = resolvedPermalinks[index] || listingUrl;
-    const linkSource = resolvedPermalinks[index] ? 'search_permalink' : 'search_fallback';
+    const directUrl = pickSpecificProductUrl(resolvedPermalinks[index]);
+    const linkSource = directUrl ? 'search_permalink' : 'search_fallback';
     const discount = product.original_price > 0
       ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
       : 0;
 
-    if (!isSpecificProductUrl(directUrl)) {
+    if (!directUrl) {
       return null;
     }
 
@@ -369,9 +389,9 @@ export default async function handler(req, res) {
         ? await resolvePermalinkByItemId(itemId, mlAccessToken)
         : '';
       const canonicalItemUrl = buildCanonicalItemUrl(itemId);
-      const destinationUrl = urlOriginal || permalinkById || canonicalItemUrl;
+      const destinationUrl = pickSpecificProductUrl(urlOriginal, permalinkById, canonicalItemUrl);
 
-      if (!destinationUrl || !isSpecificProductUrl(destinationUrl)) {
+      if (!destinationUrl) {
         return null;
       }
 
