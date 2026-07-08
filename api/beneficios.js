@@ -153,57 +153,13 @@ function pickSpecificProductUrl(...candidates) {
   return '';
 }
 
-function createAffiliateLink(affiliateId, redirectUrl) {
+function createAffiliateLink(affiliateId, productUrl) {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
-  const isSocialTemplate = template.includes('/social/');
+  if (!template) return productUrl;
 
-  const appendSafeTrackingParams = (baseUrl, sourceTemplate) => {
-    try {
-      const templateUrl = new URL(sourceTemplate);
-      const destination = new URL(baseUrl);
-      const allowedParams = new Set(['matt_tool']);
-
-      // `matt_word` can force Mercado Libre to open a generic search instead of
-      // the exact item permalink, so we explicitly remove it from destination links.
-      destination.searchParams.delete('matt_word');
-
-      for (const [key, value] of templateUrl.searchParams.entries()) {
-        if (!value || !allowedParams.has(key)) {
-          continue;
-        }
-        if (!destination.searchParams.has(key)) {
-          destination.searchParams.set(key, value);
-        }
-      }
-
-      return destination.toString();
-    } catch {
-      return baseUrl;
-    }
-  };
-
-  if (template.includes('{url}')) {
-    const cleanedRedirectUrl = sanitizeMercadoLibreProductUrl(redirectUrl, '', 'producto') || redirectUrl;
-    const candidate = template
-      .replaceAll('{id}', encodeURIComponent(affiliateId))
-      .replaceAll('{url}', encodeURIComponent(cleanedRedirectUrl));
-
-    // Prevent known broken domain from producing dead outbound links.
-    if (candidate.includes('click.mercadolibre.com/') || isSocialTemplate) {
-      return appendSafeTrackingParams(cleanedRedirectUrl, template);
-    }
-
-    return candidate;
-  }
-
-  // Some ML affiliate links are profile/social URLs without {url}. In that case,
-  // copy their tracking query params into the real product URL.
-  if (template.startsWith('http://') || template.startsWith('https://')) {
-    const cleanedRedirectUrl = sanitizeMercadoLibreProductUrl(redirectUrl, '', 'producto') || redirectUrl;
-    return appendSafeTrackingParams(cleanedRedirectUrl, template);
-  }
-
-  return redirectUrl;
+  return template
+    .replace('{id}', affiliateId)
+    .replace('{url}', encodeURIComponent(productUrl));
 }
 
 function applyFiltersAndSort(items, shipping, delivery, sort) {
@@ -394,7 +350,7 @@ async function resolveProductDataFromApi(search, mlAccessToken) {
     url.searchParams.set('category', ML_PETS_CATEGORY);
     url.searchParams.set('q', search);
     url.searchParams.set('limit', '1');
-    url.searchParams.set('sort', 'sold_quantity_desc');
+    url.searchParams.set('sort', 'items_sold_desc');
 
     const response = await mlFetch(url.toString(), mlAccessToken);
     if (!response.ok) return { permalink: '', price: null, thumbnail: '', state: '' };
@@ -487,7 +443,7 @@ export default async function handler(req, res) {
     if (sort === 'price_asc' || sort === 'price_desc') {
       meliUrl.searchParams.set('sort', sort);
     } else {
-      meliUrl.searchParams.set('sort', 'sold_quantity_desc');
+      meliUrl.searchParams.set('sort', 'items_sold_desc');
     }
 
     // Filtro por region si el frontend no tiene coordenadas activas.
@@ -527,33 +483,25 @@ export default async function handler(req, res) {
       });
     }
 
-    const mappedRaw = await Promise.all(products.map(async (product) => {
-      const directPermalink = String(product?.permalink || '').trim();
+    const mappedRaw = products.map((product) => {
+      // El permalink que devuelve ML apunta exactamente al producto individual.
+      const permalink = String(product?.permalink || '').trim();
       const itemId = String(product?.id || '').trim();
-      const forcedUrl = sanitizeMercadoLibreProductUrl(directPermalink, itemId, product?.title || 'producto');
-      const destinationUrl = pickSpecificProductUrl(forcedUrl, directPermalink, buildCanonicalItemUrl(itemId));
+      const destinationUrl = permalink || buildCanonicalItemUrl(itemId);
 
-      if (!destinationUrl) {
-        return null;
-      }
+      if (!destinationUrl) return null;
+
       const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
-      const linkSource = isSpecificProductUrl(directPermalink)
-        ? 'api_permalink'
-        : isSpecificProductUrl(forcedUrl)
-          ? 'forced_from_id'
-          : 'canonical_item_url';
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
       const fastDelivery = logisticType === 'fulfillment' || logisticType === 'cross_docking';
 
       const originalPrice = Number(product?.original_price || 0);
-      const price = Number(product?.price || 0);
+      const price = Number(product?.price || 0) || null;
       const discount = originalPrice > 0 && price > 0
         ? Math.max(0, Math.round(((originalPrice - price) / originalPrice) * 100))
         : 0;
-
-      const thumbnail = String(product?.thumbnail || '');
 
       const payload = {
         id: itemId,
@@ -561,22 +509,21 @@ export default async function handler(req, res) {
         price,
         original_price: originalPrice || null,
         discount,
-        thumbnail: thumbnail.replace('-I.jpg', '-O.jpg'),
+        thumbnail: String(product?.thumbnail || '').replace('-I.jpg', '-O.jpg') || PLACEHOLDER_IMAGE,
         link: linkAfiliado,
         free_shipping: Boolean(shippingInfo?.free_shipping),
         fast_delivery: fastDelivery,
         state: String(product?.address?.state_name || ''),
-        seller_loc: product?.seller_address?.location || null,
       };
 
       if (BENEFITS_DEBUG) {
-        payload.link_source = linkSource;
+        payload.link_source = 'api_permalink';
         payload.destination_url = destinationUrl;
         payload.affiliate_url = linkAfiliado;
       }
 
       return payload;
-    }));
+    });
 
     const mapped = mappedRaw.filter(Boolean).slice(0, 10);
 
