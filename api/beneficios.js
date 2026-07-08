@@ -1,8 +1,7 @@
 // beneficios.js
-// ML API (api.mercadolibre.com) bloquea las IPs de Vercel con 403 en todos
-// los endpoints. No se realizan llamadas a la API. Los productos se sirven
-// desde un catalogo curado con links afiliados construidos sobre URLs publicas
-// de Mercado Libre (listado.mercadolibre.com.ar) que si son accesibles.
+// Si ML_REFRESH_TOKEN esta configurado en Vercel, usa el flujo OAuth
+// authorization_code para obtener access_token y consultar productos reales.
+// Sin refresh_token, sirve el catalogo curado con links de listado ML.
 
 const GROUP_KEYS = new Set(['alimentos', 'accesorios', 'higiene', 'descanso']);
 
@@ -87,6 +86,88 @@ function getMattToolId() {
   return process.env.ML_AFFILIATE_ID || '';
 }
 
+// ── Token via refresh_token ───────────────────────────────────────────────────
+let _cachedToken = { token: '', expiresAt: 0 };
+
+async function getFreshAccessToken() {
+  const refreshToken = process.env.ML_REFRESH_TOKEN || '';
+  const appId        = process.env.ML_APP_ID        || '';
+  const appSecret    = process.env.ML_APP_SECRET     || '';
+
+  if (!refreshToken || !appId || !appSecret) return '';
+
+  if (_cachedToken.token && Date.now() < _cachedToken.expiresAt - 60_000) {
+    return _cachedToken.token;
+  }
+
+  try {
+    const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({
+        grant_type:    'refresh_token',
+        client_id:     appId,
+        client_secret: appSecret,
+        refresh_token: refreshToken,
+      }).toString(),
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    _cachedToken = {
+      token: String(data.access_token || ''),
+      expiresAt: Date.now() + Number(data.expires_in || 21600) * 1000,
+    };
+    return _cachedToken.token;
+  } catch {
+    return '';
+  }
+}
+
+// ── ML API search ─────────────────────────────────────────────────────────────
+const GROUP_QUERIES = {
+  alimentos: 'alimento perro gato',
+  accesorios: 'correa pretal collar perro',
+  higiene: 'shampoo antipulgas mascotas',
+  descanso: 'juguete cama rascador mascota',
+};
+
+async function fetchMlProducts(grupo, sortParam, accessToken) {
+  const u = new URL('https://api.mercadolibre.com/sites/MLA/search');
+  u.searchParams.set('category', 'MLA1071');
+  u.searchParams.set('q', GROUP_QUERIES[grupo] || 'mascotas');
+  u.searchParams.set('limit', '10');
+  if (sortParam) u.searchParams.set('sort', sortParam);
+
+  const headers = { Accept: 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) };
+  const res = await fetch(u.toString(), { headers });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return Array.isArray(data.results) && data.results.length > 0 ? data.results : null;
+}
+
+function mapMlProduct(p, mattTool) {
+  const permalink = String(p.permalink || '');
+  const link = permalink
+    ? permalink + (permalink.includes('?') ? '&' : '?') + (mattTool ? `matt_tool=${mattTool}` : '')
+    : '';
+  const shipping = p.shipping || {};
+  const logistic = String(shipping.logistic_type || '').toLowerCase();
+  const price = Number(p.price || 0) || null;
+  const origPrice = Number(p.original_price || 0);
+  return {
+    id:             String(p.id),
+    title:          String(p.title || ''),
+    price,
+    original_price: origPrice || null,
+    discount:       origPrice > 0 && price ? Math.max(0, Math.round(((origPrice - price) / origPrice) * 100)) : 0,
+    thumbnail:      String(p.thumbnail || '').replace('-I.jpg', '-O.jpg'),
+    link,
+    free_shipping:  Boolean(shipping.free_shipping),
+    fast_delivery:  ['fulfillment', 'cross_docking'].includes(logistic),
+    state:          String(p.address?.state_name || ''),
+  };
+}
+
 function buildAffiliateLink(search) {
   const mattToolId = getMattToolId();
   const slug = String(search || '').trim().replace(/\s+/g, '-').toLowerCase();
@@ -107,14 +188,38 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const grupo = normalizeGroup(firstQuery(req.query.grupo, 'alimentos'));
-  const sort  = firstQuery(req.query.sort, '');
+  const grupo    = normalizeGroup(firstQuery(req.query.grupo, 'alimentos'));
+  const sort     = firstQuery(req.query.sort, '');
   const shipping = toBool(firstQuery(req.query.shipping, 'false'));
-  const delivery  = toBool(firstQuery(req.query.delivery,  'false'));
-  const mattTool  = getMattToolId();
+  const delivery = toBool(firstQuery(req.query.delivery,  'false'));
+  const mattTool = getMattToolId();
 
+  // ── Intentar ML API con refresh_token ─────────────────────────────────────
+  const accessToken = await getFreshAccessToken();
+  if (accessToken) {
+    try {
+      const primarySort = (sort === 'price_asc' || sort === 'price_desc') ? sort : 'sold_quantity_desc';
+      let results = await fetchMlProducts(grupo, primarySort, accessToken);
+      if (!results) results = await fetchMlProducts(grupo, null, accessToken); // retry sin sort
+
+      if (results) {
+        const products = results
+          .map(p => mapMlProduct(p, mattTool))
+          .filter(p => p.link)
+          .filter(p => !shipping || p.free_shipping)
+          .filter(p => !delivery  || p.fast_delivery)
+          .slice(0, 10);
+
+        res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
+        return res.status(200).json({ products, mattTool, source: 'api' });
+      }
+    } catch {
+      // cae al catalogo estatico
+    }
+  }
+
+  // ── Catalogo estatico (sin refresh_token o si ML API falla) ───────────────
   const base = CATALOG[grupo] || CATALOG.alimentos;
-
   const products = base.map(p => ({
     id:             p.id,
     title:          p.title,
@@ -127,6 +232,11 @@ export default async function handler(req, res) {
     fast_delivery:  p.fast_delivery,
     state:          p.state,
   }));
+
+  const filtered = applyFiltersAndSort(products, shipping, delivery, sort).slice(0, 10);
+  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
+  return res.status(200).json({ products: filtered, mattTool, source: 'static' });
+}
 
   const filtered = applyFiltersAndSort(products, shipping, delivery, sort).slice(0, 10);
 
