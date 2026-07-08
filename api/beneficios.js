@@ -175,12 +175,64 @@ function buildAffiliateLink(search) {
   return mattToolId ? `${base}?matt_tool=${encodeURIComponent(mattToolId)}` : base;
 }
 
+function buildAffiliateLinkFromPermalink(permalink) {
+  const mattToolId = getMattToolId();
+  if (!permalink) return '';
+  return mattToolId
+    ? `${permalink}${permalink.includes('?') ? '&' : '?'}matt_tool=${encodeURIComponent(mattToolId)}`
+    : permalink;
+}
+
 function applyFiltersAndSort(items, shipping, delivery, sort) {
   let filtered = shipping ? items.filter(i => i.free_shipping) : [...items];
   if (delivery) filtered = filtered.filter(i => i.fast_delivery);
   if (sort === 'price_asc') filtered.sort((a, b) => (a.price || 0) - (b.price || 0));
   else if (sort === 'price_desc') filtered.sort((a, b) => (b.price || 0) - (a.price || 0));
   return filtered;
+}
+
+// ── Supabase REST API (lectura de productos guardados por el cron) ─────────────
+async function fetchFromSupabase(grupo, shipping, delivery, sort) {
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
+  if (!supabaseUrl || !supabaseKey) return null;
+
+  // Columnas necesarias, ordenadas por updated_at desc (mas recientes primero)
+  const params = new URLSearchParams({
+    select: 'mla_id,title,price,thumbnail,permalink,grupo,pet_types,free_shipping,fast_delivery',
+    grupo:  `eq.${grupo}`,
+    active: 'eq.true',
+    order:  'updated_at.desc',
+    limit:  '30',
+  });
+
+  const res = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?${params.toString()}`, {
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) return null;
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const mattTool = getMattToolId();
+  const mapped = rows.map(p => ({
+    id:             p.mla_id,
+    title:          String(p.title || ''),
+    price:          p.price ?? null,
+    original_price: null,
+    discount:       0,
+    thumbnail:      String(p.thumbnail || ''),
+    link:           buildAffiliateLinkFromPermalink(p.permalink),
+    free_shipping:  Boolean(p.free_shipping),
+    fast_delivery:  Boolean(p.fast_delivery),
+    state:          '',
+  }));
+
+  return { products: applyFiltersAndSort(mapped, shipping, delivery, sort).slice(0, 10), mattTool };
 }
 
 export default async function handler(req, res) {
@@ -194,13 +246,24 @@ export default async function handler(req, res) {
   const delivery = toBool(firstQuery(req.query.delivery,  'false'));
   const mattTool = getMattToolId();
 
-  // ── Intentar ML API con refresh_token ─────────────────────────────────────
+  // ── 1. Supabase (productos reales llenados por el cron diario) ─────────────
+  try {
+    const supaResult = await fetchFromSupabase(grupo, shipping, delivery, sort);
+    if (supaResult && supaResult.products.length > 0) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ ...supaResult, source: 'supabase' });
+    }
+  } catch {
+    // cae al catalogo estatico
+  }
+
+  // ── 2. Intentar ML API con refresh_token (si Supabase vacio) ─────────────
   const accessToken = await getFreshAccessToken();
   if (accessToken) {
     try {
       const primarySort = (sort === 'price_asc' || sort === 'price_desc') ? sort : 'sold_quantity_desc';
       let results = await fetchMlProducts(grupo, primarySort, accessToken);
-      if (!results) results = await fetchMlProducts(grupo, null, accessToken); // retry sin sort
+      if (!results) results = await fetchMlProducts(grupo, null, accessToken);
 
       if (results) {
         const products = results
@@ -218,7 +281,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── Catalogo estatico (sin refresh_token o si ML API falla) ───────────────
+  // ── 3. Catalogo estatico (ultimo recurso) ─────────────────────────────────
   const base = CATALOG[grupo] || CATALOG.alimentos;
   const products = base.map(p => ({
     id:             p.id,
