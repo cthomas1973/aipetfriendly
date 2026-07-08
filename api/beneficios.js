@@ -411,15 +411,19 @@ async function fallbackProducts(group, shipping, delivery, sort, mlAccessToken) 
     if (permalink && isSpecificProductUrl(permalink)) {
       destinationUrl = permalink;
     } else {
-      // Si fallo, construimos la URL del articulo usando el ID real del catalogo.
-      // Requiere IDs en formato MLA-xxxxxxxx; si el ID es ficticio, la URL sera vacia.
+      // Intentar construir URL de articulo con el ID del catalogo (requiere ID MLA real).
       destinationUrl = buildForcedArticleUrl(product.id, product.title);
     }
 
-    // Si no hay URL de producto valida, omitir el item (nunca usar URL de listado).
-    if (!isSpecificProductUrl(destinationUrl)) return null;
+    // Si aun no hay URL de producto especifica, usar URL de busqueda como ultimo recurso.
+    // Es mejor mostrar el producto aunque llegue al listado que no mostrar nada.
+    if (!destinationUrl) {
+      destinationUrl = buildMeliSearchUrl(product.search);
+    }
 
-    const linkSource = permalink && isSpecificProductUrl(permalink) ? 'resolved_permalink' : 'forced_article_fallback';
+    const linkSource = isSpecificProductUrl(destinationUrl)
+      ? (permalink && isSpecificProductUrl(permalink) ? 'resolved_permalink' : 'forced_article_fallback')
+      : 'search_fallback';
     const price = resolvedPrice ?? product.price ?? null;
     const affiliateLink = createAffiliateLink(destinationUrl);
     const discount = (price && product.original_price > 0)

@@ -699,7 +699,17 @@ async function fetchFromMlApi(group: OfferGroup, sort: OfferSort, mattTool: stri
   u.searchParams.set('sort', mlSort);
   u.searchParams.set('limit', '10');
 
-  const res = await fetch(u.toString(), { headers: { Accept: 'application/json' } });
+  let res = await fetch(u.toString(), { headers: { Accept: 'application/json' } });
+
+  // Si el sort da error, reintentar sin sort
+  if (!res.ok && res.status >= 400 && res.status < 500) {
+    const u2 = new URL('https://api.mercadolibre.com/sites/MLA/search');
+    u2.searchParams.set('category', 'MLA1071');
+    u2.searchParams.set('q', ML_GROUP_QUERIES[group]);
+    u2.searchParams.set('limit', '10');
+    res = await fetch(u2.toString(), { headers: { Accept: 'application/json' } });
+  }
+
   if (!res.ok) throw new Error(`ML API status ${res.status}`);
 
   const data: { results?: unknown[] } = await res.json();
@@ -787,7 +797,13 @@ export function OffersSection() {
       // El browser SI puede acceder a la API publica de ML (no hay bloqueo de IP).
       // Esto garantiza productos reales con precios y permalinks directos.
       try {
-        const browserProducts = await fetchFromMlApi(group, sort, mattTool);
+        let browserProducts = await fetchFromMlApi(group, sort, mattTool);
+
+        // Si fallo el sort, reintentamos con relevance
+        if (browserProducts.length === 0) {
+          browserProducts = await fetchFromMlApi(group, 'relevance', mattTool);
+        }
+
         const filtered = browserProducts
           .filter(p => !freeShipping || p.free_shipping)
           .filter(p => !fastDelivery || p.fast_delivery);
@@ -796,8 +812,9 @@ export function OffersSection() {
           setProducts(filtered);
           return;
         }
-      } catch {
+      } catch (browserErr) {
         // Si la llamada desde el browser falla, caemos al resultado del servidor.
+        console.warn('[Beneficios] Browser ML API falló:', browserErr);
       }
 
       // 3. Usar productos del servidor como ultimo recurso.
