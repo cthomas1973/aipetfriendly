@@ -153,13 +153,38 @@ function pickSpecificProductUrl(...candidates) {
   return '';
 }
 
-function createAffiliateLink(affiliateId, productUrl) {
+// Extrae el valor de matt_tool de ML_AFFILIATE_TEMPLATE o ML_AFFILIATE_ID.
+// El link correcto de afiliado es simplemente: permalink?matt_tool=ID
+function getMattToolId() {
   const template = process.env.ML_AFFILIATE_TEMPLATE || '';
-  if (!template) return productUrl;
+  if (template) {
+    // Intentar extraerlo de la URL del template (ej: ...&matt_tool=46442169&...)
+    try {
+      const url = new URL(template);
+      const v = url.searchParams.get('matt_tool');
+      if (v) return v;
+    } catch {
+      const m = template.match(/[?&]matt_tool=([^&\s]+)/);
+      if (m) return m[1];
+    }
+  }
+  return process.env.ML_AFFILIATE_ID || '';
+}
 
-  return template
-    .replace('{id}', affiliateId)
-    .replace('{url}', encodeURIComponent(productUrl));
+// Agrega ?matt_tool=ID directamente al permalink del producto.
+// Formato correcto para afiliados ML: https://articulo.mercadolibre.com.ar/MLA-xxx?matt_tool=ID
+function createAffiliateLink(productUrl) {
+  if (!productUrl) return productUrl;
+  const mattToolId = getMattToolId();
+  if (!mattToolId) return productUrl;
+  try {
+    const url = new URL(productUrl);
+    url.searchParams.set('matt_tool', mattToolId);
+    return url.toString();
+  } catch {
+    const sep = productUrl.includes('?') ? '&' : '?';
+    return `${productUrl}${sep}matt_tool=${encodeURIComponent(mattToolId)}`;
+  }
 }
 
 function applyFiltersAndSort(items, shipping, delivery, sort) {
@@ -350,7 +375,7 @@ async function resolveProductDataFromApi(search, mlAccessToken) {
     url.searchParams.set('category', ML_PETS_CATEGORY);
     url.searchParams.set('q', search);
     url.searchParams.set('limit', '1');
-    url.searchParams.set('sort', 'items_sold_desc');
+    url.searchParams.set('sort', 'sold_quantity_desc');
 
     const response = await mlFetch(url.toString(), mlAccessToken);
     if (!response.ok) return { permalink: '', price: null, thumbnail: '', state: '' };
@@ -369,7 +394,7 @@ async function resolveProductDataFromApi(search, mlAccessToken) {
   }
 }
 
-async function fallbackProducts(group, affiliateId, shipping, delivery, sort, mlAccessToken) {
+async function fallbackProducts(group, shipping, delivery, sort, mlAccessToken) {
   const base = FALLBACK_CATALOG[group] || FALLBACK_CATALOG.alimentos;
 
   // Resolve real permalink AND price for each fallback item via ML API search.
@@ -387,7 +412,7 @@ async function fallbackProducts(group, affiliateId, shipping, delivery, sort, ml
 
     const linkSource = isSpecificProductUrl(destinationUrl) ? 'resolved_permalink' : 'search_fallback';
     const price = resolvedPrice ?? product.price ?? null;
-    const affiliateLink = createAffiliateLink(affiliateId, destinationUrl);
+    const affiliateLink = createAffiliateLink(destinationUrl);
     const discount = (price && product.original_price > 0)
       ? Math.max(0, Math.round(((product.original_price - price) / product.original_price) * 100))
       : 0;
@@ -431,33 +456,34 @@ export default async function handler(req, res) {
     const lat = firstQuery(req.query.lat, '');
     const region = firstQuery(req.query.region, '');
 
-    const affiliateId = process.env.ML_AFFILIATE_ID || 'aipetfriendly';
     const mlAccessToken = process.env.ML_ACCESS_TOKEN || '';
     const query = GROUP_QUERIES[grupo] || 'alimento mascotas';
 
-    const meliUrl = new URL('https://api.mercadolibre.com/sites/MLA/search');
-    meliUrl.searchParams.set('category', ML_PETS_CATEGORY);
-    meliUrl.searchParams.set('q', query);
-    meliUrl.searchParams.set('limit', '10');
+    // Construir y ejecutar la query a ML API con reintentos de sort.
+    // sort=sold_quantity_desc es el parametro documentado para mas vendidos.
+    // Si el usuario eligio precio, se usa ese sort; sino intentamos sold_quantity_desc
+    // y si falla (ej. parametro invalido) reintentamos sin sort para garantizar resultados.
+    const buildMeliUrl = (sortParam) => {
+      const u = new URL('https://api.mercadolibre.com/sites/MLA/search');
+      u.searchParams.set('category', ML_PETS_CATEGORY);
+      u.searchParams.set('q', query);
+      u.searchParams.set('limit', '10');
+      if (sortParam) u.searchParams.set('sort', sortParam);
+      if (region && !lat) u.searchParams.set('state', region);
+      return u.toString();
+    };
 
-    if (sort === 'price_asc' || sort === 'price_desc') {
-      meliUrl.searchParams.set('sort', sort);
-    } else {
-      meliUrl.searchParams.set('sort', 'items_sold_desc');
+    const primarySort = (sort === 'price_asc' || sort === 'price_desc') ? sort : 'sold_quantity_desc';
+    let response = await mlFetch(buildMeliUrl(primarySort), mlAccessToken);
+
+    // Si el sort da error (400/422), reintentamos sin sort
+    if (!response.ok && response.status >= 400 && response.status < 500) {
+      response = await mlFetch(buildMeliUrl(null), mlAccessToken);
     }
-
-    // Filtro por region si el frontend no tiene coordenadas activas.
-    if (region && !lat) {
-      meliUrl.searchParams.set('state', region);
-    }
-
-    const response = await mlFetch(meliUrl.toString(), mlAccessToken, {
-      'User-Agent': 'AiPetFriendly/1.0 (+https://www.aipetfriendly.ar)',
-    });
 
     if (!response.ok) {
       const text = await response.text();
-      const fallback = await fallbackProducts(grupo, affiliateId, shipping, delivery, sort, mlAccessToken);
+      const fallback = await fallbackProducts(grupo, shipping, delivery, sort, mlAccessToken);
       res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
       res.setHeader('X-Products-Source', 'fallback');
       res.setHeader('X-ML-Status', String(response.status));
@@ -473,7 +499,7 @@ export default async function handler(req, res) {
     const products = Array.isArray(data?.results) ? data.results : [];
 
     if (products.length === 0) {
-      const fallback = await fallbackProducts(grupo, affiliateId, shipping, delivery, sort, mlAccessToken);
+      const fallback = await fallbackProducts(grupo, shipping, delivery, sort, mlAccessToken);
       res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
       res.setHeader('X-Products-Source', 'fallback-empty');
       return res.status(200).json({
@@ -491,7 +517,7 @@ export default async function handler(req, res) {
 
       if (!destinationUrl) return null;
 
-      const linkAfiliado = createAffiliateLink(affiliateId, destinationUrl);
+      const linkAfiliado = createAffiliateLink(destinationUrl);
 
       const shippingInfo = product?.shipping || {};
       const logisticType = String(shippingInfo?.logistic_type || '').toLowerCase();
