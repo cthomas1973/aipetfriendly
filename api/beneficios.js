@@ -231,6 +231,52 @@ async function mlFetch(url, mlAccessToken, extraHeaders = {}) {
   return firstResponse;
 }
 
+// ── Token auto-refresh ────────────────────────────────────────────────────────
+// ML API requiere OAuth. Si el usuario configura ML_APP_ID + ML_APP_SECRET en
+// Vercel, este modulo obtiene y cachea el token automaticamente.
+// El token dura 6h; se renueva antes de que expire en cada cold-start.
+let _cachedToken = { token: '', expiresAt: 0 };
+
+async function getFreshMlToken() {
+  const appId = process.env.ML_APP_ID || '';
+  const appSecret = process.env.ML_APP_SECRET || '';
+  const staticToken = process.env.ML_ACCESS_TOKEN || '';
+
+  // Si hay un token estatico configurado y sin credenciales de app, usarlo.
+  if (staticToken && !appId) return staticToken;
+
+  // Si no hay credenciales de app, devolver vacio (llamadas sin auth).
+  if (!appId || !appSecret) return staticToken;
+
+  // Reusar token cacheado si aun es valido (con 60s de margen).
+  if (_cachedToken.token && Date.now() < _cachedToken.expiresAt - 60_000) {
+    return _cachedToken.token;
+  }
+
+  try {
+    const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: appId,
+        client_secret: appSecret,
+      }).toString(),
+    });
+
+    if (!res.ok) return staticToken;
+
+    const data = await res.json();
+    _cachedToken = {
+      token: String(data.access_token || ''),
+      expiresAt: Date.now() + Number(data.expires_in || 21600) * 1000,
+    };
+    return _cachedToken.token;
+  } catch {
+    return staticToken;
+  }
+}
+
 async function resolvePermalinkFromApi(search, mlAccessToken) {
   try {
     const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
@@ -468,7 +514,7 @@ export default async function handler(req, res) {
     const lat = firstQuery(req.query.lat, '');
     const region = firstQuery(req.query.region, '');
 
-    const mlAccessToken = process.env.ML_ACCESS_TOKEN || '';
+    const mlAccessToken = await getFreshMlToken();
     const query = GROUP_QUERIES[grupo] || 'alimento mascotas';
 
     // Construir y ejecutar la query a ML API con reintentos de sort.

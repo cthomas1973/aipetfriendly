@@ -794,30 +794,31 @@ export function OffersSection() {
       setBenefitsDebug(Boolean(serverData?.debug));
 
       // 2. Intentar llamada directa a ML API desde el browser.
-      // El browser SI puede acceder a la API publica de ML (no hay bloqueo de IP).
-      // Esto garantiza productos reales con precios y permalinks directos.
+      // NOTA: requiere que ML_APP_ID + ML_APP_SECRET esten configurados en Vercel,
+      // ya que la API publica de ML requiere OAuth. Si el servidor pudo obtener
+      // productos reales (source: 'api'), no necesitamos hacer nada mas.
+      if (serverProducts.length > 0) {
+        setProducts(serverProducts);
+        return;
+      }
+
+      // Si el servidor tampoco trajo productos, intentar browser como ultimo recurso.
       try {
         let browserProducts = await fetchFromMlApi(group, sort, mattTool);
-
-        // Si fallo el sort, reintentamos con relevance
         if (browserProducts.length === 0) {
           browserProducts = await fetchFromMlApi(group, 'relevance', mattTool);
         }
-
         const filtered = browserProducts
           .filter(p => !freeShipping || p.free_shipping)
           .filter(p => !fastDelivery || p.fast_delivery);
-
         if (filtered.length > 0) {
           setProducts(filtered);
           return;
         }
-      } catch (browserErr) {
-        // Si la llamada desde el browser falla, caemos al resultado del servidor.
-        console.warn('[Beneficios] Browser ML API falló:', browserErr);
+      } catch {
+        // Browser ML API tambien fallo (403), usar lo que tenga el servidor.
       }
 
-      // 3. Usar productos del servidor como ultimo recurso.
       setProducts(serverProducts);
     } catch (error) {
       setProducts([]);
