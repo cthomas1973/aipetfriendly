@@ -116,9 +116,12 @@ async function main() {
   }
 
   // Test de conexion a Supabase
+  const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, ''); // quitar trailing slash
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
+  console.log(`[supabase] URL: ${supabaseUrl}`);
   console.log('[supabase] Verificando conexion...');
-  const testRes = await fetch(`${process.env.SUPABASE_URL}/rest/v1/beneficios_productos?limit=1`, {
-    headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Accept: 'application/json' },
+  const testRes = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?limit=1`, {
+    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Accept: 'application/json' },
   });
   console.log(`[supabase] Status: ${testRes.status} ${testRes.ok ? 'OK' : 'ERROR'}`);
   if (!testRes.ok) {
