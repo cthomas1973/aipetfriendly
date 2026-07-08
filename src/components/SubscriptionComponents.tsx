@@ -8,8 +8,9 @@ import {
   createMercadoPagoOneTimeMonthlyPayment,
   createMercadoPagoRecurringSubscription,
   fetchBillingPricingSettings,
+  fetchBeneficiosProductos,
 } from '../lib/supabase';
-import type { BillingPricingSettings } from '../types';
+import type { BillingPricingSettings, Species } from '../types';
 
 function detectUserCountryCode(): string {
   try {
@@ -672,79 +673,6 @@ interface AffiliateProduct {
   affiliate_url?: string;
 }
 
-// Queries por grupo para la llamada directa a ML API desde el browser.
-const ML_GROUP_QUERIES: Record<OfferGroup, string> = {
-  alimentos: 'alimento perro gato',
-  accesorios: 'correa pretal collar perro',
-  higiene: 'shampoo antipulgas mascotas',
-  descanso: 'juguete cama rascador mascota',
-};
-
-function buildAffiliateLinkClient(permalink: string, mattTool: string): string {
-  if (!mattTool) return permalink;
-  try {
-    const u = new URL(permalink);
-    u.searchParams.set('matt_tool', mattTool);
-    return u.toString();
-  } catch {
-    return permalink + (permalink.includes('?') ? '&' : '?') + 'matt_tool=' + encodeURIComponent(mattTool);
-  }
-}
-
-async function fetchFromMlApi(group: OfferGroup, sort: OfferSort, mattTool: string): Promise<AffiliateProduct[]> {
-  const mlSort = sort === 'price_asc' ? 'price_asc' : sort === 'price_desc' ? 'price_desc' : 'sold_quantity_desc';
-  const u = new URL('https://api.mercadolibre.com/sites/MLA/search');
-  u.searchParams.set('category', 'MLA1071');
-  u.searchParams.set('q', ML_GROUP_QUERIES[group]);
-  u.searchParams.set('sort', mlSort);
-  u.searchParams.set('limit', '10');
-
-  let res = await fetch(u.toString(), { headers: { Accept: 'application/json' } });
-
-  // Si el sort da error, reintentar sin sort
-  if (!res.ok && res.status >= 400 && res.status < 500) {
-    const u2 = new URL('https://api.mercadolibre.com/sites/MLA/search');
-    u2.searchParams.set('category', 'MLA1071');
-    u2.searchParams.set('q', ML_GROUP_QUERIES[group]);
-    u2.searchParams.set('limit', '10');
-    res = await fetch(u2.toString(), { headers: { Accept: 'application/json' } });
-  }
-
-  if (!res.ok) throw new Error(`ML API status ${res.status}`);
-
-  const data: { results?: unknown[] } = await res.json();
-  const results = Array.isArray(data?.results) ? data.results : [];
-
-  return results
-    .filter((p: unknown) => {
-      const pr = p as Record<string, unknown>;
-      return typeof pr.permalink === 'string' && pr.permalink;
-    })
-    .map((p: unknown) => {
-      const pr = p as Record<string, unknown>;
-      const shipping = (pr.shipping ?? {}) as Record<string, unknown>;
-      const address = (pr.address ?? {}) as Record<string, unknown>;
-      const logisticType = String(shipping.logistic_type ?? '').toLowerCase();
-      const originalPrice = Number(pr.original_price ?? 0);
-      const price = Number(pr.price ?? 0) || null;
-      const link = buildAffiliateLinkClient(String(pr.permalink), mattTool);
-      return {
-        id: String(pr.id),
-        title: String(pr.title ?? 'Producto sin título'),
-        price,
-        original_price: originalPrice || null,
-        discount: originalPrice > 0 && price
-          ? Math.max(0, Math.round(((originalPrice - price) / originalPrice) * 100))
-          : 0,
-        thumbnail: String(pr.thumbnail ?? '').replace('-I.jpg', '-O.jpg'),
-        link,
-        free_shipping: Boolean(shipping.free_shipping),
-        fast_delivery: ['fulfillment', 'cross_docking'].includes(logisticType),
-        state: String(address.state_name ?? ''),
-      } satisfies AffiliateProduct;
-    });
-}
-
 const OFFER_GROUPS: Array<{ id: OfferGroup; label: string; emoji: string }> = [
   { id: 'alimentos', label: 'Alimentos', emoji: '🍗' },
   { id: 'accesorios', label: 'Accesorios y Paseo', emoji: '🦮' },
@@ -759,7 +687,7 @@ const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
 });
 
 export function OffersSection() {
-  const { subscription } = useAppState();
+  const { subscription, pets } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
   const [group, setGroup] = useState<OfferGroup>('alimentos');
   const [sort, setSort] = useState<OfferSort>('relevance');
@@ -771,54 +699,59 @@ export function OffersSection() {
   const [errorProducts, setErrorProducts] = useState<string | null>(null);
   const [benefitsDebug, setBenefitsDebug] = useState(false);
 
+  // Derivar pet_types del usuario para filtrar productos relevantes
+  const userPetTypes = useMemo(() => {
+    const speciesMap: Record<Species, string> = { dog: 'perro', cat: 'gato', other: 'otro' };
+    const types = [...new Set(pets.map(p => speciesMap[p.species] ?? 'otro'))];
+    return types.length > 0 ? types : ['perro', 'gato'];
+  }, [pets]);
+
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
     setErrorProducts(null);
 
     try {
-      // 1. Llamar al servidor para obtener mattTool y productos de respaldo.
-      const params = new URLSearchParams();
-      params.set('grupo', group);
-      if (sort !== 'relevance') params.set('sort', sort);
-      if (freeShipping) params.set('shipping', 'true');
-      if (fastDelivery) params.set('delivery', 'true');
-      if (location) {
-        params.set('lat', String(location.lat));
-        params.set('lon', String(location.lon));
-      }
-
-      const serverRes = await fetch(`/api/beneficios?${params.toString()}`);
+      // 1. Obtener mattTool del servidor (config de afiliado)
+      const serverRes = await fetch(`/api/beneficios?grupo=${group}`);
       const serverData = serverRes.ok ? await serverRes.json() : {};
       const mattTool: string = String(serverData?.mattTool ?? '');
-      const serverProducts: AffiliateProduct[] = Array.isArray(serverData?.products) ? serverData.products : [];
       setBenefitsDebug(Boolean(serverData?.debug));
 
-      // 2. Intentar llamada directa a ML API desde el browser.
-      // NOTA: requiere que ML_APP_ID + ML_APP_SECRET esten configurados en Vercel,
-      // ya que la API publica de ML requiere OAuth. Si el servidor pudo obtener
-      // productos reales (source: 'api'), no necesitamos hacer nada mas.
-      if (serverProducts.length > 0) {
-        setProducts(serverProducts);
+      // 2. Obtener productos reales de Supabase (con filtro por grupo y tipo de mascota)
+      let supabaseProducts: AffiliateProduct[] = [];
+      try {
+        const dbItems = await fetchBeneficiosProductos(group, userPetTypes);
+        supabaseProducts = dbItems
+          .map(p => {
+            const link = mattTool
+              ? p.permalink + (p.permalink.includes('?') ? '&' : '?') + `matt_tool=${mattTool}`
+              : p.permalink;
+            return {
+              id: p.id,
+              title: p.title,
+              price: p.price ?? null,
+              original_price: null,
+              discount: 0,
+              thumbnail: p.thumbnail ?? '',
+              link,
+              free_shipping: p.free_shipping,
+              fast_delivery: p.fast_delivery,
+              state: '',
+            } satisfies AffiliateProduct;
+          })
+          .filter(p => !freeShipping || p.free_shipping)
+          .filter(p => !fastDelivery || p.fast_delivery);
+      } catch {
+        // Supabase fallo, seguir con catalogo del servidor
+      }
+
+      if (supabaseProducts.length > 0) {
+        setProducts(supabaseProducts);
         return;
       }
 
-      // Si el servidor tampoco trajo productos, intentar browser como ultimo recurso.
-      try {
-        let browserProducts = await fetchFromMlApi(group, sort, mattTool);
-        if (browserProducts.length === 0) {
-          browserProducts = await fetchFromMlApi(group, 'relevance', mattTool);
-        }
-        const filtered = browserProducts
-          .filter(p => !freeShipping || p.free_shipping)
-          .filter(p => !fastDelivery || p.fast_delivery);
-        if (filtered.length > 0) {
-          setProducts(filtered);
-          return;
-        }
-      } catch {
-        // Browser ML API tambien fallo (403), usar lo que tenga el servidor.
-      }
-
+      // 3. Fallback: catalogo estatico del servidor
+      const serverProducts: AffiliateProduct[] = Array.isArray(serverData?.products) ? serverData.products : [];
       setProducts(serverProducts);
     } catch (error) {
       setProducts([]);
@@ -827,7 +760,7 @@ export function OffersSection() {
     } finally {
       setLoadingProducts(false);
     }
-  }, [fastDelivery, freeShipping, group, location, sort]);
+  }, [fastDelivery, freeShipping, group, location, sort, userPetTypes]);
 
   useEffect(() => {
     void loadProducts();

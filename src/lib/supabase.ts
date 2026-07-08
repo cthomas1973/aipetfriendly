@@ -797,3 +797,62 @@ export async function updateAdminUserAccess(userId: string, access: UserAccessLe
 
   return true;
 }
+
+// ── Beneficios Productos ──────────────────────────────────────────────────────
+
+export async function fetchBeneficiosProductos(
+  grupo?: string,
+  petTypes?: string[],
+): Promise<import('../types').BeneficioProducto[]> {
+  let query = supabase
+    .from('beneficios_productos')
+    .select('*')
+    .eq('active', true)
+    .order('created_at', { ascending: false });
+
+  if (grupo) query = query.eq('grupo', grupo);
+  if (petTypes && petTypes.length > 0) {
+    query = query.overlaps('pet_types', petTypes);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as import('../types').BeneficioProducto[];
+}
+
+export async function fetchAllBeneficiosProductos(): Promise<import('../types').BeneficioProducto[]> {
+  const { data, error } = await supabase
+    .from('beneficios_productos')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as import('../types').BeneficioProducto[];
+}
+
+export async function insertBeneficioProducto(
+  producto: Omit<import('../types').BeneficioProducto, 'id' | 'created_at' | 'updated_at'>,
+): Promise<import('../types').BeneficioProducto> {
+  const { data, error } = await supabase
+    .from('beneficios_productos')
+    .insert(producto)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as import('../types').BeneficioProducto;
+}
+
+export async function updateBeneficioProducto(
+  id: string,
+  updates: Partial<import('../types').BeneficioProducto>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('beneficios_productos')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteBeneficioProducto(id: string): Promise<void> {
+  const { error } = await supabase.from('beneficios_productos').delete().eq('id', id);
+  if (error) throw error;
+}

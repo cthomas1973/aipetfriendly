@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Shield, UserCog } from 'lucide-react';
+import { Gift, Shield, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { AdminBeneficiosSection } from './AdminBeneficiosSection';
 import {
   fetchAdminAiDashboardMetrics,
   fetchAdminAiQueryAudit,
@@ -29,6 +30,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -168,7 +170,27 @@ export function AdminUsersSection() {
         <p className="mt-1 text-slate-500">Gestiona acceso visitante/free/premium para pruebas.</p>
       </div>
 
-      <div className="rounded-3xl bg-white p-4 shadow-sm">
+      {/* Tabs admin */}
+      <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
+        <button type="button" onClick={() => setAdminTab('usuarios')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'usuarios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <UserCog size={15} /> Usuarios
+        </button>
+        <button type="button" onClick={() => setAdminTab('beneficios')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'beneficios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <Gift size={15} /> Beneficios ML
+        </button>
+      </div>
+
+      {adminTab === 'beneficios' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm">
+          <AdminBeneficiosSection />
+        </div>
+      ) : (<>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -187,7 +209,6 @@ export function AdminUsersSection() {
             />
           </div>
         </div>
-      </div>
 
       <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
         <div>
@@ -484,6 +505,7 @@ export function AdminUsersSection() {
           </div>
         )}
       </div>
+      </>)}
     </section>
   );
 }

@@ -1,5 +1,25 @@
 export type PetSex = 'male' | 'female' | 'unknown';
 
+export type OfferGrupo = 'alimentos' | 'accesorios' | 'higiene' | 'descanso';
+export type PetType = 'perro' | 'gato' | 'otro';
+
+export interface BeneficioProducto {
+  id: string;
+  url_ml: string;
+  mla_id: string;
+  permalink: string;
+  title: string;
+  thumbnail: string | null;
+  price: number | null;
+  grupo: OfferGrupo;
+  pet_types: PetType[];
+  free_shipping: boolean;
+  fast_delivery: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ClinicalEntryCategory =
   | 'medication'
   | 'deworming'
