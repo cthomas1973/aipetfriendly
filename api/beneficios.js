@@ -388,39 +388,71 @@ async function resolvePermalinkByItemId(itemId, mlAccessToken) {
   }
 }
 
+async function resolveProductDataFromApi(search, mlAccessToken) {
+  try {
+    const url = new URL('https://api.mercadolibre.com/sites/MLA/search');
+    url.searchParams.set('category', ML_PETS_CATEGORY);
+    url.searchParams.set('q', search);
+    url.searchParams.set('limit', '1');
+    url.searchParams.set('sort', 'sold_quantity_desc');
+
+    const response = await mlFetch(url.toString(), mlAccessToken);
+    if (!response.ok) return { permalink: '', price: null, thumbnail: '', state: '' };
+
+    const data = await response.json();
+    const first = Array.isArray(data?.results) ? data.results[0] : null;
+    if (!first) return { permalink: '', price: null, thumbnail: '', state: '' };
+
+    const permalink = String(first?.permalink || '');
+    const price = Number(first?.price) > 0 ? Number(first.price) : null;
+    const thumbnail = String(first?.thumbnail || '').replace('-I.jpg', '-O.jpg');
+    const state = String(first?.address?.state_name || '');
+    return { permalink, price, thumbnail, state };
+  } catch {
+    return { permalink: '', price: null, thumbnail: '', state: '' };
+  }
+}
+
 async function fallbackProducts(group, affiliateId, shipping, delivery, sort, mlAccessToken) {
   const base = FALLBACK_CATALOG[group] || FALLBACK_CATALOG.alimentos;
 
-  const resolvedPermalinks = await Promise.all(
-    base.map((product) => resolvePermalinkFromApi(product.search, mlAccessToken)),
+  // Resolve real permalink AND price for each fallback item via ML API search.
+  // This fixes the bug where resolvedPermalinks were fetched but never used.
+  const resolvedData = await Promise.all(
+    base.map((product) => resolveProductDataFromApi(product.search, mlAccessToken)),
   );
 
   const mapped = base.map((product, index) => {
-    const directUrl = buildMeliSearchUrl(product.search);
-    const linkSource = 'search_fallback';
-    const discount = product.original_price > 0
-      ? Math.max(0, Math.round(((product.original_price - product.price) / product.original_price) * 100))
-      : 0;
+    const { permalink, price: resolvedPrice, thumbnail: resolvedThumb, state: resolvedState } = resolvedData[index];
 
-    const affiliateLink = createAffiliateLink(affiliateId, directUrl);
+    const destinationUrl = (permalink && isSpecificProductUrl(permalink))
+      ? permalink
+      : buildMeliSearchUrl(product.search);
+
+    const linkSource = isSpecificProductUrl(destinationUrl) ? 'resolved_permalink' : 'search_fallback';
+    const price = resolvedPrice ?? product.price ?? null;
+    const affiliateLink = createAffiliateLink(affiliateId, destinationUrl);
+    const discount = (price && product.original_price > 0)
+      ? Math.max(0, Math.round(((product.original_price - price) / product.original_price) * 100))
+      : 0;
 
     const payload = {
       id: product.id,
       title: product.title,
-      price: product.price || null,
+      price,
       original_price: product.original_price || null,
       discount,
-      thumbnail: product.thumbnail || PLACEHOLDER_IMAGE,
+      thumbnail: resolvedThumb || product.thumbnail || PLACEHOLDER_IMAGE,
       link: affiliateLink,
       free_shipping: product.free_shipping,
       fast_delivery: product.fast_delivery,
-      state: product.state,
+      state: resolvedState || product.state,
       seller_loc: null,
     };
 
     if (BENEFITS_DEBUG) {
       payload.link_source = linkSource;
-      payload.destination_url = directUrl;
+      payload.destination_url = destinationUrl;
       payload.affiliate_url = affiliateLink;
     }
 

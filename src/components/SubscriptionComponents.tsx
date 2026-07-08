@@ -892,8 +892,12 @@ export function OffersSection() {
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-extrabold text-slate-900">{PRICE_FORMATTER.format(item.price)}</span>
-                    {item.original_price ? (
+                    {item.price != null && item.price > 0 ? (
+                      <span className="font-extrabold text-slate-900">{PRICE_FORMATTER.format(item.price)}</span>
+                    ) : (
+                      <span className="text-sm italic text-slate-400">Ver precio en ML</span>
+                    )}
+                    {item.original_price && item.original_price > 0 && item.price != null && item.price > 0 ? (
                       <span className="text-xs text-slate-400 line-through">{PRICE_FORMATTER.format(item.original_price)}</span>
                     ) : null}
                     {item.free_shipping ? (
