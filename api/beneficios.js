@@ -398,7 +398,6 @@ async function fallbackProducts(group, shipping, delivery, sort, mlAccessToken) 
   const base = FALLBACK_CATALOG[group] || FALLBACK_CATALOG.alimentos;
 
   // Resolve real permalink AND price for each fallback item via ML API search.
-  // This fixes the bug where resolvedPermalinks were fetched but never used.
   const resolvedData = await Promise.all(
     base.map((product) => resolveProductDataFromApi(product.search, mlAccessToken)),
   );
@@ -406,11 +405,21 @@ async function fallbackProducts(group, shipping, delivery, sort, mlAccessToken) 
   const mapped = base.map((product, index) => {
     const { permalink, price: resolvedPrice, thumbnail: resolvedThumb, state: resolvedState } = resolvedData[index];
 
-    const destinationUrl = (permalink && isSpecificProductUrl(permalink))
-      ? permalink
-      : buildMeliSearchUrl(product.search);
+    let destinationUrl = '';
 
-    const linkSource = isSpecificProductUrl(destinationUrl) ? 'resolved_permalink' : 'search_fallback';
+    // Si la API devolvio un permalink valido de articulo, lo usamos.
+    if (permalink && isSpecificProductUrl(permalink)) {
+      destinationUrl = permalink;
+    } else {
+      // Si fallo, construimos la URL del articulo usando el ID real del catalogo.
+      // Requiere IDs en formato MLA-xxxxxxxx; si el ID es ficticio, la URL sera vacia.
+      destinationUrl = buildForcedArticleUrl(product.id, product.title);
+    }
+
+    // Si no hay URL de producto valida, omitir el item (nunca usar URL de listado).
+    if (!isSpecificProductUrl(destinationUrl)) return null;
+
+    const linkSource = permalink && isSpecificProductUrl(permalink) ? 'resolved_permalink' : 'forced_article_fallback';
     const price = resolvedPrice ?? product.price ?? null;
     const affiliateLink = createAffiliateLink(destinationUrl);
     const discount = (price && product.original_price > 0)
@@ -428,7 +437,6 @@ async function fallbackProducts(group, shipping, delivery, sort, mlAccessToken) 
       free_shipping: product.free_shipping,
       fast_delivery: product.fast_delivery,
       state: resolvedState || product.state,
-      seller_loc: null,
     };
 
     if (BENEFITS_DEBUG) {
@@ -490,6 +498,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         products: fallback,
         source: 'fallback',
+        mattTool: getMattToolId(),
         warning: 'Mercado Libre API temporalmente no disponible, se muestran sugerencias afiliadas.',
         details: text.slice(0, 200),
       });
@@ -505,6 +514,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         products: fallback,
         source: 'fallback',
+        mattTool: getMattToolId(),
         warning: 'Mercado Libre devolvio 0 resultados; se muestran sugerencias afiliadas.',
       });
     }
@@ -557,7 +567,7 @@ export default async function handler(req, res) {
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
     res.setHeader('X-Products-Source', 'api');
-    return res.status(200).json({ products: filtered, source: 'api', debug: BENEFITS_DEBUG });
+    return res.status(200).json({ products: filtered, source: 'api', mattTool: getMattToolId(), debug: BENEFITS_DEBUG });
   } catch (error) {
     return res.status(500).json({
       error: 'Error al conectar con Mercado Libre',

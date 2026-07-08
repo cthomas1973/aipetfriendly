@@ -659,7 +659,7 @@ type OfferSort = 'relevance' | 'price_asc' | 'price_desc';
 interface AffiliateProduct {
   id: string;
   title: string;
-  price: number;
+  price: number | null;
   original_price: number | null;
   discount: number;
   thumbnail: string;
@@ -670,6 +670,69 @@ interface AffiliateProduct {
   link_source?: string;
   destination_url?: string;
   affiliate_url?: string;
+}
+
+// Queries por grupo para la llamada directa a ML API desde el browser.
+const ML_GROUP_QUERIES: Record<OfferGroup, string> = {
+  alimentos: 'alimento perro gato',
+  accesorios: 'correa pretal collar perro',
+  higiene: 'shampoo antipulgas mascotas',
+  descanso: 'juguete cama rascador mascota',
+};
+
+function buildAffiliateLinkClient(permalink: string, mattTool: string): string {
+  if (!mattTool) return permalink;
+  try {
+    const u = new URL(permalink);
+    u.searchParams.set('matt_tool', mattTool);
+    return u.toString();
+  } catch {
+    return permalink + (permalink.includes('?') ? '&' : '?') + 'matt_tool=' + encodeURIComponent(mattTool);
+  }
+}
+
+async function fetchFromMlApi(group: OfferGroup, sort: OfferSort, mattTool: string): Promise<AffiliateProduct[]> {
+  const mlSort = sort === 'price_asc' ? 'price_asc' : sort === 'price_desc' ? 'price_desc' : 'sold_quantity_desc';
+  const u = new URL('https://api.mercadolibre.com/sites/MLA/search');
+  u.searchParams.set('category', 'MLA1071');
+  u.searchParams.set('q', ML_GROUP_QUERIES[group]);
+  u.searchParams.set('sort', mlSort);
+  u.searchParams.set('limit', '10');
+
+  const res = await fetch(u.toString(), { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`ML API status ${res.status}`);
+
+  const data: { results?: unknown[] } = await res.json();
+  const results = Array.isArray(data?.results) ? data.results : [];
+
+  return results
+    .filter((p: unknown) => {
+      const pr = p as Record<string, unknown>;
+      return typeof pr.permalink === 'string' && pr.permalink;
+    })
+    .map((p: unknown) => {
+      const pr = p as Record<string, unknown>;
+      const shipping = (pr.shipping ?? {}) as Record<string, unknown>;
+      const address = (pr.address ?? {}) as Record<string, unknown>;
+      const logisticType = String(shipping.logistic_type ?? '').toLowerCase();
+      const originalPrice = Number(pr.original_price ?? 0);
+      const price = Number(pr.price ?? 0) || null;
+      const link = buildAffiliateLinkClient(String(pr.permalink), mattTool);
+      return {
+        id: String(pr.id),
+        title: String(pr.title ?? 'Producto sin título'),
+        price,
+        original_price: originalPrice || null,
+        discount: originalPrice > 0 && price
+          ? Math.max(0, Math.round(((originalPrice - price) / originalPrice) * 100))
+          : 0,
+        thumbnail: String(pr.thumbnail ?? '').replace('-I.jpg', '-O.jpg'),
+        link,
+        free_shipping: Boolean(shipping.free_shipping),
+        fast_delivery: ['fulfillment', 'cross_docking'].includes(logisticType),
+        state: String(address.state_name ?? ''),
+      } satisfies AffiliateProduct;
+    });
 }
 
 const OFFER_GROUPS: Array<{ id: OfferGroup; label: string; emoji: string }> = [
@@ -703,31 +766,42 @@ export function OffersSection() {
     setErrorProducts(null);
 
     try {
+      // 1. Llamar al servidor para obtener mattTool y productos de respaldo.
       const params = new URLSearchParams();
       params.set('grupo', group);
-      if (sort !== 'relevance') {
-        params.set('sort', sort);
-      }
-      if (freeShipping) {
-        params.set('shipping', 'true');
-      }
-      if (fastDelivery) {
-        params.set('delivery', 'true');
-      }
+      if (sort !== 'relevance') params.set('sort', sort);
+      if (freeShipping) params.set('shipping', 'true');
+      if (fastDelivery) params.set('delivery', 'true');
       if (location) {
         params.set('lat', String(location.lat));
         params.set('lon', String(location.lon));
       }
 
-      const response = await fetch(`/api/beneficios?${params.toString()}`);
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || 'No se pudieron cargar los productos de Mercado Libre.');
+      const serverRes = await fetch(`/api/beneficios?${params.toString()}`);
+      const serverData = serverRes.ok ? await serverRes.json() : {};
+      const mattTool: string = String(serverData?.mattTool ?? '');
+      const serverProducts: AffiliateProduct[] = Array.isArray(serverData?.products) ? serverData.products : [];
+      setBenefitsDebug(Boolean(serverData?.debug));
+
+      // 2. Intentar llamada directa a ML API desde el browser.
+      // El browser SI puede acceder a la API publica de ML (no hay bloqueo de IP).
+      // Esto garantiza productos reales con precios y permalinks directos.
+      try {
+        const browserProducts = await fetchFromMlApi(group, sort, mattTool);
+        const filtered = browserProducts
+          .filter(p => !freeShipping || p.free_shipping)
+          .filter(p => !fastDelivery || p.fast_delivery);
+
+        if (filtered.length > 0) {
+          setProducts(filtered);
+          return;
+        }
+      } catch {
+        // Si la llamada desde el browser falla, caemos al resultado del servidor.
       }
 
-      const data = await response.json();
-      setProducts(Array.isArray(data?.products) ? data.products : []);
-      setBenefitsDebug(Boolean(data?.debug));
+      // 3. Usar productos del servidor como ultimo recurso.
+      setProducts(serverProducts);
     } catch (error) {
       setProducts([]);
       setBenefitsDebug(false);
