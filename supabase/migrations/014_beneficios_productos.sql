@@ -41,6 +41,6 @@ create policy "Admin write beneficios productos"
     and exists (
       select 1 from public.users
       where id = auth.uid()
-      and access_level in ('premium')
+      and access_mode = 'premium'
     )
   );
