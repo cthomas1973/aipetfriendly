@@ -109,18 +109,40 @@ async function upsertToSupabase(products) {
 async function main() {
   console.log(`\n=== sync-ml-products ${new Date().toISOString()} ===\n`);
 
+  // Verificar env vars obligatorias
+  const required = ['ML_REFRESH_TOKEN', 'ML_APP_ID', 'ML_APP_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY'];
+  for (const key of required) {
+    if (!process.env[key]) throw new Error(`Falta variable de entorno: ${key}`);
+  }
+
+  // Test de conexion a Supabase
+  console.log('[supabase] Verificando conexion...');
+  const testRes = await fetch(`${process.env.SUPABASE_URL}/rest/v1/beneficios_productos?limit=1`, {
+    headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Accept: 'application/json' },
+  });
+  console.log(`[supabase] Status: ${testRes.status} ${testRes.ok ? 'OK' : 'ERROR'}`);
+  if (!testRes.ok) {
+    const body = await testRes.text();
+    throw new Error(`Supabase no accesible: ${body.slice(0, 200)}`);
+  }
+  const existing = await testRes.json();
+  console.log(`[supabase] Productos existentes en tabla: ${Array.isArray(existing) ? existing.length : '?'}`);
+
   const accessToken = await getMlAccessToken();
   const mattTool = getMattTool(process.env.ML_AFFILIATE_TEMPLATE || '');
-  console.log(`[config] matt_tool: ${mattTool || '(no configurado)'}\n`);
+  console.log(`\n[config] matt_tool: ${mattTool || '(no configurado)'}`);
+  console.log(`[config] Jobs a ejecutar: ${SEARCH_JOBS.length}\n`);
 
   let totalInserted = 0;
+  let totalFound = 0;
 
   for (const job of SEARCH_JOBS) {
     console.log(`[job] grupo=${job.grupo} pet_types=${job.pet_types.join(',')} q="${job.q}"`);
 
     try {
       const results = await searchMlProducts(job.q, accessToken, job.limit);
-      console.log(`       → ${results.length} productos encontrados en ML`);
+      totalFound += results.length;
+      console.log(`       ML API → ${results.length} productos`);
 
       if (results.length === 0) continue;
 
@@ -131,6 +153,7 @@ async function main() {
           const permalink = String(p.permalink);
           const shippingInfo = p.shipping || {};
           const logistic = String(shippingInfo.logistic_type || '').toLowerCase();
+          console.log(`         - ${mlaId} | ${String(p.title||'').slice(0,40)} | $${p.price}`);
           return {
             mla_id:        mlaId,
             url_ml:        permalink,
@@ -150,18 +173,27 @@ async function main() {
 
       if (toUpsert.length > 0) {
         await upsertToSupabase(toUpsert);
-        console.log(`       → ${toUpsert.length} upserted en Supabase`);
+        console.log(`       Supabase → ${toUpsert.length} upserted OK`);
         totalInserted += toUpsert.length;
       }
 
-      // Pausa entre requests para no saturar la API
       await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
-      console.error(`       → ERROR: ${err.message}`);
+      console.error(`       ERROR: ${err.message}`);
     }
   }
 
-  console.log(`\n=== Sync completado: ${totalInserted} productos guardados/actualizados ===`);
+  console.log(`\n=== RESULTADO: ${totalFound} encontrados en ML, ${totalInserted} guardados en Supabase ===`);
+
+  if (totalFound === 0) {
+    console.error('\n[ALERTA] ML API devolvio 0 productos en todos los jobs. Probable bloqueo 403 de IP.');
+    console.error('[ALERTA] Verificar logs de [ML search] arriba para ver el error exacto.');
+    process.exit(1); // Forzar fallo del workflow para que se vea en GitHub
+  }
+
+  if (totalInserted === 0 && totalFound > 0) {
+    throw new Error('Se encontraron productos pero no se pudo insertar en Supabase. Verificar permisos.');
+  }
 }
 
 main().catch(err => {
