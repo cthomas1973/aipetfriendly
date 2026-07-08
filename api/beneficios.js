@@ -210,7 +210,7 @@ export default async function handler(req, res) {
           .filter(p => !delivery  || p.fast_delivery)
           .slice(0, 10);
 
-        res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
+        res.setHeader('Cache-Control', 'no-store');
         return res.status(200).json({ products, mattTool, source: 'api' });
       }
     } catch {
@@ -234,12 +234,6 @@ export default async function handler(req, res) {
   }));
 
   const filtered = applyFiltersAndSort(products, shipping, delivery, sort).slice(0, 10);
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
-  return res.status(200).json({ products: filtered, mattTool, source: 'static' });
-}
-
-  const filtered = applyFiltersAndSort(products, shipping, delivery, sort).slice(0, 10);
-
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
+  res.setHeader('Cache-Control', 'no-store');
   return res.status(200).json({ products: filtered, mattTool, source: 'static' });
 }
