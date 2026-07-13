@@ -21,6 +21,7 @@ import {
 } from './components/SubscriptionComponents';
 import { AppStateContext, useAppState } from './context/AppStateContext';
 import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
+import { hideBannerAd, isNativeAndroidApp, showBannerForNonPremium } from './lib/mobileAds';
 import type {
   AdminUserRow,
   AppTab,
@@ -402,6 +403,28 @@ function AppContent() {
   );
 }
 
+function MobileAdsGate() {
+  const { subscription } = useAppState();
+
+  useEffect(() => {
+    if (!isNativeAndroidApp()) return;
+
+    const shouldShowAds = !subscription.isPremiumUser;
+
+    if (shouldShowAds) {
+      void showBannerForNonPremium();
+    } else {
+      void hideBannerAd();
+    }
+
+    return () => {
+      void hideBannerAd();
+    };
+  }, [subscription.isPremiumUser]);
+
+  return null;
+}
+
 export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading] = useState<boolean>(false);
@@ -454,6 +477,7 @@ export default function App() {
 
   return (
     <AppStateContext.Provider value={contextValue}>
+      <MobileAdsGate />
       <AppContent />
     </AppStateContext.Provider>
   );
