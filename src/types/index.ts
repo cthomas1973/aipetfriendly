@@ -2,6 +2,8 @@ export type PetSex = 'male' | 'female' | 'unknown';
 
 export type OfferGrupo = 'alimentos' | 'accesorios' | 'higiene' | 'descanso';
 export type PetType = 'perro' | 'gato' | 'otro';
+export type PetLifeStage = 'cachorro' | 'adulto' | 'senior' | 'todas';
+export type PetSizeCategory = 'pequeño' | 'mediano' | 'grande' | 'todos';
 
 export interface BeneficioProducto {
   id: string;
@@ -13,6 +15,8 @@ export interface BeneficioProducto {
   price: number | null;
   grupo: OfferGrupo;
   pet_types: PetType[];
+  life_stages: PetLifeStage[];
+  size_categories: PetSizeCategory[];
   free_shipping: boolean;
   fast_delivery: boolean;
   active: boolean;

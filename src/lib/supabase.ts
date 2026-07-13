@@ -803,6 +803,8 @@ export async function updateAdminUserAccess(userId: string, access: UserAccessLe
 export async function fetchBeneficiosProductos(
   grupo?: string,
   petTypes?: string[],
+  lifeStages?: string[],
+  sizeCategories?: string[],
 ): Promise<import('../types').BeneficioProducto[]> {
   let query = supabase
     .from('beneficios_productos')
@@ -813,6 +815,12 @@ export async function fetchBeneficiosProductos(
   if (grupo) query = query.eq('grupo', grupo);
   if (petTypes && petTypes.length > 0) {
     query = query.overlaps('pet_types', petTypes);
+  }
+  if (lifeStages && lifeStages.length > 0) {
+    query = query.overlaps('life_stages', lifeStages);
+  }
+  if (sizeCategories && sizeCategories.length > 0) {
+    query = query.overlaps('size_categories', sizeCategories);
   }
 
   const { data, error } = await query;

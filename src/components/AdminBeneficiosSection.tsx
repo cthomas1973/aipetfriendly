@@ -6,7 +6,7 @@ import {
   updateBeneficioProducto,
   deleteBeneficioProducto,
 } from '../lib/supabase';
-import type { BeneficioProducto, OfferGrupo, PetType } from '../types';
+import type { BeneficioProducto, OfferGrupo, PetType, PetLifeStage, PetSizeCategory } from '../types';
 
 const GRUPOS: { id: OfferGrupo; label: string }[] = [
   { id: 'alimentos',  label: '🍗 Alimentos' },
@@ -14,6 +14,38 @@ const GRUPOS: { id: OfferGrupo; label: string }[] = [
   { id: 'higiene',    label: '🧴 Estetica e Higiene' },
   { id: 'descanso',   label: '🧸 Descanso y Juguetes' },
 ];
+
+const LIFE_STAGES: { id: PetLifeStage; label: string }[] = [
+  { id: 'cachorro', label: 'Cachorro' },
+  { id: 'adulto',   label: 'Adulto' },
+  { id: 'senior',   label: 'Senior' },
+];
+
+const SIZE_CATEGORIES: { id: PetSizeCategory; label: string }[] = [
+  { id: 'pequeño',  label: 'Pequeño' },
+  { id: 'mediano',  label: 'Mediano' },
+  { id: 'grande',   label: 'Grande' },
+];
+
+// Auto-sugerencia: detecta etapa de vida y tamaño desde palabras clave del titulo.
+// El admin puede ajustar manualmente despues; esto solo pre-completa para agilizar la carga.
+function suggestLifeStages(title: string): PetLifeStage[] {
+  const t = title.toLowerCase();
+  const stages: PetLifeStage[] = [];
+  if (/cachorro|puppy|kitten|junior/.test(t)) stages.push('cachorro');
+  if (/senior|mayores|older|7\+|maduro/.test(t)) stages.push('senior');
+  if (/adulto|adult/.test(t)) stages.push('adulto');
+  return stages.length > 0 ? stages : ['todas'];
+}
+
+function suggestSizeCategories(title: string): PetSizeCategory[] {
+  const t = title.toLowerCase();
+  const sizes: PetSizeCategory[] = [];
+  if (/mini|toy|pequeñ|small|raza pequena/.test(t)) sizes.push('pequeño');
+  if (/mediana?\b|medium/.test(t)) sizes.push('mediano');
+  if (/grande|maxi|large|gigante|raza grande/.test(t)) sizes.push('grande');
+  return sizes.length > 0 ? sizes : ['todos'];
+}
 
 function extractMlaInfo(url: string): { mlaId: string; permalink: string } | null {
   const match = url.match(/MLA-?(\d{7,})/i);
@@ -46,6 +78,8 @@ const EMPTY_FORM = {
   price: '',
   grupo: 'alimentos' as OfferGrupo,
   pet_types: ['perro', 'gato'] as PetType[],
+  life_stages: ['todas'] as PetLifeStage[],
+  size_categories: ['todos'] as PetSizeCategory[],
   free_shipping: false,
   fast_delivery: false,
 };
@@ -83,6 +117,16 @@ export function AdminBeneficiosSection() {
     }
   };
 
+  const handleTitleChange = (title: string) => {
+    setForm(f => ({
+      ...f,
+      title,
+      // Auto-sugerencia desde el titulo; el admin puede ajustar los checkboxes despues.
+      life_stages: suggestLifeStages(title),
+      size_categories: suggestSizeCategories(title),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -104,6 +148,8 @@ export function AdminBeneficiosSection() {
         price: form.price ? Number(form.price) : null,
         grupo: form.grupo,
         pet_types: form.pet_types,
+        life_stages: form.life_stages,
+        size_categories: form.size_categories,
         free_shipping: form.free_shipping,
         fast_delivery: form.fast_delivery,
         active: true,
@@ -146,6 +192,28 @@ export function AdminBeneficiosSection() {
         ? f.pet_types.filter(t => t !== type)
         : [...f.pet_types, type],
     }));
+  };
+
+  const toggleLifeStage = (stage: PetLifeStage) => {
+    setForm(f => {
+      if (stage === 'todas') return { ...f, life_stages: ['todas'] };
+      const withoutTodas = f.life_stages.filter(s => s !== 'todas');
+      const next = withoutTodas.includes(stage)
+        ? withoutTodas.filter(s => s !== stage)
+        : [...withoutTodas, stage];
+      return { ...f, life_stages: next.length > 0 ? next : ['todas'] };
+    });
+  };
+
+  const toggleSizeCategory = (size: PetSizeCategory) => {
+    setForm(f => {
+      if (size === 'todos') return { ...f, size_categories: ['todos'] };
+      const withoutTodos = f.size_categories.filter(s => s !== 'todos');
+      const next = withoutTodos.includes(size)
+        ? withoutTodos.filter(s => s !== size)
+        : [...withoutTodos, size];
+      return { ...f, size_categories: next.length > 0 ? next : ['todos'] };
+    });
   };
 
   return (
@@ -193,10 +261,11 @@ export function AdminBeneficiosSection() {
             <input
               type="text"
               value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              onChange={e => handleTitleChange(e.target.value)}
               placeholder="Ej: Alimento Excellent Adulto Perro 15kg"
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
             />
+            <p className="mt-1 text-xs text-slate-400">La etapa de vida y el tamaño se sugieren automáticamente según el título (podés ajustarlos abajo).</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -246,6 +315,38 @@ export function AdminBeneficiosSection() {
                     className="h-4 w-4"
                   />
                   {t === 'perro' ? '🐶 Perro' : t === 'gato' ? '🐱 Gato' : '🐾 Otro'}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Etapa de vida (para alimentos)</label>
+            <div className="flex flex-wrap gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <input type="checkbox" checked={form.life_stages.includes('todas')} onChange={() => toggleLifeStage('todas')} className="h-4 w-4" />
+                Todas las edades
+              </label>
+              {LIFE_STAGES.map(s => (
+                <label key={s.id} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <input type="checkbox" checked={form.life_stages.includes(s.id)} onChange={() => toggleLifeStage(s.id)} className="h-4 w-4" />
+                  {s.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">Tamaño de mascota (para alimentos)</label>
+            <div className="flex flex-wrap gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <input type="checkbox" checked={form.size_categories.includes('todos')} onChange={() => toggleSizeCategory('todos')} className="h-4 w-4" />
+                Todos los tamaños
+              </label>
+              {SIZE_CATEGORIES.map(s => (
+                <label key={s.id} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <input type="checkbox" checked={form.size_categories.includes(s.id)} onChange={() => toggleSizeCategory(s.id)} className="h-4 w-4" />
+                  {s.label}
                 </label>
               ))}
             </div>

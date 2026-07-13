@@ -706,6 +706,33 @@ export function OffersSection() {
     return types.length > 0 ? types : ['perro', 'gato'];
   }, [pets]);
 
+  // Derivar etapa de vida (cachorro/adulto/senior) desde edad de cada mascota.
+  // 'todas' siempre se incluye para que los productos genericos tambien aparezcan.
+  const userLifeStages = useMemo(() => {
+    const stages = new Set<string>(['todas']);
+    for (const pet of pets) {
+      const totalMonths = (pet.ageYears || 0) * 12 + (pet.ageMonths || 0);
+      if (totalMonths < 12) stages.add('cachorro');
+      else if (pet.species === 'cat' ? (pet.ageYears || 0) >= 10 : (pet.ageYears || 0) >= 7) stages.add('senior');
+      else stages.add('adulto');
+    }
+    return [...stages];
+  }, [pets]);
+
+  // Derivar tamaño (pequeño/mediano/grande) desde el peso de cada perro.
+  // 'todos' siempre se incluye; los gatos no tienen categoria de tamaño especifica.
+  const userSizeCategories = useMemo(() => {
+    const sizes = new Set<string>(['todos']);
+    for (const pet of pets) {
+      if (pet.species !== 'dog') continue;
+      const w = pet.weightKg || 0;
+      if (w <= 10) sizes.add('pequeño');
+      else if (w <= 25) sizes.add('mediano');
+      else sizes.add('grande');
+    }
+    return [...sizes];
+  }, [pets]);
+
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
     setErrorProducts(null);
@@ -717,10 +744,10 @@ export function OffersSection() {
       const mattTool: string = String(serverData?.mattTool ?? '');
       setBenefitsDebug(Boolean(serverData?.debug));
 
-      // 2. Obtener productos reales de Supabase (con filtro por grupo y tipo de mascota)
+      // 2. Obtener productos reales de Supabase (filtro por grupo, mascota, edad y tamaño)
       let supabaseProducts: AffiliateProduct[] = [];
       try {
-        const dbItems = await fetchBeneficiosProductos(group, userPetTypes);
+        const dbItems = await fetchBeneficiosProductos(group, userPetTypes, userLifeStages, userSizeCategories);
         supabaseProducts = dbItems
           .map(p => {
             const link = mattTool
@@ -760,7 +787,7 @@ export function OffersSection() {
     } finally {
       setLoadingProducts(false);
     }
-  }, [fastDelivery, freeShipping, group, location, sort, userPetTypes]);
+  }, [fastDelivery, freeShipping, group, location, sort, userPetTypes, userLifeStages, userSizeCategories]);
 
   useEffect(() => {
     void loadProducts();
