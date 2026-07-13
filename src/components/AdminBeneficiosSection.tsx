@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Loader2, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ExternalLink, Loader2, Pencil, Plus, Trash2, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import {
   fetchAllBeneficiosProductos,
   insertBeneficioProducto,
@@ -93,6 +93,7 @@ export function AdminBeneficiosSection() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [urlError, setUrlError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,7 +140,7 @@ export function AdminBeneficiosSection() {
 
     setSaving(true);
     try {
-      await insertBeneficioProducto({
+      const payload = {
         url_ml: form.url_ml.trim(),
         mla_id: info.mlaId,
         permalink: info.permalink,
@@ -152,10 +153,18 @@ export function AdminBeneficiosSection() {
         size_categories: form.size_categories,
         free_shipping: form.free_shipping,
         fast_delivery: form.fast_delivery,
-        active: true,
-      });
-      setMsg('Producto agregado correctamente.');
+      };
+
+      if (editingId) {
+        await updateBeneficioProducto(editingId, payload);
+        setMsg('Producto actualizado correctamente.');
+      } else {
+        await insertBeneficioProducto({ ...payload, active: true });
+        setMsg('Producto agregado correctamente.');
+      }
+
       setForm(EMPTY_FORM);
+      setEditingId(null);
       setShowForm(false);
       await load();
     } catch (e) {
@@ -183,6 +192,33 @@ export function AdminBeneficiosSection() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error eliminando');
     }
+  };
+
+  const handleEdit = (p: BeneficioProducto) => {
+    setForm({
+      url_ml: p.url_ml,
+      title: p.title,
+      thumbnail: p.thumbnail || '',
+      price: p.price != null ? String(p.price) : '',
+      grupo: p.grupo,
+      pet_types: p.pet_types,
+      life_stages: p.life_stages,
+      size_categories: p.size_categories,
+      free_shipping: p.free_shipping,
+      fast_delivery: p.fast_delivery,
+    });
+    setEditingId(p.id);
+    setUrlError(null);
+    setError(null);
+    setMsg(null);
+    setShowForm(true);
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setUrlError(null);
   };
 
   const togglePetType = (type: PetType) => {
@@ -225,11 +261,19 @@ export function AdminBeneficiosSection() {
         </div>
         <button
           type="button"
-          onClick={() => { setShowForm(v => !v); setError(null); setMsg(null); }}
+          onClick={() => {
+            if (showForm) {
+              cancelForm();
+            } else {
+              setError(null);
+              setMsg(null);
+              setShowForm(true);
+            }
+          }}
           className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-2 text-sm font-semibold text-white"
         >
-          <Plus size={15} />
-          Agregar producto
+          {showForm ? <X size={15} /> : <Plus size={15} />}
+          {showForm ? 'Cerrar' : 'Agregar producto'}
         </button>
       </div>
 
@@ -239,7 +283,7 @@ export function AdminBeneficiosSection() {
       {/* Formulario */}
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-xs font-semibold text-emerald-800">Nuevo producto</p>
+          <p className="text-xs font-semibold text-emerald-800">{editingId ? 'Editar producto' : 'Nuevo producto'}</p>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">URL del producto en Mercado Libre *</label>
@@ -365,10 +409,10 @@ export function AdminBeneficiosSection() {
 
           <div className="flex gap-2">
             <button type="submit" disabled={saving} className="flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-              {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-              {saving ? 'Guardando...' : 'Guardar producto'}
+              {saving ? <Loader2 size={15} className="animate-spin" /> : (editingId ? <Pencil size={15} /> : <Plus size={15} />)}
+              {saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Guardar producto'}
             </button>
-            <button type="button" onClick={() => setShowForm(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">
+            <button type="button" onClick={cancelForm} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">
               Cancelar
             </button>
           </div>
@@ -402,6 +446,9 @@ export function AdminBeneficiosSection() {
                 <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="rounded-full p-1.5 text-slate-400 hover:text-emerald-600">
                   <ExternalLink size={15} />
                 </a>
+                <button type="button" onClick={() => handleEdit(p)} className="rounded-full p-1.5 text-slate-400 hover:text-emerald-600">
+                  <Pencil size={15} />
+                </button>
                 <button type="button" onClick={() => void toggleActive(p)} className="rounded-full p-1.5 text-slate-400 hover:text-emerald-600">
                   {p.active ? <ToggleRight size={18} className="text-emerald-500" /> : <ToggleLeft size={18} />}
                 </button>
