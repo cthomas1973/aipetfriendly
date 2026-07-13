@@ -250,9 +250,10 @@ function buildPrompt(
     "4. Incluye alertas de urgencia cuando corresponda (veterinario inmediato).",
     "5. No inventes diagnosticos ni estudios que no aparecen en el historial.",
     "6. Cierra con: 'Esta guia no reemplaza la consulta veterinaria presencial.'",
-    "7. Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (ej. shampoo antipulgas, alimento especial, suplemento, cepillo, arena sanitaria), agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto):",
+    "7. IMPORTANTE - Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (shampoo, champu, antipulgas, alimento especial, suplemento, cepillo, arena sanitaria, cama, correa, etc.), SIEMPRE agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
     'PRODUCT_SUGGESTION: {"query": "palabras clave del producto en español", "grupo": "alimentos|accesorios|higiene|descanso"}',
-    "Si no corresponde sugerir ningun producto (por ejemplo, si la respuesta es solo orientacion general o requiere atencion veterinaria), NO agregues esa linea.",
+    "Ejemplo: si recomendaste 'un baño con champú suave' para la piel de un perro, agrega: PRODUCT_SUGGESTION: {\"query\": \"shampoo perro piel sensible\", \"grupo\": \"higiene\"}",
+    "Si no corresponde sugerir ningun producto (por ejemplo, si la respuesta es solo orientacion general o requiere atencion veterinaria urgente), NO agregues esa linea.",
   ].join("\n");
 }
 
@@ -330,28 +331,93 @@ type SuggestedProduct = {
   link: string;
 };
 
+// Normaliza texto para matching: minusculas, sin tildes/dieresis.
+// Evita perder matches por 'champú' vs 'champu', 'antiparasitario' vs 'antiparasitarios', etc.
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+// Sinonimos comunes entre lo que dice la IA y como se titulan los productos reales en ML.
+// Si una palabra de la query coincide con una clave, tambien se busca su valor (y viceversa).
+const SYNONYMS: Record<string, string[]> = {
+  champu: ["shampoo"],
+  shampoo: ["champu"],
+  antipulgas: ["pulgas", "antiparasitario", "antiparasitarios"],
+  pulgas: ["antipulgas"],
+  garrapatas: ["antipulgas", "antiparasitario"],
+  antiparasitario: ["antipulgas", "pulgas"],
+  suplemento: ["vitaminas", "complemento"],
+  articulaciones: ["articular", "condroprotector"],
+  cucha: ["cama"],
+  arena: ["sanitaria"],
+};
+
+function expandWithSynonyms(words: string[]): string[] {
+  const expanded = new Set(words);
+  for (const w of words) {
+    for (const syn of SYNONYMS[w] || []) {
+      expanded.add(syn);
+    }
+  }
+  return [...expanded];
+}
+
+// Palabras clave conocidas de productos frecuentes en veterinaria/petshop, usadas como
+// red de seguridad: si la IA no agrego el marcador PRODUCT_SUGGESTION (a veces el modelo
+// no lo respeta), se escanea igual la respuesta ya limpia por estos terminos para no
+// perder la oportunidad de recomendar un producto real del catalogo.
+const FALLBACK_KEYWORDS: Array<{ pattern: RegExp; query: string; grupo: string }> = [
+  { pattern: /champ[uú]|shampoo/i, query: "shampoo", grupo: "higiene" },
+  { pattern: /antipulgas|garrapatas/i, query: "antipulgas", grupo: "higiene" },
+  { pattern: /arena sanitaria|arena para gato/i, query: "arena sanitaria", grupo: "higiene" },
+  { pattern: /suplemento|condroprotector|articula/i, query: "suplemento articular", grupo: "higiene" },
+  { pattern: /alimento hipoalerg[eé]nic\w*|dieta hipoalerg[eé]nic\w*/i, query: "alimento hipoalergenico", grupo: "alimentos" },
+  { pattern: /cama ortop[eé]dica|colchoneta/i, query: "cama ortopedica", grupo: "descanso" },
+  { pattern: /correa|pretal|arn[eé]s/i, query: "correa pretal", grupo: "accesorios" },
+  { pattern: /cepillo|deslanador/i, query: "cepillo deslanador", grupo: "higiene" },
+];
+
+function findFallbackKeyword(text: string): { query: string; grupo: string } | null {
+  for (const entry of FALLBACK_KEYWORDS) {
+    if (entry.pattern.test(text)) {
+      return { query: entry.query, grupo: entry.grupo };
+    }
+  }
+  return null;
+}
+
 // Extrae el marcador oculto PRODUCT_SUGGESTION del texto de la IA y lo remueve
-// de la respuesta visible al usuario. No inventa nada: solo indica una
-// intencion de busqueda (query + grupo) que luego se matchea contra nuestro
-// propio catalogo curado (beneficios_productos), nunca contra Mercado Libre
-// en vivo (la API de ML bloquea las IPs de Supabase Edge Functions con 403,
-// igual que bloquea Vercel y GitHub Actions).
+// de la respuesta visible al usuario. Si el modelo no incluyo el marcador,
+// se aplica un fallback por palabras clave sobre el texto ya limpio (ver
+// findFallbackKeyword) para no depender 100% de que el modelo cumpla la
+// instruccion. Nunca se inventa un link: solo indica una intencion de
+// busqueda (query + grupo) que luego se matchea contra nuestro propio
+// catalogo curado (beneficios_productos), nunca contra Mercado Libre en vivo
+// (la API de ML bloquea las IPs de Supabase Edge Functions con 403, igual
+// que bloquea Vercel y GitHub Actions).
 function extractProductSuggestion(answer: string): { cleanAnswer: string; query: string | null; grupo: string | null } {
   const match = answer.match(/PRODUCT_SUGGESTION:\s*(\{[^\n]*\})/i);
-  if (!match) {
-    return { cleanAnswer: answer, query: null, grupo: null };
+
+  if (match) {
+    const cleanAnswer = answer.replace(match[0], "").trim();
+    try {
+      const parsed = JSON.parse(match[1]);
+      const query = typeof parsed.query === "string" && parsed.query.trim() ? parsed.query.trim() : null;
+      const grupo = typeof parsed.grupo === "string" && parsed.grupo.trim() ? parsed.grupo.trim() : null;
+      if (query) return { cleanAnswer, query, grupo };
+    } catch {
+      // sigue al fallback de palabras clave con el cleanAnswer
+    }
+    const fallback = findFallbackKeyword(cleanAnswer);
+    return { cleanAnswer, query: fallback?.query ?? null, grupo: fallback?.grupo ?? null };
   }
 
-  const cleanAnswer = answer.replace(match[0], "").trim();
-
-  try {
-    const parsed = JSON.parse(match[1]);
-    const query = typeof parsed.query === "string" && parsed.query.trim() ? parsed.query.trim() : null;
-    const grupo = typeof parsed.grupo === "string" && parsed.grupo.trim() ? parsed.grupo.trim() : null;
-    return { cleanAnswer, query, grupo };
-  } catch {
-    return { cleanAnswer, query: null, grupo: null };
-  }
+  // El modelo no incluyo el marcador: buscar palabras clave conocidas igual.
+  const fallback = findFallbackKeyword(answer);
+  return { cleanAnswer: answer, query: fallback?.query ?? null, grupo: fallback?.grupo ?? null };
 }
 
 function getMattToolId(): string {
@@ -371,12 +437,12 @@ function getMattToolId(): string {
 
 // deno-lint-ignore no-explicit-any
 async function findSuggestedProduct(admin: any, query: string, grupoHint: string | null, species: string): Promise<SuggestedProduct | null> {
-  const words = query
-    .toLowerCase()
+  const baseWords = normalizeText(query)
     .split(/\s+/)
     .filter((w) => w.length >= 4)
     .slice(0, 6);
 
+  const words = expandWithSynonyms(baseWords);
   if (words.length === 0) return null;
 
   const orFilter = words.map((w) => `title.ilike.%${w}%`).join(",");
@@ -402,8 +468,8 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
   const scored = (data as Candidate[])
     .filter((p) => !petType || (Array.isArray(p.pet_types) && (p.pet_types.includes(petType) || p.pet_types.includes("otro"))))
     .map((p) => {
-      const titleLower = p.title.toLowerCase();
-      const score = words.reduce((acc, w) => acc + (titleLower.includes(w) ? 1 : 0), 0);
+      const titleNormalized = normalizeText(p.title);
+      const score = words.reduce((acc, w) => acc + (titleNormalized.includes(w) ? 1 : 0), 0);
       return { ...p, score };
     })
     .filter((p) => p.score > 0)
