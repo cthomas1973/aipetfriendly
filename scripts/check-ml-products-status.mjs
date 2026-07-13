@@ -1,50 +1,38 @@
 #!/usr/bin/env node
 /**
  * check-ml-products-status.mjs
- * Cron diario: revisa cada producto activo en beneficios_productos contra la
- * API de Mercado Libre (endpoint /items/{id}) y desactiva los que ya no
- * existen o estan pausados/cerrados.
+ * Cron diario: revisa cada producto activo en beneficios_productos visitando
+ * su URL real (permalink) en Mercado Libre y desactiva los que ya no existen
+ * o estan pausados/cerrados.
  *
- * Requiere GitHub Secrets:
- *   SUPABASE_URL, SUPABASE_SERVICE_KEY
- *   ML_REFRESH_TOKEN, ML_APP_ID, ML_APP_SECRET (opcional, se intenta con y sin token)
+ * IMPORTANTE: no se usa el endpoint /items/{id} de la API porque los productos
+ * cargados desde URLs tipo /p/MLAxxxx (ficha de catalogo con varios vendedores)
+ * tienen un ID de catalogo, no un ID de publicacion/item real — consultarlos
+ * contra /items/{id} da falsos positivos de "inactivo". En cambio, se visita
+ * la URL real que ve el usuario y se buscan frases que ML muestra cuando una
+ * publicacion ya no existe o fue pausada.
  *
- * Medida de seguridad: si la mayoria de las consultas a ML devuelven 403/bloqueo,
- * el script NO desactiva nada (para evitar apagar todo el catalogo por un bloqueo
- * temporal de IP) y termina con error para que se note en el historial de Actions.
+ * Requiere GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
+ *
+ * Medida de seguridad: si la mayoria de las consultas a ML devuelven bloqueo
+ * (403/error de red/timeout), el script NO desactiva nada (para evitar apagar
+ * todo el catalogo por un bloqueo temporal de IP) y termina con error para
+ * que se note en el historial de Actions.
  */
 
-function normalizeItemId(mlaId) {
-  // beneficios_productos.mla_id se guarda como "MLA-1234567890"; el endpoint
-  // /items/{id} de ML requiere el formato sin guion: "MLA1234567890".
-  return String(mlaId || '').replace(/^MLA-?/i, 'MLA');
-}
-
-async function getMlAccessToken() {
-  const { ML_REFRESH_TOKEN, ML_APP_ID, ML_APP_SECRET } = process.env;
-  if (!ML_REFRESH_TOKEN || !ML_APP_ID || !ML_APP_SECRET) return '';
-
-  try {
-    const res = await fetch('https://api.mercadolibre.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: ML_APP_ID,
-        client_secret: ML_APP_SECRET,
-        refresh_token: ML_REFRESH_TOKEN,
-      }).toString(),
-    });
-    const data = await res.json();
-    return res.ok ? String(data.access_token || '') : '';
-  } catch {
-    return '';
-  }
-}
+const NOT_FOUND_PATTERNS = [
+  /parece que esta p[aá]gina no existe/i,
+  /no encontramos la p[aá]gina/i,
+  /ya no se encuentra disponible/i,
+  /esta publicaci[oó]n ha finalizado/i,
+  /publicaci[oó]n pausada/i,
+  /esta publicaci[oó]n fue pausada/i,
+  /el producto que buscas no est[aá] disponible/i,
+];
 
 async function fetchAllActiveProducts(supabaseUrl, supabaseKey) {
   const params = new URLSearchParams({
-    select: 'id,mla_id,title',
+    select: 'id,mla_id,title,permalink',
     active: 'eq.true',
     order: 'updated_at.asc',
   });
@@ -69,20 +57,27 @@ async function deactivateProduct(supabaseUrl, supabaseKey, id) {
   if (!res.ok) throw new Error(`Error desactivando ${id}: ${res.status} ${await res.text()}`);
 }
 
-// Resultado posible por item: 'active' | 'inactive' | 'blocked' (no se pudo verificar)
-async function checkItemStatus(itemId, accessToken) {
-  const headers = { Accept: 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) };
+// Resultado posible por producto: 'active' | 'inactive' | 'blocked' (no se pudo verificar)
+async function checkPermalinkStatus(permalink) {
+  if (!permalink) return 'blocked';
+
   try {
-    const res = await fetch(`https://api.mercadolibre.com/items/${encodeURIComponent(itemId)}`, { headers });
+    const res = await fetch(permalink, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
 
-    if (res.status === 404) return 'inactive'; // publicacion eliminada
-    if (res.status === 403 || res.status === 401) return 'blocked'; // bloqueo de IP o auth
-    if (!res.ok) return 'blocked'; // otros errores: no confiar, no desactivar
+    if (res.status === 404) return 'inactive';
+    if (res.status === 403 || res.status === 429) return 'blocked';
+    if (!res.ok) return 'blocked';
 
-    const data = await res.json();
-    const status = String(data.status || '').toLowerCase();
-    // Estados de ML: active, paused, closed, under_review, inactive, payment_required
-    return status === 'active' ? 'active' : 'inactive';
+    const html = await res.text();
+    const isNotFound = NOT_FOUND_PATTERNS.some(pattern => pattern.test(html));
+    return isNotFound ? 'inactive' : 'active';
   } catch {
     return 'blocked';
   }
@@ -96,9 +91,6 @@ async function main() {
     throw new Error('Faltan SUPABASE_URL / SUPABASE_SERVICE_KEY');
   }
   const supabaseUrl = SUPABASE_URL.replace(/\/+$/, '');
-
-  const accessToken = await getMlAccessToken();
-  console.log(`[token] ${accessToken ? 'obtenido' : 'no disponible, se consulta sin auth'}`);
 
   const products = await fetchAllActiveProducts(supabaseUrl, SUPABASE_SERVICE_KEY);
   console.log(`[supabase] Productos activos a verificar: ${products.length}\n`);
@@ -114,22 +106,21 @@ async function main() {
   const toDeactivate = [];
 
   for (const product of products) {
-    const itemId = normalizeItemId(product.mla_id);
-    const status = await checkItemStatus(itemId, accessToken);
+    const status = await checkPermalinkStatus(product.permalink);
 
     if (status === 'blocked') {
       blockedCount++;
-      console.log(`[?] ${itemId} — no se pudo verificar (bloqueo/error de red)`);
+      console.log(`[?] ${product.mla_id} — no se pudo verificar (bloqueo/error de red/timeout)`);
     } else if (status === 'inactive') {
       inactiveCount++;
       toDeactivate.push(product);
-      console.log(`[X] ${itemId} — INACTIVO en ML: "${String(product.title || '').slice(0, 50)}"`);
+      console.log(`[X] ${product.mla_id} — INACTIVO en ML: "${String(product.title || '').slice(0, 50)}"`);
     } else {
       activeCount++;
     }
 
     // Pausa breve entre requests para no saturar
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 500));
   }
 
   console.log(`\n=== RESUMEN: ${activeCount} activos, ${inactiveCount} inactivos, ${blockedCount} sin verificar ===`);

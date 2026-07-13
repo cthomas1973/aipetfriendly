@@ -33,6 +33,3 @@ jobs:
         env:
           SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
-          ML_REFRESH_TOKEN:      ${{ secrets.ML_REFRESH_TOKEN }}
-          ML_APP_ID:             ${{ secrets.ML_APP_ID }}
-          ML_APP_SECRET:         ${{ secrets.ML_APP_SECRET }}
