@@ -1,0 +1,38 @@
+name: Check ML Products Status
+
+# Corre diariamente y revisa si cada producto activo en beneficios_productos
+# sigue existiendo/activo en Mercado Libre. Si esta pausado, cerrado o la
+# publicacion fue eliminada, lo desactiva (active=false) del catalogo.
+#
+# Nota: si ML bloquea las consultas (403) para mas del 50% de los productos,
+# el script no desactiva nada para evitar apagar el catalogo entero por un
+# bloqueo temporal de IP — revisar el log del job si eso ocurre.
+
+on:
+  schedule:
+    # 07:00 UTC todos los dias (4am Argentina)
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verificar estado de productos en ML
+        run: node scripts/check-ml-products-status.mjs
+        env:
+          SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ML_REFRESH_TOKEN:      ${{ secrets.ML_REFRESH_TOKEN }}
+          ML_APP_ID:             ${{ secrets.ML_APP_ID }}
+          ML_APP_SECRET:         ${{ secrets.ML_APP_SECRET }}
