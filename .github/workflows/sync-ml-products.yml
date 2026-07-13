@@ -1,10 +1,17 @@
 name: Sync ML Products to Supabase
 
+# DESHABILITADO: Mercado Libre bloquea con 403 Forbidden todas las IPs de
+# datacenter/cloud (confirmado tanto en Vercel como en GitHub Actions runners).
+# No hay combinacion de token/sort/categoria que lo evite. Este cron nunca
+# va a poder traer productos automaticamente.
+#
+# La forma confiable de cargar productos es el panel Admin manual
+# (pestaña Admin > Beneficios ML), donde se pega la URL del producto de
+# Mercado Libre y el sistema arma el link de afiliado automaticamente.
+#
+# El trigger automatico (schedule) esta deshabilitado. Se deja workflow_dispatch
+# por si en el futuro ML cambia su politica de bloqueo y se quiere reintentar.
 on:
-  schedule:
-    # Corre a las 6:00 UTC todos los dias (3am Argentina)
-    - cron: '0 6 * * *'
-  # Permite ejecutarlo manualmente desde GitHub Actions → Run workflow
   workflow_dispatch:
 
 jobs:
