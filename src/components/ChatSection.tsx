@@ -1,7 +1,13 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Send, Stethoscope } from 'lucide-react';
+import { ExternalLink, Send, Stethoscope } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { useAppState } from '../context/AppStateContext';
+
+const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
 
 const SPECIES_EMOJI: Record<string, string> = { dog: '🐕', cat: '🐈', other: '🐾' };
 
@@ -14,7 +20,7 @@ const SUGGESTIONS = [
 
 export function ChatSection() {
   const { pets, selectedPetId, setSelectedPetId, subscription } = useAppState();
-  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage } = useChat();
+  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, suggestedProductByMessageId } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -140,12 +146,39 @@ export function ChatSection() {
             <div className="space-y-3">
               {visible.map(m => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    m.role === 'user'
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-white text-slate-700 shadow-sm'
-                  }`}>
-                    {m.content}
+                  <div className="max-w-[85%] space-y-2">
+                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                      m.role === 'user'
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-white text-slate-700 shadow-sm'
+                    }`}>
+                      {m.content}
+                    </div>
+                    {m.role === 'assistant' && suggestedProductByMessageId[m.id] && (
+                      <a
+                        href={suggestedProductByMessageId[m.id].link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-3 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100"
+                      >
+                        {suggestedProductByMessageId[m.id].thumbnail && (
+                          <img
+                            src={suggestedProductByMessageId[m.id].thumbnail ?? ''}
+                            alt={suggestedProductByMessageId[m.id].title}
+                            className="h-12 w-12 shrink-0 rounded-xl object-cover bg-white"
+                            loading="lazy"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Producto recomendado</p>
+                          <p className="truncate text-sm font-semibold text-slate-800">{suggestedProductByMessageId[m.id].title}</p>
+                          {suggestedProductByMessageId[m.id].price != null && (
+                            <p className="text-xs font-bold text-slate-600">{PRICE_FORMATTER.format(suggestedProductByMessageId[m.id].price as number)}</p>
+                          )}
+                        </div>
+                        <ExternalLink size={16} className="shrink-0 text-emerald-600" />
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}

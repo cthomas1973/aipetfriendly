@@ -250,6 +250,9 @@ function buildPrompt(
     "4. Incluye alertas de urgencia cuando corresponda (veterinario inmediato).",
     "5. No inventes diagnosticos ni estudios que no aparecen en el historial.",
     "6. Cierra con: 'Esta guia no reemplaza la consulta veterinaria presencial.'",
+    "7. Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (ej. shampoo antipulgas, alimento especial, suplemento, cepillo, arena sanitaria), agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto):",
+    'PRODUCT_SUGGESTION: {"query": "palabras clave del producto en español", "grupo": "alimentos|accesorios|higiene|descanso"}',
+    "Si no corresponde sugerir ningun producto (por ejemplo, si la respuesta es solo orientacion general o requiere atencion veterinaria), NO agregues esa linea.",
   ].join("\n");
 }
 
@@ -317,6 +320,108 @@ async function callAiModel(prompt: string) {
       completionTokens: estimatedCompletionTokens,
       totalTokens: estimatedTotalTokens,
     },
+  };
+}
+
+type SuggestedProduct = {
+  title: string;
+  thumbnail: string | null;
+  price: number | null;
+  link: string;
+};
+
+// Extrae el marcador oculto PRODUCT_SUGGESTION del texto de la IA y lo remueve
+// de la respuesta visible al usuario. No inventa nada: solo indica una
+// intencion de busqueda (query + grupo) que luego se matchea contra nuestro
+// propio catalogo curado (beneficios_productos), nunca contra Mercado Libre
+// en vivo (la API de ML bloquea las IPs de Supabase Edge Functions con 403,
+// igual que bloquea Vercel y GitHub Actions).
+function extractProductSuggestion(answer: string): { cleanAnswer: string; query: string | null; grupo: string | null } {
+  const match = answer.match(/PRODUCT_SUGGESTION:\s*(\{[^\n]*\})/i);
+  if (!match) {
+    return { cleanAnswer: answer, query: null, grupo: null };
+  }
+
+  const cleanAnswer = answer.replace(match[0], "").trim();
+
+  try {
+    const parsed = JSON.parse(match[1]);
+    const query = typeof parsed.query === "string" && parsed.query.trim() ? parsed.query.trim() : null;
+    const grupo = typeof parsed.grupo === "string" && parsed.grupo.trim() ? parsed.grupo.trim() : null;
+    return { cleanAnswer, query, grupo };
+  } catch {
+    return { cleanAnswer, query: null, grupo: null };
+  }
+}
+
+function getMattToolId(): string {
+  const template = Deno.env.get("ML_AFFILIATE_TEMPLATE") || "";
+  if (template) {
+    try {
+      const url = new URL(template);
+      const value = url.searchParams.get("matt_tool");
+      if (value) return value;
+    } catch {
+      const m = template.match(/[?&]matt_tool=([^&\s]+)/);
+      if (m) return m[1];
+    }
+  }
+  return Deno.env.get("ML_AFFILIATE_ID") || "";
+}
+
+// deno-lint-ignore no-explicit-any
+async function findSuggestedProduct(admin: any, query: string, grupoHint: string | null, species: string): Promise<SuggestedProduct | null> {
+  const words = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 4)
+    .slice(0, 6);
+
+  if (words.length === 0) return null;
+
+  const orFilter = words.map((w) => `title.ilike.%${w}%`).join(",");
+
+  let dbQuery = admin
+    .from("beneficios_productos")
+    .select("title,thumbnail,price,permalink,grupo,pet_types")
+    .eq("active", true)
+    .or(orFilter)
+    .limit(20);
+
+  if (grupoHint && ["alimentos", "accesorios", "higiene", "descanso"].includes(grupoHint)) {
+    dbQuery = dbQuery.eq("grupo", grupoHint);
+  }
+
+  const { data, error } = await dbQuery;
+  if (error || !Array.isArray(data) || data.length === 0) return null;
+
+  const petType = species === "cat" ? "gato" : species === "dog" ? "perro" : null;
+
+  type Candidate = { title: string; thumbnail: string | null; price: number | null; permalink: string; pet_types: string[] };
+
+  const scored = (data as Candidate[])
+    .filter((p) => !petType || (Array.isArray(p.pet_types) && (p.pet_types.includes(petType) || p.pet_types.includes("otro"))))
+    .map((p) => {
+      const titleLower = p.title.toLowerCase();
+      const score = words.reduce((acc, w) => acc + (titleLower.includes(w) ? 1 : 0), 0);
+      return { ...p, score };
+    })
+    .filter((p) => p.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (!best) return null;
+
+  const mattTool = getMattToolId();
+  const link = mattTool
+    ? `${best.permalink}${best.permalink.includes("?") ? "&" : "?"}matt_tool=${encodeURIComponent(mattTool)}`
+    : best.permalink;
+
+  return {
+    title: best.title,
+    thumbnail: best.thumbnail,
+    price: best.price,
+    link,
   };
 }
 
@@ -389,8 +494,20 @@ serve(async (req) => {
       const ai = await callAiModel(prompt);
       const limit = resolveLimitByTier(settingsRowData, "guest");
 
+      const { cleanAnswer, query, grupo } = extractProductSuggestion(ai.answer);
+      let suggestedProduct: SuggestedProduct | null = null;
+      if (query) {
+        try {
+          suggestedProduct = await findSuggestedProduct(admin, query, grupo, guestPet.species);
+        } catch {
+          suggestedProduct = null;
+        }
+      }
+
       return new Response(JSON.stringify({
         ...ai,
+        answer: cleanAnswer,
+        suggestedProduct,
         usage: {
           tier: "guest",
           limit,
@@ -515,6 +632,17 @@ serve(async (req) => {
 
     const ai = await callAiModel(prompt);
 
+    const { cleanAnswer, query, grupo } = extractProductSuggestion(ai.answer);
+    ai.answer = cleanAnswer;
+    let suggestedProduct: SuggestedProduct | null = null;
+    if (query) {
+      try {
+        suggestedProduct = await findSuggestedProduct(admin, query, grupo, pet.species);
+      } catch {
+        suggestedProduct = null;
+      }
+    }
+
     const usedAfter = usedBefore + 1;
     const { error: upsertUsageError } = await admin
       .from("ai_pet_usage")
@@ -552,6 +680,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       ...ai,
+      suggestedProduct,
       usage: {
         tier,
         limit,

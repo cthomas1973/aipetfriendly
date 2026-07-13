@@ -5,6 +5,13 @@ import { askPetAssistant, createChatMessage, fetchAiUsageSettings, fetchUserPetA
 
 const GUEST_USAGE_KEY = 'aipetfriendly.guest-ai-usage';
 
+export interface SuggestedProduct {
+  title: string;
+  thumbnail: string | null;
+  price: number | null;
+  link: string;
+}
+
 const DEFAULT_LIMITS = {
   guestLimitPerPet: 3,
   freeLimitPerPet: 10,
@@ -37,6 +44,7 @@ export function useChat() {
   const [limits, setLimits] = useState(DEFAULT_LIMITS);
   const [usageByPet, setUsageByPet] = useState<Record<string, number>>({});
   const [sessionMessagesByPet, setSessionMessagesByPet] = useState<Record<string, ChatMessage[]>>({});
+  const [suggestedProductByMessageId, setSuggestedProductByMessageId] = useState<Record<string, SuggestedProduct>>({});
 
   useEffect(() => {
     // Cada inicio/cambio de sesion comienza con consultorio limpio.
@@ -185,6 +193,7 @@ export function useChat() {
       }
 
       let assistantText = createAssistantFallback(content);
+      let suggestedProduct: SuggestedProduct | null = null;
       try {
         const recentMessages = nextMessages
           .filter((message) => message.role !== 'system')
@@ -242,6 +251,10 @@ export function useChat() {
           assistantText = response.answer;
         }
 
+        if (response.suggestedProduct) {
+          suggestedProduct = response.suggestedProduct;
+        }
+
         if (response.usage && petId) {
           setUsageByPet((current) => ({
             ...current,
@@ -268,6 +281,13 @@ export function useChat() {
         petId,
         createdAt: new Date().toISOString(),
       };
+
+      if (suggestedProduct) {
+        setSuggestedProductByMessageId((current) => ({
+          ...current,
+          [assistantMessage.id]: suggestedProduct as SuggestedProduct,
+        }));
+      }
 
       setSessionMessagesByPet((current) => ({
         ...current,
@@ -305,5 +325,6 @@ export function useChat() {
       remaining: remainingForSelectedPet,
     },
     sendMessage,
+    suggestedProductByMessageId,
   };
 }

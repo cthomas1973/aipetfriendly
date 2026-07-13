@@ -50,6 +50,12 @@ interface PetAssistantRequest {
 interface PetAssistantResponse {
   answer: string;
   model?: string;
+  suggestedProduct?: {
+    title: string;
+    thumbnail: string | null;
+    price: number | null;
+    link: string;
+  } | null;
   usage?: {
     tier: 'guest' | 'free' | 'premium';
     limit: number;
