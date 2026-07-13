@@ -19,7 +19,23 @@ function extractMlaInfo(url: string): { mlaId: string; permalink: string } | nul
   const match = url.match(/MLA-?(\d{7,})/i);
   if (!match) return null;
   const mlaId = `MLA-${match[1]}`;
-  const permalink = `https://articulo.mercadolibre.com.ar/${mlaId}`;
+
+  // IMPORTANTE: usamos la URL REAL pegada por el usuario, no una reconstruida.
+  // Las URLs de tipo /p/MLAxxxx son fichas de producto (catalogo, varios vendedores)
+  // y NO tienen equivalente en articulo.mercadolibre.com.ar/MLA-xxx — reconstruirla
+  // rompe el link ("pagina no existe"). Solo limpiamos el hash de tracking (#polycard_client=...)
+  // y cualquier matt_tool viejo para no duplicarlo.
+  let permalink = url.trim();
+  try {
+    const parsed = new URL(permalink);
+    parsed.hash = '';
+    parsed.searchParams.delete('matt_tool');
+    parsed.searchParams.delete('matt_word');
+    permalink = parsed.toString();
+  } catch {
+    // URL invalida: se deja tal cual, el input type=url ya valida el formato basico
+  }
+
   return { mlaId, permalink };
 }
 
