@@ -878,7 +878,7 @@ export function OffersSection() {
   return (
     <section className="space-y-4 pb-2">
       <div className="pt-2">
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Tienda y Beneficios</h2>
+        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">🛒 Lo mejor de Mercado Libre, acá</h2>
         <p className="mt-1 text-slate-500">Descuentos exclusivos para tu mascota</p>
       </div>
 
@@ -889,7 +889,7 @@ export function OffersSection() {
             <Tags size={18} className="text-yellow-300" />
             <p className="font-bold">Beneficios activos</p>
           </div>
-          <p className="text-sm text-white/80">Accede a todos los descuentos exclusivos Premium.</p>
+          <p className="text-sm text-white/80">Seleccionamos para vos los productos más vendidos, con los mejores precios y de vendedores de confianza. Ya filtramos las mejores ofertas ¡ahorrá tiempo y comprá directo!</p>
         </div>
       ) : (
         <button

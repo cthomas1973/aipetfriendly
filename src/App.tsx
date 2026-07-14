@@ -82,7 +82,7 @@ function BottomNav({
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
     { id: 'map', label: 'Mapa Vet', icon: MapPinned },
-    { id: 'offers', label: 'Beneficios', icon: Gift },
+    { id: 'offers', label: 'Tienda', icon: Gift },
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
 
@@ -137,7 +137,7 @@ function DesktopTabNav({
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
     { id: 'map', label: 'Mapa Vet', icon: MapPinned },
-    { id: 'offers', label: 'Beneficios', icon: Gift },
+    { id: 'offers', label: 'Tienda', icon: Gift },
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
 
