@@ -20,7 +20,7 @@ const SUGGESTIONS = [
 ];
 
 export function ChatSection() {
-  const { pets, selectedPetId, setSelectedPetId, subscription } = useAppState();
+  const { pets, selectedPetId, setSelectedPetId, subscription, setActiveTab } = useAppState();
   const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, suggestedProductByMessageId } = useChat();
 
   const [input, setInput] = useState('');
@@ -229,6 +229,13 @@ export function ChatSection() {
         <div className="rounded-3xl bg-amber-50 px-4 py-4 text-center">
           <p className="font-semibold text-amber-800">Limite por mascota alcanzado</p>
           <p className="mt-1 text-sm text-amber-600">Selecciona otra mascota o ajusta el plan en Mi Cuenta.</p>
+          <button
+            type="button"
+            onClick={() => setActiveTab('subscription')}
+            className="mt-3 rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold text-white"
+          >
+            Ver planes Premium
+          </button>
         </div>
       )}
 

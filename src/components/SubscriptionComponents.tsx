@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Check, Crown, ExternalLink, LocateFixed, Lock, Tags, Truck, X } from 'lucide-react';
+import { Check, Crown, ExternalLink, LocateFixed, Lock, Tags, Truck, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
@@ -77,7 +77,7 @@ function countryCodeFromDial(dialCode: string): string | null {
 
 /* ── SubscriptionBanner ─────────────────────────────── */
 export function SubscriptionBanner() {
-  const { subscription } = useAppState();
+  const { subscription, setActiveTab } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
 
   if (isPremium) {
@@ -89,10 +89,14 @@ export function SubscriptionBanner() {
     );
   }
   return (
-    <div className="rounded-2xl bg-amber-50 px-4 py-3 flex items-center gap-3">
+    <button
+      type="button"
+      onClick={() => setActiveTab('subscription')}
+      className="w-full rounded-2xl bg-amber-50 px-4 py-3 flex items-center gap-3 text-left transition hover:bg-amber-100"
+    >
       <Crown size={18} className="text-amber-500 shrink-0" />
       <p className="text-sm font-semibold text-amber-800">Plan gratuito · Actualiza a Premium</p>
-    </div>
+    </button>
   );
 }
 
@@ -158,6 +162,17 @@ export function PaywallCard() {
     currency: 'ARS',
     maximumFractionDigits: 0,
   }), []);
+  const monthlyAutoYearlyCostArs = useMemo(() => pricing.premiumMonthlyAutoArs * 12, [pricing.premiumMonthlyAutoArs]);
+  const monthlyManualYearlyCostArs = useMemo(() => pricing.premiumMonthlyManualArs * 12, [pricing.premiumMonthlyManualArs]);
+  const annualEquivalentMonthlyArs = useMemo(() => pricing.premiumAnnualAutoArs / 12, [pricing.premiumAnnualAutoArs]);
+  const annualSavingVsMonthlyAutoArs = useMemo(
+    () => Math.max(0, monthlyAutoYearlyCostArs - pricing.premiumAnnualAutoArs),
+    [monthlyAutoYearlyCostArs, pricing.premiumAnnualAutoArs],
+  );
+  const annualSavingVsMonthlyManualArs = useMemo(
+    () => Math.max(0, monthlyManualYearlyCostArs - pricing.premiumAnnualAutoArs),
+    [monthlyManualYearlyCostArs, pricing.premiumAnnualAutoArs],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -417,6 +432,33 @@ export function PaywallCard() {
 
       {accountTab === 'plan' ? (
         <>
+          <div className="rounded-3xl bg-white p-4 shadow-sm">
+            <p className="text-sm font-bold text-slate-900">Comparativa de planes</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-bold text-slate-900">Plan Free</p>
+                <p className="mt-1 text-xs text-slate-500">Limitaciones del plan gratuito</p>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Maximo {subscription.freePetLimit} mascotas</li>
+                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> IA limitada ({subscription.freeAiDailyLimit} consultas/dia)</li>
+                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Sin descuentos exclusivos en Beneficios</li>
+                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Sin exportacion PDF avanzada</li>
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="font-bold text-emerald-800">Plan Premium</p>
+                <p className="mt-1 text-xs text-emerald-700">Beneficios incluidos</p>
+                <ul className="mt-3 space-y-2 text-sm text-emerald-900">
+                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Mascotas ilimitadas</li>
+                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Consultas IA ampliadas</li>
+                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Descuentos exclusivos en Beneficios</li>
+                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Exportar historial clinico en PDF</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* plan card */}
           <div className="rounded-3xl bg-emerald-500 p-5 shadow-md">
             <div className="mb-4 flex items-center gap-3">
@@ -469,6 +511,15 @@ export function PaywallCard() {
                     : `Premium anual (debito automatico) · ${arsFormatter.format(pricing.premiumAnnualAutoArs)} / U$S ${pricing.premiumAnnualAutoUsd.toFixed(2)}`}
                 </button>
 
+                <div className="rounded-2xl bg-white/15 px-3 py-2 text-xs text-white">
+                  <p>Ahorro anual con debito automatico:</p>
+                  <p>
+                    Pagas equivalente a {arsFormatter.format(annualEquivalentMonthlyArs)}/mes.
+                    Ahorras {arsFormatter.format(annualSavingVsMonthlyAutoArs)} frente al mensual automatico
+                    y {arsFormatter.format(annualSavingVsMonthlyManualArs)} frente al mensual manual.
+                  </p>
+                </div>
+
                 <button
                   type="button"
                   disabled={checkoutLoadingMode !== null}
@@ -495,29 +546,6 @@ export function PaywallCard() {
                 )}
               </div>
             )}
-          </div>
-
-          {/* notification preferences */}
-          <div className="rounded-3xl bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <Bell size={18} className="text-emerald-500" />
-              <p className="font-bold text-slate-900">Preferencias de notificacion</p>
-            </div>
-            <div className="space-y-3">
-              {[
-                { label: 'Notificaciones Push',   sub: 'Alertas en el dispositivo' },
-                { label: 'Notificaciones Email',  sub: 'Recordatorios por email' },
-                { label: 'Notificaciones WhatsApp', sub: 'Mensajes por WhatsApp' },
-              ].map(item => (
-                <div key={item.label} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">{item.label}</p>
-                    <p className="text-xs text-slate-400">{item.sub}</p>
-                  </div>
-                  <div className="h-6 w-11 rounded-full bg-emerald-500" />
-                </div>
-              ))}
-            </div>
           </div>
         </>
       ) : (
@@ -713,7 +741,7 @@ const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
 });
 
 export function OffersSection() {
-  const { subscription, pets } = useAppState();
+  const { subscription, pets, setActiveTab } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
   const [group, setGroup] = useState<OfferGroup>('alimentos');
   const [sort, setSort] = useState<OfferSort>('relevance');
@@ -864,11 +892,15 @@ export function OffersSection() {
           <p className="text-sm text-white/80">Accede a todos los descuentos exclusivos Premium.</p>
         </div>
       ) : (
-        <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-4 text-center shadow-sm">
+        <button
+          type="button"
+          onClick={() => setActiveTab('subscription')}
+          className="w-full rounded-3xl border-2 border-dashed border-slate-200 bg-white p-4 text-center shadow-sm transition hover:bg-slate-50"
+        >
           <Lock size={24} className="mx-auto mb-2 text-slate-300" />
           <p className="font-semibold text-slate-700">Beneficios bloqueados</p>
           <p className="mt-1 text-sm text-slate-400">Actualiza a Premium para acceder a todos los descuentos.</p>
-        </div>
+        </button>
       )}
 
       <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
