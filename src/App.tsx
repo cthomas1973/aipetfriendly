@@ -70,10 +70,12 @@ function BottomNav({
   activeTab,
   onChange,
   isAdmin,
+  hasMobileBanner,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   isAdmin: boolean;
+  hasMobileBanner: boolean;
 }) {
   const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
@@ -89,7 +91,10 @@ function BottomNav({
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden">
+    <nav
+      className="fixed left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden"
+      style={{ bottom: hasMobileBanner ? '52px' : '0px' }}
+    >
       <ul className={`grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} gap-1`}>
         {tabs.map((tab) => (
           <li key={tab.id} className="text-center">
@@ -170,6 +175,7 @@ function AppContent() {
     activeTab,
     pets,
     preventiveTasks,
+    subscription,
     setActiveTab,
     setUser,
   } = useAppState();
@@ -181,6 +187,7 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
+  const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -299,7 +306,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#EAF7F1] pb-24 md:pb-10">
+    <div className={`min-h-screen bg-[#EAF7F1] ${hasMobileBanner ? 'pb-40' : 'pb-24'} md:pb-10`}>
       <main className="mx-auto w-full max-w-md px-4 pt-5 md:max-w-5xl md:px-6 md:pt-8">
         <div className="mb-3 text-center md:mb-5">
           <button
@@ -364,7 +371,12 @@ function AppContent() {
       </main>
 
       {!isResetPasswordRoute && (
-        <BottomNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
+        <BottomNav
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          isAdmin={Boolean(user?.isAdmin)}
+          hasMobileBanner={hasMobileBanner}
+        />
       )}
 
       {popupQueue.length > 0 && !isResetPasswordRoute && (
@@ -404,12 +416,12 @@ function AppContent() {
 }
 
 function MobileAdsGate() {
-  const { subscription } = useAppState();
+  const { subscription, user } = useAppState();
 
   useEffect(() => {
     if (!isNativeAndroidApp()) return;
 
-    const shouldShowAds = !subscription.isPremiumUser;
+    const shouldShowAds = Boolean(user && !user.isGuest && !subscription.isPremiumUser);
 
     if (shouldShowAds) {
       void showBannerForNonPremium();
@@ -420,7 +432,7 @@ function MobileAdsGate() {
     return () => {
       void hideBannerAd();
     };
-  }, [subscription.isPremiumUser]);
+  }, [subscription.isPremiumUser, user]);
 
   return null;
 }

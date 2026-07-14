@@ -3,7 +3,7 @@
 // authorization_code para obtener access_token y consultar productos reales.
 // Sin refresh_token, sirve el catalogo curado con links de listado ML.
 
-const GROUP_KEYS = new Set(['alimentos', 'accesorios', 'higiene', 'descanso']);
+const GROUP_KEYS = new Set(['alimentos', 'accesorios', 'higiene', 'descanso', 'salud', 'tecnologia']);
 
 // Catalogo curado: 10 productos por grupo con search terms alineados al titulo.
 // Link final = listado.mercadolibre.com.ar/<search>?matt_tool=<ID>
@@ -129,6 +129,13 @@ const GROUP_QUERIES = {
   accesorios: 'correa pretal collar perro',
   higiene: 'shampoo antipulgas mascotas',
   descanso: 'juguete cama rascador mascota',
+  salud: 'pipeta antiparasitario mascota',
+  tecnologia: 'rastreador gps mascota comedero automatico',
+};
+
+const GROUP_FALLBACK = {
+  salud: 'higiene',
+  tecnologia: 'accesorios',
 };
 
 async function fetchMlProducts(grupo, sortParam, accessToken) {
@@ -282,7 +289,7 @@ export default async function handler(req, res) {
   }
 
   // ── 3. Catalogo estatico (ultimo recurso) ─────────────────────────────────
-  const base = CATALOG[grupo] || CATALOG.alimentos;
+  const base = CATALOG[grupo] || CATALOG[GROUP_FALLBACK[grupo]] || CATALOG.alimentos;
   const products = base.map(p => ({
     id:             p.id,
     title:          p.title,

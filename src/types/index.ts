@@ -1,6 +1,6 @@
 export type PetSex = 'male' | 'female' | 'unknown';
 
-export type OfferGrupo = 'alimentos' | 'accesorios' | 'higiene' | 'descanso';
+export type OfferGrupo = 'alimentos' | 'accesorios' | 'higiene' | 'descanso' | 'salud' | 'tecnologia';
 export type PetType = 'perro' | 'gato' | 'otro';
 export type PetLifeStage = 'cachorro' | 'adulto' | 'senior' | 'todas';
 export type PetSizeCategory = 'pequeño' | 'mediano' | 'grande' | 'todos';

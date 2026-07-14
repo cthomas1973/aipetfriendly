@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { LocateFixed, MapPin, Navigation } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 
 const DEFAULT_QUERY = 'Veterinarias cerca de mi';
 const GOOGLE_MAPS_EMBED_KEY = (import.meta.env.VITE_GOOGLE_MAPS_EMBED_API_KEY as string | undefined)?.trim() || '';
@@ -19,28 +20,46 @@ function buildMapUrl(params: { apiKey: string; query: string; center?: { lat: nu
   return url.toString();
 }
 
+function buildPublicMapEmbedUrl(params: { query: string; center?: { lat: number; lng: number } | null }) {
+  const url = new URL('https://maps.google.com/maps');
+  url.searchParams.set('q', params.query);
+  if (params.center) {
+    url.searchParams.set('ll', `${params.center.lat},${params.center.lng}`);
+    url.searchParams.set('z', '13');
+  }
+  url.searchParams.set('hl', 'es');
+  url.searchParams.set('output', 'embed');
+  return url.toString();
+}
+
 export function NearbyVetsMapSection() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
   const mapUrl = useMemo(() => {
-    if (!GOOGLE_MAPS_EMBED_KEY) {
-      return null;
-    }
-
     if (!location) {
-      return buildMapUrl({
-        apiKey: GOOGLE_MAPS_EMBED_KEY,
-        query: DEFAULT_QUERY,
-      });
+      return GOOGLE_MAPS_EMBED_KEY
+        ? buildMapUrl({
+            apiKey: GOOGLE_MAPS_EMBED_KEY,
+            query: DEFAULT_QUERY,
+          })
+        : buildPublicMapEmbedUrl({ query: DEFAULT_QUERY });
     }
 
-    return buildMapUrl({
-      apiKey: GOOGLE_MAPS_EMBED_KEY,
-      query: `Veterinarias cerca de ${location.lat},${location.lng}`,
-      center: location,
-    });
+    const locationQuery = `Veterinarias cerca de ${location.lat},${location.lng}`;
+    return GOOGLE_MAPS_EMBED_KEY
+      ? buildMapUrl({
+          apiKey: GOOGLE_MAPS_EMBED_KEY,
+          query: locationQuery,
+          center: location,
+        })
+      : buildPublicMapEmbedUrl({
+          query: locationQuery,
+          center: location,
+        });
   }, [location]);
 
   const requestLocation = () => {
@@ -51,6 +70,7 @@ export function NearbyVetsMapSection() {
 
     setLocating(true);
     setLocationError(null);
+    setPermissionDenied(false);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -62,8 +82,10 @@ export function NearbyVetsMapSection() {
       },
       (error) => {
         setLocating(false);
+        const denied = error.code === error.PERMISSION_DENIED;
+        setPermissionDenied(denied);
         setLocationError(
-          error.code === error.PERMISSION_DENIED
+          denied
             ? 'Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.'
             : 'No se pudo obtener tu ubicacion. Intenta nuevamente.',
         );
@@ -73,6 +95,18 @@ export function NearbyVetsMapSection() {
         timeout: 12000,
       },
     );
+  };
+
+  const openLocationSettings = async () => {
+    if (!isNativeAndroid) {
+      return;
+    }
+
+    try {
+      window.location.href = 'app-settings:';
+    } catch {
+      setLocationError('No se pudieron abrir los ajustes. Ve a Ajustes > Apps > AiPetFriendly > Permisos > Ubicacion.');
+    }
   };
 
   return (
@@ -106,29 +140,39 @@ export function NearbyVetsMapSection() {
         </div>
 
         {locationError && (
-          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">{locationError}</p>
+          <div className="mt-3 space-y-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            <p>{locationError}</p>
+            {permissionDenied && isNativeAndroid && (
+              <button
+                type="button"
+                onClick={() => {
+                  void openLocationSettings();
+                }}
+                className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800"
+              >
+                Abrir ajustes de ubicacion
+              </button>
+            )}
+          </div>
         )}
       </div>
 
-      {!GOOGLE_MAPS_EMBED_KEY ? (
-        <div className="rounded-3xl bg-white p-5 shadow-sm">
-          <p className="font-semibold text-slate-800">Falta configurar Google Maps Embed API</p>
-          <p className="mt-2 text-sm text-slate-600">
-            Define la variable de entorno VITE_GOOGLE_MAPS_EMBED_API_KEY para habilitar el mapa embebido.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-emerald-100">
-          <iframe
-            title="Veterinarias cercanas"
-            src={mapUrl || undefined}
-            className="h-[62vh] min-h-[460px] w-full border-0"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            allow="geolocation"
-          />
+      {!GOOGLE_MAPS_EMBED_KEY && (
+        <div className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Mapa en modo compatible. Para la version completa con API oficial, define VITE_GOOGLE_MAPS_EMBED_API_KEY.
         </div>
       )}
+
+      <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-emerald-100">
+        <iframe
+          title="Veterinarias cercanas"
+          src={mapUrl || undefined}
+          className="h-[62vh] min-h-[460px] w-full border-0"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          allow="geolocation"
+        />
+      </div>
     </section>
   );
 }

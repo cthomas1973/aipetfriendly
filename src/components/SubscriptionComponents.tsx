@@ -654,7 +654,7 @@ export function PaywallCard() {
 }
 
 /* ── OffersSection (Tienda y Beneficios) ────────────── */
-type OfferGroup = 'alimentos' | 'accesorios' | 'higiene' | 'descanso';
+type OfferGroup = 'alimentos' | 'accesorios' | 'higiene' | 'descanso' | 'salud' | 'tecnologia';
 type OfferSort = 'relevance' | 'price_asc' | 'price_desc';
 
 interface AffiliateProduct {
@@ -674,11 +674,37 @@ interface AffiliateProduct {
 }
 
 const OFFER_GROUPS: Array<{ id: OfferGroup; label: string; emoji: string }> = [
-  { id: 'alimentos', label: 'Alimentos', emoji: '🍗' },
-  { id: 'accesorios', label: 'Accesorios y Paseo', emoji: '🦮' },
+  { id: 'alimentos', label: 'Alimentos y Nutricion', emoji: '🍗' },
+  { id: 'accesorios', label: 'Ropa y Accesorios', emoji: '👕' },
   { id: 'higiene', label: 'Estetica e Higiene', emoji: '🧴' },
   { id: 'descanso', label: 'Descanso y Juguetes', emoji: '🧸' },
+  { id: 'salud', label: 'Salud y Cuidado', emoji: '🩺' },
+  { id: 'tecnologia', label: 'Tecnologia y Hogar', emoji: '🏠' },
 ];
+
+interface ServerBenefitsResponse {
+  mattTool?: string;
+  debug?: boolean;
+  products?: AffiliateProduct[];
+}
+
+async function safeFetchServerBenefitsConfig(group: OfferGroup): Promise<ServerBenefitsResponse | null> {
+  try {
+    const response = await fetch(`/api/beneficios?grupo=${group}`);
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return null;
+    }
+
+    return (await response.json()) as ServerBenefitsResponse;
+  } catch {
+    return null;
+  }
+}
 
 const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -738,9 +764,9 @@ export function OffersSection() {
     setErrorProducts(null);
 
     try {
-      // 1. Obtener mattTool del servidor (config de afiliado)
-      const serverRes = await fetch(`/api/beneficios?grupo=${group}`);
-      const serverData = serverRes.ok ? await serverRes.json() : {};
+      // 1. Obtener mattTool del servidor (config de afiliado). En Android puede
+      // devolver HTML si /api no esta disponible; en ese caso seguimos con Supabase.
+      const serverData = (await safeFetchServerBenefitsConfig(group)) || {};
       const mattTool: string = String(serverData?.mattTool ?? '');
       setBenefitsDebug(Boolean(serverData?.debug));
 
@@ -773,6 +799,11 @@ export function OffersSection() {
       }
 
       if (supabaseProducts.length > 0) {
+        if (sort === 'price_asc') {
+          supabaseProducts.sort((a, b) => (a.price || 0) - (b.price || 0));
+        } else if (sort === 'price_desc') {
+          supabaseProducts.sort((a, b) => (b.price || 0) - (a.price || 0));
+        }
         setProducts(supabaseProducts);
         return;
       }

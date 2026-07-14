@@ -9,10 +9,12 @@ import {
 import type { BeneficioProducto, OfferGrupo, PetType, PetLifeStage, PetSizeCategory } from '../types';
 
 const GRUPOS: { id: OfferGrupo; label: string }[] = [
-  { id: 'alimentos',  label: '🍗 Alimentos' },
-  { id: 'accesorios', label: '🦮 Accesorios y Paseo' },
+  { id: 'alimentos',  label: '🍗 Alimentos y Nutricion' },
+  { id: 'accesorios', label: '👕 Ropa y Accesorios' },
   { id: 'higiene',    label: '🧴 Estetica e Higiene' },
   { id: 'descanso',   label: '🧸 Descanso y Juguetes' },
+  { id: 'salud',      label: '🩺 Salud y Cuidado' },
+  { id: 'tecnologia', label: '🏠 Tecnologia y Hogar' },
 ];
 
 const LIFE_STAGES: { id: PetLifeStage; label: string }[] = [

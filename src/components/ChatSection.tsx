@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ExternalLink, Send, Stethoscope } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { useAppState } from '../context/AppStateContext';
+import { isNativeAndroidApp, showInterstitialForNonPremium } from '../lib/mobileAds';
 
 const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -56,7 +57,14 @@ export function ChatSection() {
     if (!t || sending || !canUseAI || !selectedPetId) return;
     setInput('');
     setSending(true);
-    try { await sendMessage(t, selectedPetId); } finally { setSending(false); }
+    try {
+      if (!isPremium && isNativeAndroidApp()) {
+        void showInterstitialForNonPremium();
+      }
+      await sendMessage(t, selectedPetId);
+    } finally {
+      setSending(false);
+    }
   };
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); doSend(input); };
