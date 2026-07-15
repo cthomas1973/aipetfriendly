@@ -33,7 +33,7 @@ import type {
   SubscriptionState,
 } from './types';
 
-const FREE_PET_LIMIT = 2;
+const FREE_PET_LIMIT = 1;
 const FREE_AI_DAILY_LIMIT = 5;
 
 interface GlobalAppState {

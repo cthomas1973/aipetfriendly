@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Crown, ExternalLink, LocateFixed, Lock, Tags, Truck, X } from 'lucide-react';
+import { Check, Crown, ExternalLink, LocateFixed, Tags, Truck, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
@@ -107,7 +107,6 @@ const FEATURES = [
   { label: 'Historial clinico completo', free: true },
   { label: 'Preventivos y agenda',  free: true },
   { label: 'Exportar PDF del historial', free: false },
-  { label: 'Beneficios en tiendas', free: false },
 ];
 
 export function PaywallCard() {
@@ -439,9 +438,8 @@ export function PaywallCard() {
                 <p className="font-bold text-slate-900">Plan Free</p>
                 <p className="mt-1 text-xs text-slate-500">Limitaciones del plan gratuito</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Maximo {subscription.freePetLimit} mascotas</li>
+                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Maximo 1 mascota</li>
                   <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> IA limitada ({subscription.freeAiDailyLimit} consultas/dia)</li>
-                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Sin descuentos exclusivos en Beneficios</li>
                   <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Sin exportacion PDF avanzada</li>
                 </ul>
               </div>
@@ -452,7 +450,6 @@ export function PaywallCard() {
                 <ul className="mt-3 space-y-2 text-sm text-emerald-900">
                   <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Mascotas ilimitadas</li>
                   <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Consultas IA ampliadas</li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Descuentos exclusivos en Beneficios</li>
                   <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Exportar historial clinico en PDF</li>
                 </ul>
               </div>
@@ -741,8 +738,7 @@ const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
 });
 
 export function OffersSection() {
-  const { subscription, pets, setActiveTab } = useAppState();
-  const isPremium = subscription?.isPremiumUser ?? false;
+  const { pets } = useAppState();
   const [group, setGroup] = useState<OfferGroup>('alimentos');
   const [sort, setSort] = useState<OfferSort>('relevance');
   const [freeShipping, setFreeShipping] = useState(false);
@@ -882,26 +878,13 @@ export function OffersSection() {
         <p className="mt-1 text-slate-500">Descuentos exclusivos para tu mascota</p>
       </div>
 
-      {/* active/locked banner */}
-      {isPremium ? (
-        <div className="rounded-3xl bg-emerald-500 p-4 text-white shadow-md">
-          <div className="flex items-center gap-2 mb-1">
-            <Tags size={18} className="text-yellow-300" />
-            <p className="font-bold">Beneficios activos</p>
-          </div>
-          <p className="text-sm text-white/80">Seleccionamos para vos los productos más vendidos, con los mejores precios y de vendedores de confianza. Ya filtramos las mejores ofertas ¡ahorrá tiempo y comprá directo!</p>
+      <div className="rounded-3xl bg-emerald-500 p-4 text-white shadow-md">
+        <div className="flex items-center gap-2 mb-1">
+          <Tags size={18} className="text-yellow-300" />
+          <p className="font-bold">Beneficios activos</p>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setActiveTab('subscription')}
-          className="w-full rounded-3xl border-2 border-dashed border-slate-200 bg-white p-4 text-center shadow-sm transition hover:bg-slate-50"
-        >
-          <Lock size={24} className="mx-auto mb-2 text-slate-300" />
-          <p className="font-semibold text-slate-700">Beneficios bloqueados</p>
-          <p className="mt-1 text-sm text-slate-400">Actualiza a Premium para acceder a todos los descuentos.</p>
-        </button>
-      )}
+        <p className="text-sm text-white/80">Seleccionamos para vos los productos más vendidos, con los mejores precios y de vendedores de confianza. Ya filtramos las mejores ofertas ¡ahorrá tiempo y comprá directo!</p>
+      </div>
 
       <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between gap-2">

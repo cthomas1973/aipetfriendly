@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
   Circle, ClipboardList, Download, Heart, Mail,
@@ -91,13 +91,14 @@ const PREV_MAP: Record<PreventiveCategory, { label: string; emoji: string }> = {
 };
 
 const FREQUENCY_OPTIONS = [
-  'Una vez al dia',
   'Cada 12 horas',
   'Cada 8 horas',
   'Cada 24 horas',
   'Semanal',
   'Segun indicacion',
 ] as const;
+
+const DEFAULT_MEDICATION_FREQUENCY = 'Cada 24 horas';
 
 const APPOINTMENT_LEAD_OPTIONS = [
   '15 minutos antes',
@@ -149,7 +150,7 @@ function formatPreventiveDateTime(task: { dueDate: string; appointmentTime?: str
   return dateLabel;
 }
 
-const inp = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200';
+const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200';
 
 export function PetsSection() {
   const { pets, selectedPetId, canAddPet, freePetLimit, addPet, selectPet, removePet, updatePet } = usePets();
@@ -178,9 +179,8 @@ export function PetsSection() {
   const [pCat,   setPCat]   = useState<PreventiveCategory>('vaccine');
   const [pDate,  setPDate]  = useState(() => new Date().toISOString().slice(0, 10));
   const [pDose, setPDose] = useState('');
-  const [pFrequency, setPFrequency] = useState<string>(FREQUENCY_OPTIONS[0]);
+  const [pFrequency, setPFrequency] = useState<string>(DEFAULT_MEDICATION_FREQUENCY);
   const [pScheduleTimes, setPScheduleTimes] = useState<string[]>(['08:00']);
-  const [pEndDate, setPEndDate] = useState('');
   const [pDurationDays, setPDurationDays] = useState('');
   const [pNotes, setPNotes] = useState('');
   const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
@@ -291,6 +291,10 @@ export function PetsSection() {
       setErr('La dosis es obligatoria para medicacion y vacuna.');
       return;
     }
+    if (pCat === 'medication' && (!pDurationDays || Number(pDurationDays) <= 0)) {
+      setErr('Debes indicar la duracion (dias) para la medicacion.');
+      return;
+    }
     if (requireDetail && cleanedTimes.length === 0) {
       setErr('Debes indicar al menos un horario.');
       return;
@@ -341,9 +345,8 @@ export function PetsSection() {
       }
 
       if (pCat === 'medication' && cleanedTimes.length > 0) {
-        const durationDays = pDurationDays ? Number(pDurationDays) : undefined;
-        const computedEndDate = pEndDate || (durationDays && durationDays > 0 ? addDaysToDateString(pDate, durationDays - 1) : pDate);
-        const endDate = computedEndDate >= pDate ? computedEndDate : pDate;
+        const durationDays = Math.max(1, Number(pDurationDays || 1));
+        const endDate = addDaysToDateString(pDate, durationDays - 1);
         const planDates = listDatesInRange(pDate, endDate);
         const orderedTimes = [...cleanedTimes].sort();
         let createdAlerts = 0;
@@ -363,7 +366,7 @@ export function PetsSection() {
               appointmentTime: time,
               startDate: pDate,
               endDate: endDate,
-              durationDays: durationDays,
+              durationDays,
               notes: pNotes || undefined,
               remindersEnabled: pRemindersEnabled,
               notificationChannels: pRemindersEnabled ? ['Push'] : undefined,
@@ -382,7 +385,7 @@ export function PetsSection() {
           frequency: requireDetail ? pFrequency : undefined,
           scheduleTimes: requireDetail ? cleanedTimes : undefined,
           startDate: pDate,
-          endDate: pEndDate || undefined,
+          endDate: pCat === 'medication' ? addDaysToDateString(pDate, Math.max(1, Number(pDurationDays || 1)) - 1) : undefined,
           durationDays: pDurationDays ? Number(pDurationDays) : undefined,
           notes: pNotes || undefined,
           remindersEnabled: requireDetail ? pRemindersEnabled : (requireAppointmentDetail ? pAppointmentNotifyEnabled : undefined),
@@ -417,9 +420,8 @@ export function PetsSection() {
       setPTitle('');
       setPCat('vaccine');
       setPDose('');
-      setPFrequency(FREQUENCY_OPTIONS[0]);
+      setPFrequency(DEFAULT_MEDICATION_FREQUENCY);
       setPScheduleTimes(['08:00']);
-      setPEndDate('');
       setPDurationDays('');
       setPNotes('');
       setPRemindersEnabled(true);
@@ -457,6 +459,13 @@ export function PetsSection() {
   const isDetailedPreventive = pCat === 'medication' || pCat === 'vaccine';
   const isAppointmentPreventive = pCat === 'appointment';
   const isDewormingPreventive = pCat === 'deworming';
+  const computedMedicationEndDate = useMemo(() => {
+    if (pCat !== 'medication') return '';
+    const duration = Number(pDurationDays || 0);
+    if (!duration || duration <= 0 || !pDate) return '';
+    return addDaysToDateString(pDate, duration - 1);
+  }, [pCat, pDate, pDurationDays]);
+
   const updateScheduleTime = (index: number, value: string) => {
     setPScheduleTimes((prev) => prev.map((time, i) => (i === index ? value : time)));
   };
@@ -1010,15 +1019,15 @@ export function PetsSection() {
 
       {prevModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center">
-          <form onSubmit={doAddPrev} className="w-full max-w-lg rounded-t-3xl bg-white p-5 md:rounded-3xl">
-            <div className="mb-5 flex items-start justify-between">
+          <form onSubmit={doAddPrev} className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-4 md:rounded-3xl">
+            <div className="mb-3 flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">🛡️</span>
                 <div><p className="font-bold text-slate-900">Nuevo Preventivo</p><p className="text-xs text-slate-500">Para {pet.name}</p></div>
               </div>
               <button type="button" onClick={() => setPrevModal(false)} className="text-slate-400"><X size={20} /></button>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
                 <select value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
@@ -1126,14 +1135,14 @@ export function PetsSection() {
                       ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Fin del tratamiento</label>
-                      <input type="date" value={pEndDate} onChange={e => setPEndDate(e.target.value)} className={inp} />
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Duracion (dias)</label>
+                      <input type="number" min={1} value={pDurationDays} onChange={e => setPDurationDays(e.target.value)} className={inp} placeholder="Ej: 7" required={pCat === 'medication'} />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Duracion (dias)</label>
-                      <input type="number" min={1} value={pDurationDays} onChange={e => setPDurationDays(e.target.value)} className={inp} placeholder="Ej: 7" />
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Fin del tratamiento (calculado)</label>
+                      <input type="date" value={computedMedicationEndDate} className={`${inp} bg-slate-50 text-slate-500`} readOnly />
                     </div>
                   </div>
                   <div>
@@ -1275,7 +1284,7 @@ export function PetsSection() {
               )}
             </div>
             {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
-            <button type="submit" className="mt-5 w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white">Guardar</button>
+            <button type="submit" className="mt-3 w-full rounded-full bg-emerald-500 py-3 font-bold text-white">Guardar</button>
           </form>
         </div>
       )}
@@ -1460,15 +1469,15 @@ export function PetsSection() {
 
         {prevModal && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center">
-            <form onSubmit={doAddPrev} className="w-full max-w-lg rounded-t-3xl bg-white p-5 md:rounded-3xl">
-              <div className="mb-5 flex items-start justify-between">
+            <form onSubmit={doAddPrev} className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-4 md:rounded-3xl">
+              <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">🛡️</span>
                   <div><p className="font-bold text-slate-900">Nuevo Preventivo</p><p className="text-xs text-slate-500">Para {pet?.name}</p></div>
                 </div>
                 <button type="button" onClick={() => setPrevModal(false)} className="text-slate-400"><X size={20} /></button>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
                   <select value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
@@ -1576,14 +1585,14 @@ export function PetsSection() {
                         ))}
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Fin del tratamiento</label>
-                        <input type="date" value={pEndDate} onChange={e => setPEndDate(e.target.value)} className={inp} />
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Duracion (dias)</label>
+                        <input type="number" min={1} value={pDurationDays} onChange={e => setPDurationDays(e.target.value)} className={inp} placeholder="Ej: 7" required={pCat === 'medication'} />
                       </div>
                       <div>
-                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Duracion (dias)</label>
-                        <input type="number" min={1} value={pDurationDays} onChange={e => setPDurationDays(e.target.value)} className={inp} placeholder="Ej: 7" />
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Fin del tratamiento (calculado)</label>
+                        <input type="date" value={computedMedicationEndDate} className={`${inp} bg-slate-50 text-slate-500`} readOnly />
                       </div>
                     </div>
                     <div>
@@ -1725,7 +1734,7 @@ export function PetsSection() {
                 )}
               </div>
               {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
-              <button type="submit" className="mt-5 w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white">Guardar</button>
+              <button type="submit" className="mt-3 w-full rounded-full bg-emerald-500 py-3 font-bold text-white">Guardar</button>
             </form>
           </div>
         )}
