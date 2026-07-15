@@ -141,6 +141,52 @@ function listDatesInRange(startDate: string, endDate: string) {
   return dates;
 }
 
+function listDatesByFrequency(startDate: string, endDate: string, frequency: string) {
+  if (frequency === 'Semanal') {
+    const dates: string[] = [];
+    let current = startDate;
+    while (current <= endDate) {
+      dates.push(current);
+      current = addDaysToDateString(current, 7);
+    }
+    return dates;
+  }
+
+  return listDatesInRange(startDate, endDate);
+}
+
+function toMinutes(time: string) {
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function minutesToTime(totalMinutes: number) {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const h = String(Math.floor(normalized / 60)).padStart(2, '0');
+  const m = String(normalized % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+function buildFrequencyTimes(baseTime: string, frequency: string): string[] {
+  const baseMinutes = toMinutes(baseTime);
+  if (baseMinutes == null) return ['08:00'];
+
+  if (frequency === 'Cada 12 horas') {
+    return [minutesToTime(baseMinutes), minutesToTime(baseMinutes + 12 * 60)];
+  }
+
+  if (frequency === 'Cada 8 horas') {
+    return [
+      minutesToTime(baseMinutes),
+      minutesToTime(baseMinutes + 8 * 60),
+      minutesToTime(baseMinutes + 16 * 60),
+    ];
+  }
+
+  return [minutesToTime(baseMinutes)];
+}
+
 function formatPreventiveDateTime(task: { dueDate: string; appointmentTime?: string; scheduleTimes?: string[] }) {
   const time = task.appointmentTime || (Array.isArray(task.scheduleTimes) ? task.scheduleTimes[0] : '');
   const dateLabel = new Date(`${task.dueDate}T12:00:00`).toLocaleDateString('es-AR');
@@ -291,8 +337,8 @@ export function PetsSection() {
       setErr('La dosis es obligatoria para medicacion y vacuna.');
       return;
     }
-    if (pCat === 'medication' && (!pDurationDays || Number(pDurationDays) <= 0)) {
-      setErr('Debes indicar la duracion (dias) para la medicacion.');
+    if (isDetailedPreventive && (!pDurationDays || Number(pDurationDays) <= 0)) {
+      setErr('Debes indicar la duracion (dias).');
       return;
     }
     if (requireDetail && cleanedTimes.length === 0) {
@@ -344,15 +390,20 @@ export function PetsSection() {
         });
       }
 
-      if (pCat === 'medication' && cleanedTimes.length > 0) {
+      const notificationProfile = readNotificationProfile(user);
+      const normalizedDefaultChannels = notificationProfile.channels.length > 0 ? notificationProfile.channels : ['Push'];
+      const normalizedDefaultPhone = notificationProfile.defaultPhone || undefined;
+      const normalizedDefaultEmail = notificationProfile.defaultEmail || undefined;
+
+      if (isDetailedPreventive && cleanedTimes.length > 0) {
         const durationDays = Math.max(1, Number(pDurationDays || 1));
         const endDate = addDaysToDateString(pDate, durationDays - 1);
-        const planDates = listDatesInRange(pDate, endDate);
-        const orderedTimes = [...cleanedTimes].sort();
+        const planDates = listDatesByFrequency(pDate, endDate, pFrequency);
+        const frequencyTimes = buildFrequencyTimes(cleanedTimes[0], pFrequency);
         let createdAlerts = 0;
 
         for (const day of planDates) {
-          for (const time of orderedTimes) {
+          for (const time of frequencyTimes) {
             createdAlerts += 1;
             await addPreventiveTask({
               petId: pet.id,
@@ -369,7 +420,9 @@ export function PetsSection() {
               durationDays,
               notes: pNotes || undefined,
               remindersEnabled: pRemindersEnabled,
-              notificationChannels: pRemindersEnabled ? ['Push'] : undefined,
+              notificationChannels: pRemindersEnabled ? normalizedDefaultChannels : undefined,
+              notificationPhone: pRemindersEnabled ? normalizedDefaultPhone : undefined,
+              notificationEmail: pRemindersEnabled ? normalizedDefaultEmail : undefined,
               createClinicalEntry: createdAlerts === 1,
             });
           }
@@ -385,7 +438,7 @@ export function PetsSection() {
           frequency: requireDetail ? pFrequency : undefined,
           scheduleTimes: requireDetail ? cleanedTimes : undefined,
           startDate: pDate,
-          endDate: pCat === 'medication' ? addDaysToDateString(pDate, Math.max(1, Number(pDurationDays || 1)) - 1) : undefined,
+          endDate: isDetailedPreventive ? addDaysToDateString(pDate, Math.max(1, Number(pDurationDays || 1)) - 1) : undefined,
           durationDays: pDurationDays ? Number(pDurationDays) : undefined,
           notes: pNotes || undefined,
           remindersEnabled: requireDetail ? pRemindersEnabled : (requireAppointmentDetail ? pAppointmentNotifyEnabled : undefined),
@@ -460,11 +513,11 @@ export function PetsSection() {
   const isAppointmentPreventive = pCat === 'appointment';
   const isDewormingPreventive = pCat === 'deworming';
   const computedMedicationEndDate = useMemo(() => {
-    if (pCat !== 'medication') return '';
+    if (!isDetailedPreventive) return '';
     const duration = Number(pDurationDays || 0);
     if (!duration || duration <= 0 || !pDate) return '';
     return addDaysToDateString(pDate, duration - 1);
-  }, [pCat, pDate, pDurationDays]);
+  }, [isDetailedPreventive, pDate, pDurationDays]);
 
   const updateScheduleTime = (index: number, value: string) => {
     setPScheduleTimes((prev) => prev.map((time, i) => (i === index ? value : time)));
