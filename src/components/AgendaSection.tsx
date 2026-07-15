@@ -16,7 +16,7 @@ import {
 import type { PreventiveCategory } from '../types';
 
 const PREV_MAP: Record<PreventiveCategory, { label: string; emoji: string }> = {
-  medication:  { label: 'Medicacion',      emoji: '💊' },
+  medication:  { label: 'Cuidados',        emoji: '💊' },
   vaccine:     { label: 'Vacuna',          emoji: '💉' },
   deworming:   { label: 'Desparasitacion', emoji: '🪱' },
   appointment: { label: 'Turno',           emoji: '🏥' },
@@ -489,12 +489,17 @@ export function AgendaSection() {
   };
 
   const onDiscardTask = async (taskId: string) => {
+    const confirmed = window.confirm('Estas seguro? Esta accion eliminara la tarea y su notificacion.');
+    if (!confirmed) {
+      return;
+    }
+
     try {
       await discardTaskReminder(taskId);
       setPostponeSelectorTaskId((current) => (current === taskId ? null : current));
       setError(null);
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : 'No se pudo descartar el recordatorio.');
+      setError(ex instanceof Error ? ex.message : 'No se pudo eliminar la tarea.');
     }
   };
 
@@ -522,7 +527,7 @@ export function AgendaSection() {
       <div className="grid grid-cols-2 overflow-hidden rounded-2xl bg-slate-100 p-1">
         <button type="button" onClick={() => setTab('meds')}
           className={`rounded-xl py-2.5 text-sm font-semibold transition ${tab === 'meds' ? 'bg-emerald-500 text-white shadow' : 'text-slate-500'}`}>
-          💊 Medicacion
+          💊 Cuidados
         </button>
         <button type="button" onClick={() => setTab('food')}
           className={`rounded-xl py-2.5 text-sm font-semibold transition ${tab === 'food' ? 'bg-emerald-500 text-white shadow' : 'text-slate-500'}`}>
@@ -665,7 +670,7 @@ export function AgendaSection() {
             <div className="mb-5 flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">{tab === 'food' ? '🍽️' : '💊'}</span>
-                <div><p className="font-bold text-slate-900">{tab === 'food' ? 'Nueva compra' : 'Nueva Medicacion'}</p></div>
+                <div><p className="font-bold text-slate-900">{tab === 'food' ? 'Nueva compra' : 'Nuevo cuidado'}</p></div>
               </div>
               <button type="button" onClick={() => setShowForm(false)} className="text-slate-400"><X size={20} /></button>
             </div>
@@ -692,11 +697,10 @@ export function AgendaSection() {
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
                   <select value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
-                    <option value="medication">💊 Medicacion</option>
+                    <option value="medication">💊 Cuidados</option>
                     <option value="vaccine">💉 Vacuna</option>
                     <option value="deworming">🪱 Desparasitacion</option>
                     <option value="appointment">🏥 Turno</option>
-                    <option value="feeding">🍖 Alimentacion</option>
                     <option value="other">📌 Otro</option>
                   </select>
                 </div>

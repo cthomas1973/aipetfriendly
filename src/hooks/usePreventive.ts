@@ -3,8 +3,8 @@ import { useAppState } from '../context/AppStateContext';
 import {
   createClinicalEntry,
   createPreventiveTask,
+  deletePreventiveTask,
   togglePreventiveTask,
-  updatePreventiveTaskReminders,
   updatePreventiveTaskSchedule,
 } from '../lib/supabase';
 import type { ClinicalEntryCategory, ClinicalTimelineEntry, PreventiveFormData, PreventiveTask } from '../types';
@@ -402,22 +402,18 @@ export function usePreventive() {
 
       if (!user || user.isGuest) {
         setPreventiveTasks(
-          preventiveTasks.map((task) => (
-            task.id === taskId ? { ...task, remindersEnabled: false } : task
-          )),
+          preventiveTasks.filter((task) => task.id !== taskId),
         );
         return;
       }
 
-      const updated = await updatePreventiveTaskReminders(taskId, false);
+      const updated = await deletePreventiveTask(taskId);
       if (!updated) {
-        throw new Error('No se pudo descartar el recordatorio en Supabase.');
+        throw new Error('No se pudo eliminar la tarea en Supabase.');
       }
 
       setPreventiveTasks(
-        preventiveTasks.map((task) => (
-          task.id === taskId ? { ...task, remindersEnabled: false } : task
-        )),
+        preventiveTasks.filter((task) => task.id !== taskId),
       );
     },
     [preventiveTasks, setPreventiveTasks, user],

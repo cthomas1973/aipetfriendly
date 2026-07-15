@@ -988,7 +988,7 @@ export function PetsSection() {
           <button type="button" onClick={() => setView('preventivos')}
             className="flex flex-col items-center gap-2 rounded-3xl bg-white p-4 shadow-sm transition hover:bg-emerald-50">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Shield size={22} /></span>
-            <span className="font-semibold text-slate-800">Preventivos</span>
+            <span className="font-semibold text-slate-800">Cuidados</span>
             <span className="text-xs text-slate-500">Vacunas y mas</span>
           </button>
           <button type="button" onClick={() => setView('historial')}
@@ -1464,7 +1464,7 @@ export function PetsSection() {
             <div className="flex items-center gap-3">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 text-2xl">🛡️</span>
               <div className="text-white">
-                <h2 className="text-xl font-extrabold">Preventivos</h2>
+                <h2 className="text-xl font-extrabold">Cuidados</h2>
                 <p className="text-sm text-white/80">{pet?.name}</p>
               </div>
             </div>

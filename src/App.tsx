@@ -277,12 +277,16 @@ function AppContent() {
   };
 
   const handlePopupDiscard = async (id: string) => {
+    const confirmed = window.confirm('Estas seguro? Esta accion eliminara la tarea y su notificacion.');
+    if (!confirmed) {
+      return;
+    }
+
     try {
       await discardTaskReminder(id);
+      closeReminderPopup(id);
     } catch (error) {
       console.error('No se pudo descartar recordatorio:', error);
-    } finally {
-      closeReminderPopup(id);
     }
   };
 

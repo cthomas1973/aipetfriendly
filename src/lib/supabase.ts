@@ -431,6 +431,20 @@ export async function togglePreventiveTask(taskId: string, completed: boolean): 
   return !error;
 }
 
+export async function deletePreventiveTask(taskId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('preventive_tasks')
+    .delete()
+    .eq('id', taskId);
+
+  if (error) {
+    console.error('Error deleting preventive task:', error);
+    return false;
+  }
+
+  return true;
+}
+
 export async function updatePreventiveTaskSchedule(
   taskId: string,
   dueDate: string,
