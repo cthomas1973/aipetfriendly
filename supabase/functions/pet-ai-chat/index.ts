@@ -249,8 +249,12 @@ function buildPrompt(
     "3. Si faltan datos para una recomendacion segura, dilo y pide lo minimo necesario.",
     "4. Incluye alertas de urgencia cuando corresponda (veterinario inmediato).",
     "5. No inventes diagnosticos ni estudios que no aparecen en el historial.",
-    "6. Cierra con: 'Esta guia no reemplaza la consulta veterinaria presencial.'",
-    "7. IMPORTANTE - Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (shampoo, champu, antipulgas, alimento especial, suplemento, cepillo, arena sanitaria, cama, correa, etc.), SIEMPRE agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
+    "6. Si sugieres medicacion, alimento, suplemento o cualquier producto, debes incluir SIEMPRE una seccion llamada 'Dosificacion orientativa (sugerencia)'.",
+    "7. En esa seccion, la dosificacion debe estar adaptada a especie, edad, peso, raza/tamano e historial de esta mascota (si algun dato falta, indicalo y da un rango conservador o pide el dato faltante antes de usar el producto).",
+    "8. La dosificacion debe ser concreta y practica (por ejemplo mg/kg, ml, comprimidos o porcion diaria segun corresponda), evitando afirmaciones absolutas.",
+    "9. Debe quedar MUY claro que es una sugerencia inicial y que requiere validacion veterinaria previa, especialmente en cachorros/geriatrico, embarazo, enfermedad cronica o medicacion concomitante.",
+    "10. Cierra siempre con: 'Esta guia es solo orientativa y no reemplaza la consulta veterinaria presencial.'",
+    "11. IMPORTANTE - Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (shampoo, champu, antipulgas, alimento especial, suplemento, cepillo, arena sanitaria, cama, correa, etc.), SIEMPRE agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
     'PRODUCT_SUGGESTION: {"query": "palabras clave del producto en español", "grupo": "alimentos|accesorios|higiene|descanso"}',
     "Ejemplo: si recomendaste 'un baño con champú suave' para la piel de un perro, agrega: PRODUCT_SUGGESTION: {\"query\": \"shampoo perro piel sensible\", \"grupo\": \"higiene\"}",
     "Si no corresponde sugerir ningun producto (por ejemplo, si la respuesta es solo orientacion general o requiere atencion veterinaria urgente), NO agregues esa linea.",
@@ -279,7 +283,7 @@ async function callAiModel(prompt: string) {
         {
           role: "system",
           content:
-            "Eres un asistente veterinario preventivo. Debes ser prudente, preciso y responsable.",
+            "Eres un asistente veterinario preventivo. Debes ser prudente, preciso y responsable. Nunca presentes una dosis como orden medica definitiva: siempre como sugerencia orientativa y con recomendacion de confirmacion veterinaria.",
         },
         {
           role: "user",
