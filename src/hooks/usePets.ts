@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useAppState } from '../context/AppStateContext';
-import { createPet, deletePet } from '../lib/supabase';
+import { createPet, deletePet, updatePetRecord } from '../lib/supabase';
 import type { Pet, PetFormData } from '../types';
 
 export function usePets() {
@@ -97,10 +97,20 @@ export function usePets() {
   );
 
   const updatePet = useCallback(
-    (petId: string, updates: Partial<Pet>) => {
-      setPets(pets.map(p => p.id === petId ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p));
+    async (petId: string, updates: Partial<Pet>) => {
+      if (user?.isGuest) {
+        setPets(pets.map(p => p.id === petId ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p));
+        return;
+      }
+
+      const updated = await updatePetRecord(petId, updates);
+      if (!updated) {
+        throw new Error('No se pudo actualizar la mascota en Supabase.');
+      }
+
+      setPets(pets.map((pet) => (pet.id === petId ? updated : pet)));
     },
-    [pets, setPets],
+    [pets, setPets, user?.isGuest],
   );
 
   return {

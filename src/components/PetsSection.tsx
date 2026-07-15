@@ -269,7 +269,7 @@ export function PetsSection() {
     try {
       setImgBusy(true);
       const compressed = await compressImage(await readAsDataUrl(file));
-      if (petId) updatePet(petId, { photoUrl: compressed });
+      if (petId) await updatePet(petId, { photoUrl: compressed });
       else       setForm(p => ({ ...p, photoUrl: compressed }));
       setErr(null);
     } catch (ex) {
@@ -881,14 +881,18 @@ export function PetsSection() {
         <div className="mt-6 flex gap-3">
           <button type="button" onClick={() => { setView('detail'); setErr(null); }}
             className="w-full rounded-full border-2 border-slate-200 py-3.5 font-semibold text-slate-600">Cancelar</button>
-          <button type="button" onClick={() => {
+          <button type="button" onClick={async () => {
             if (!form.name.trim()) { setErr('El nombre es requerido.'); return; }
             if (!form.breed.trim()) { setErr('La raza es requerida.'); return; }
             if (!form.birthDate) { setErr('La fecha es requerida.'); return; }
-            updatePet(pet.id, form);
-            setErr(null);
-            setView('detail');
-            setMsg('Mascota actualizada correctamente.');
+            try {
+              await updatePet(pet.id, form);
+              setErr(null);
+              setView('detail');
+              setMsg('Mascota actualizada correctamente.');
+            } catch (ex) {
+              setErr(ex instanceof Error ? ex.message : 'No se pudo actualizar la mascota.');
+            }
           }}
             className="w-full rounded-full bg-emerald-500 py-3.5 font-bold text-white">Guardar cambios</button>
         </div>
@@ -1076,7 +1080,7 @@ export function PetsSection() {
             <div className="mb-3 flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">🛡️</span>
-                <div><p className="font-bold text-slate-900">Nuevo Preventivo</p><p className="text-xs text-slate-500">Para {pet.name}</p></div>
+                <div><p className="font-bold text-slate-900">Nuevo Cuidado</p><p className="text-xs text-slate-500">Para {pet.name}</p></div>
               </div>
               <button type="button" onClick={() => setPrevModal(false)} className="text-slate-400"><X size={20} /></button>
             </div>
@@ -1088,7 +1092,6 @@ export function PetsSection() {
                   <option value="vaccine">💉 Vacuna</option>
                   <option value="deworming">🪱 Desparasitacion</option>
                   <option value="appointment">🏥 Turno</option>
-                  <option value="feeding">🍖 Alimentacion</option>
                   <option value="other">📌 Otro</option>
                 </select>
               </div>
@@ -1531,7 +1534,7 @@ export function PetsSection() {
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">🛡️</span>
-                  <div><p className="font-bold text-slate-900">Nuevo Preventivo</p><p className="text-xs text-slate-500">Para {pet?.name}</p></div>
+                  <div><p className="font-bold text-slate-900">Nuevo Cuidado</p><p className="text-xs text-slate-500">Para {pet?.name}</p></div>
                 </div>
                 <button type="button" onClick={() => setPrevModal(false)} className="text-slate-400"><X size={20} /></button>
               </div>
@@ -1543,7 +1546,6 @@ export function PetsSection() {
                     <option value="vaccine">💉 Vacuna</option>
                     <option value="deworming">🪱 Desparasitacion</option>
                     <option value="appointment">🏥 Turno</option>
-                    <option value="feeding">🍖 Alimentacion</option>
                     <option value="other">📌 Otro</option>
                   </select>
                 </div>

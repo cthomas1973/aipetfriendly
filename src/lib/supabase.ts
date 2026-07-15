@@ -266,6 +266,52 @@ export async function createPet(userId: string, petData: any): Promise<Pet | nul
   };
 }
 
+export async function updatePetRecord(petId: string, petData: any): Promise<Pet | null> {
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if ('name' in petData) payload.name = petData.name;
+  if ('breed' in petData) payload.breed = petData.breed;
+  if ('species' in petData) payload.species = petData.species;
+  if ('sex' in petData) payload.sex = petData.sex;
+  if ('birthDate' in petData) payload.birth_date = petData.birthDate || null;
+  if ('ageYears' in petData) payload.age_years = petData.ageYears;
+  if ('ageMonths' in petData) payload.age_months = petData.ageMonths;
+  if ('weightKg' in petData) payload.weight_kg = petData.weightKg;
+  if ('photoUrl' in petData) payload.photo_url = petData.photoUrl || null;
+  if ('notes' in petData) payload.notes = petData.notes;
+
+  const { data, error } = await supabase
+    .from('pets')
+    .update(payload)
+    .eq('id', petId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating pet:', error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    name: data.name,
+    breed: data.breed,
+    species: data.species,
+    sex: data.sex,
+    birthDate: data.birth_date || undefined,
+    ageYears: data.age_years,
+    ageMonths: data.age_months,
+    weightKg: data.weight_kg,
+    photoUrl: data.photo_url,
+    notes: data.notes,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
 export async function deletePet(petId: string): Promise<boolean> {
   const { error } = await supabase.from('pets').delete().eq('id', petId);
   return !error;
