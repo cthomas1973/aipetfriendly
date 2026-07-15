@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { LocateFixed, MapPin, Navigation } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
+import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
 
 const DEFAULT_QUERY = 'Veterinarias cerca de mi';
 const GOOGLE_MAPS_EMBED_KEY = (import.meta.env.VITE_GOOGLE_MAPS_EMBED_API_KEY as string | undefined)?.trim() || '';
@@ -98,12 +99,22 @@ export function NearbyVetsMapSection() {
   };
 
   const openLocationSettings = async () => {
-    if (!isNativeAndroid) {
-      return;
-    }
-
     try {
-      window.location.href = 'app-settings:';
+      if (isNativeAndroid) {
+        await NativeSettings.openAndroid({
+          option: AndroidSettings.ApplicationDetails,
+        });
+        return;
+      }
+
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+        await NativeSettings.openIOS({
+          option: IOSSettings.App,
+        });
+        return;
+      }
+
+      setLocationError('Abre manualmente los ajustes del navegador/app y habilita la ubicacion para continuar.');
     } catch {
       setLocationError('No se pudieron abrir los ajustes. Ve a Ajustes > Apps > AiPetFriendly > Permisos > Ubicacion.');
     }

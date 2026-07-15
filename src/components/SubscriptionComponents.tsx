@@ -156,10 +156,17 @@ export function PaywallCard() {
 
     return detectedCountryCode;
   }, [defaultNotifPhoneCountry, detectedCountryCode]);
+  const isArgentinaCheckout = checkoutCountryCode === 'AR';
   const arsFormatter = useMemo(() => new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
     maximumFractionDigits: 0,
+  }), []);
+  const usdFormatter = useMemo(() => new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }), []);
   const monthlyAutoYearlyCostArs = useMemo(() => pricing.premiumMonthlyAutoArs * 12, [pricing.premiumMonthlyAutoArs]);
   const monthlyManualYearlyCostArs = useMemo(() => pricing.premiumMonthlyManualArs * 12, [pricing.premiumMonthlyManualArs]);
@@ -171,6 +178,17 @@ export function PaywallCard() {
   const annualSavingVsMonthlyManualArs = useMemo(
     () => Math.max(0, monthlyManualYearlyCostArs - pricing.premiumAnnualAutoArs),
     [monthlyManualYearlyCostArs, pricing.premiumAnnualAutoArs],
+  );
+  const monthlyAutoYearlyCostUsd = useMemo(() => pricing.premiumMonthlyAutoUsd * 12, [pricing.premiumMonthlyAutoUsd]);
+  const monthlyManualYearlyCostUsd = useMemo(() => pricing.premiumMonthlyManualUsd * 12, [pricing.premiumMonthlyManualUsd]);
+  const annualEquivalentMonthlyUsd = useMemo(() => pricing.premiumAnnualAutoUsd / 12, [pricing.premiumAnnualAutoUsd]);
+  const annualSavingVsMonthlyAutoUsd = useMemo(
+    () => Math.max(0, monthlyAutoYearlyCostUsd - pricing.premiumAnnualAutoUsd),
+    [monthlyAutoYearlyCostUsd, pricing.premiumAnnualAutoUsd],
+  );
+  const annualSavingVsMonthlyManualUsd = useMemo(
+    () => Math.max(0, monthlyManualYearlyCostUsd - pricing.premiumAnnualAutoUsd),
+    [monthlyManualYearlyCostUsd, pricing.premiumAnnualAutoUsd],
   );
 
   useEffect(() => {
@@ -309,6 +327,17 @@ export function PaywallCard() {
       setCheckoutError(message);
       setCheckoutLoadingMode(null);
     }
+  };
+
+  const showInternationalPendingNotice = (mode: 'monthly' | 'annual' | 'monthly_manual') => {
+    setCheckoutLoadingMode(null);
+    setCheckoutError(null);
+    const labels: Record<typeof mode, string> = {
+      monthly: 'mensual con debito automatico',
+      annual: 'anual con debito automatico',
+      monthly_manual: 'mensual manual',
+    };
+    setCheckoutNotice(`Suscripcion ${labels[mode]} disponible pronto para tu pais. Por ahora el cobro internacional aun no tiene plataforma definida.`);
   };
 
   if (isGuest) {
@@ -485,53 +514,81 @@ export function PaywallCard() {
                   type="button"
                   disabled={checkoutLoadingMode !== null}
                   onClick={() => {
-                    void startRecurringCheckout('monthly');
+                    if (isArgentinaCheckout) {
+                      void startRecurringCheckout('monthly');
+                      return;
+                    }
+                    showInternationalPendingNotice('monthly');
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 font-bold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Crown size={18} className="text-yellow-400" />
                   {checkoutLoadingMode === 'monthly'
                     ? 'Redirigiendo...'
-                    : `Premium mensual (debito automatico) · ${arsFormatter.format(pricing.premiumMonthlyAutoArs)} / U$S ${pricing.premiumMonthlyAutoUsd.toFixed(2)}`}
+                    : isArgentinaCheckout
+                      ? `Premium mensual (Mercado Pago) · ${arsFormatter.format(pricing.premiumMonthlyAutoArs)}`
+                      : `Premium mensual (internacional) · ${usdFormatter.format(pricing.premiumMonthlyAutoUsd)}`}
                 </button>
 
                 <button
                   type="button"
                   disabled={checkoutLoadingMode !== null}
                   onClick={() => {
-                    void startRecurringCheckout('annual');
+                    if (isArgentinaCheckout) {
+                      void startRecurringCheckout('annual');
+                      return;
+                    }
+                    showInternationalPendingNotice('annual');
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/80 py-3.5 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {checkoutLoadingMode === 'annual'
                     ? 'Redirigiendo...'
-                    : `Premium anual (debito automatico) · ${arsFormatter.format(pricing.premiumAnnualAutoArs)} / U$S ${pricing.premiumAnnualAutoUsd.toFixed(2)}`}
+                    : isArgentinaCheckout
+                      ? `Premium anual (Mercado Pago) · ${arsFormatter.format(pricing.premiumAnnualAutoArs)}`
+                      : `Premium anual (internacional) · ${usdFormatter.format(pricing.premiumAnnualAutoUsd)}`}
                 </button>
 
                 <div className="rounded-2xl bg-white/15 px-3 py-2 text-xs text-white">
                   <p>Ahorro anual con debito automatico:</p>
-                  <p>
-                    Pagas equivalente a {arsFormatter.format(annualEquivalentMonthlyArs)}/mes.
-                    Ahorras {arsFormatter.format(annualSavingVsMonthlyAutoArs)} frente al mensual automatico
-                    y {arsFormatter.format(annualSavingVsMonthlyManualArs)} frente al mensual manual.
-                  </p>
+                  {isArgentinaCheckout ? (
+                    <p>
+                      Pagas equivalente a {arsFormatter.format(annualEquivalentMonthlyArs)}/mes.
+                      Ahorras {arsFormatter.format(annualSavingVsMonthlyAutoArs)} frente al mensual automatico
+                      y {arsFormatter.format(annualSavingVsMonthlyManualArs)} frente al mensual manual.
+                    </p>
+                  ) : (
+                    <p>
+                      Pagas equivalente a {usdFormatter.format(annualEquivalentMonthlyUsd)}/mes.
+                      Ahorras {usdFormatter.format(annualSavingVsMonthlyAutoUsd)} frente al mensual automatico
+                      y {usdFormatter.format(annualSavingVsMonthlyManualUsd)} frente al mensual manual.
+                    </p>
+                  )}
                 </div>
 
                 <button
                   type="button"
                   disabled={checkoutLoadingMode !== null}
                   onClick={() => {
-                    void startOneTimeMonthlyCheckout();
+                    if (isArgentinaCheckout) {
+                      void startOneTimeMonthlyCheckout();
+                      return;
+                    }
+                    showInternationalPendingNotice('monthly_manual');
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-full border border-white/80 py-3.5 font-semibold text-white/95 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {checkoutLoadingMode === 'monthly_manual'
                     ? 'Redirigiendo...'
-                    : `Premium pago mensual manual (debito, credito, transferencia) · ${arsFormatter.format(pricing.premiumMonthlyManualArs)} / U$S ${pricing.premiumMonthlyManualUsd.toFixed(2)}`}
+                    : isArgentinaCheckout
+                      ? `Premium pago mensual manual (Mercado Pago) · ${arsFormatter.format(pricing.premiumMonthlyManualArs)}`
+                      : `Premium pago mensual manual (internacional) · ${usdFormatter.format(pricing.premiumMonthlyManualUsd)}`}
                 </button>
 
                 <p className="px-2 text-xs text-white/85">
-                  El plan automatico renueva cada periodo. El pago mensual manual requiere renovacion cada mes.
+                  {isArgentinaCheckout
+                    ? 'Si continuas, seras redirigido a Mercado Pago. El plan automatico renueva cada periodo. El pago mensual manual requiere renovacion cada mes.'
+                    : 'Mostramos valores internacionales en dolares. La plataforma de pago para otros paises aun esta pendiente de definicion.'}
                 </p>
 
                 {checkoutNotice && (
