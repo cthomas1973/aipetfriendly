@@ -1,3 +1,21 @@
+# Android (Windows)
+
+Para actualizar la app Android local con los ultimos cambios frontend en Windows:
+
+```powershell
+npm run android:update
+```
+
+Ese comando:
+
+- compila la web
+- limpia caches/carpetas temporales que suelen provocar `EPERM`
+- resetea permisos sobre `android/`
+- ejecuta `npx cap sync android`
+- abre Android Studio
+
+Si Android Studio estaba abierto y vuelve a bloquear archivos, cierralo y corre otra vez `npm run android:update`.
+
 # AiPetFriendly
 
 Plataforma modular, profesional y completamente funcional para gestión de mascotas, historial clínico preventivo, consultorio virtual con IA y sistema de suscripción.
