@@ -1460,12 +1460,21 @@ export function PetsSection() {
             className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-white/80 hover:text-white">
             <ChevronLeft size={18} /> Volver
           </button>
-          <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 text-2xl">🛡️</span>
-            <div className="text-white">
-              <h2 className="text-xl font-extrabold">Preventivos</h2>
-              <p className="text-sm text-white/80">{pet?.name}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 text-2xl">🛡️</span>
+              <div className="text-white">
+                <h2 className="text-xl font-extrabold">Preventivos</h2>
+                <p className="text-sm text-white/80">{pet?.name}</p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => { setErr(null); setPrevModal(true); }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
+            >
+              <Plus size={15} /> Agregar
+            </button>
           </div>
         </div>
 
@@ -1514,10 +1523,6 @@ export function PetsSection() {
               <CheckCircle2 size={22} className="shrink-0 text-emerald-500" />
             </button>
           ))}
-          <button type="button" onClick={() => { setErr(null); setPrevModal(true); }}
-            className="flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-emerald-300 bg-white/80 py-4 font-semibold text-emerald-600">
-            <Plus size={18} /> Agregar preventivo
-          </button>
         </div>
 
         {prevModal && (

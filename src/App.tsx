@@ -20,6 +20,7 @@ import {
   SubscriptionBanner,
 } from './components/SubscriptionComponents';
 import { AppStateContext, useAppState } from './context/AppStateContext';
+import { usePreventive } from './hooks/usePreventive';
 import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
 import { hideBannerAd, isNativeAndroidApp, showBannerForNonPremium } from './lib/mobileAds';
 import type {
@@ -182,6 +183,8 @@ function AppContent() {
   const [showLogo, setShowLogo] = useState(true);
   const [switchingUser, setSwitchingUser] = useState(false);
   const [popupQueue, setPopupQueue] = useState<ReminderPopupItem[]>([]);
+  const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
+  const { toggleTask, postponeTask, discardTaskReminder } = usePreventive();
   const currentPath = window.location.pathname;
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -260,6 +263,37 @@ function AppContent() {
 
   const closeReminderPopup = (id: string) => {
     setPopupQueue((current) => current.filter((item) => item.id !== id));
+    setPopupPostponeId((current) => (current === id ? null : current));
+  };
+
+  const handlePopupDone = async (id: string) => {
+    try {
+      await toggleTask(id);
+    } catch (error) {
+      console.error('No se pudo marcar recordatorio como realizado:', error);
+    } finally {
+      closeReminderPopup(id);
+    }
+  };
+
+  const handlePopupDiscard = async (id: string) => {
+    try {
+      await discardTaskReminder(id);
+    } catch (error) {
+      console.error('No se pudo descartar recordatorio:', error);
+    } finally {
+      closeReminderPopup(id);
+    }
+  };
+
+  const handlePopupPostpone = async (id: string, minutes: number) => {
+    try {
+      await postponeTask(id, minutes);
+    } catch (error) {
+      console.error('No se pudo posponer recordatorio:', error);
+    } finally {
+      closeReminderPopup(id);
+    }
   };
 
   const renderTabContent = () => {
@@ -407,6 +441,49 @@ function AppContent() {
               >
                 Ver agenda
               </button>
+              <div className="mt-2 flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handlePopupDone(item.id);
+                  }}
+                  className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
+                >
+                  Realizado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handlePopupDiscard(item.id);
+                  }}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                >
+                  Descartar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPopupPostponeId((current) => (current === item.id ? null : item.id))}
+                  className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+                >
+                  Posponer
+                </button>
+              </div>
+              {popupPostponeId === item.id && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {[5, 10, 15, 30].map((minutes) => (
+                    <button
+                      key={minutes}
+                      type="button"
+                      onClick={() => {
+                        void handlePopupPostpone(item.id, minutes);
+                      }}
+                      className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+                    >
+                      {minutes} min
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

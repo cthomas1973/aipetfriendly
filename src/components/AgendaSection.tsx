@@ -123,11 +123,12 @@ function formatDateTimeLabel(task: { dueDate: string; appointmentTime?: string; 
 
 export function AgendaSection() {
   const { pets, selectedPetId, user } = useAppState();
-  const { preventiveTasks, addPreventiveTask, toggleTask } = usePreventive();
+  const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask, discardTaskReminder } = usePreventive();
 
   const [tab, setTab] = useState<'meds' | 'food'>('meds');
   const [petFilter, setPetFilter] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
+  const [postponeSelectorTaskId, setPostponeSelectorTaskId] = useState<string | null>(null);
 
   const [pTitle, setPTitle] = useState('');
   const [pCat,   setPCat]   = useState<PreventiveCategory>('vaccine');
@@ -308,6 +309,7 @@ export function AgendaSection() {
   const done = agendaTasks.filter((task) => task.completed);
   const pending = agendaTasks.filter((task) => !task.completed);
   const progress = agendaTasks.length > 0 ? Math.round((done.length / agendaTasks.length) * 100) : 0;
+  const addActionLabel = tab === 'food' ? 'Agregar comida' : 'Agregar tarea';
 
   const doAdd = async (e: FormEvent) => {
     e.preventDefault();
@@ -479,9 +481,30 @@ export function AgendaSection() {
   const onToggleTask = async (taskId: string) => {
     try {
       await toggleTask(taskId);
+      setPostponeSelectorTaskId((current) => (current === taskId ? null : current));
       setError(null);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo actualizar el preventivo.');
+    }
+  };
+
+  const onDiscardTask = async (taskId: string) => {
+    try {
+      await discardTaskReminder(taskId);
+      setPostponeSelectorTaskId((current) => (current === taskId ? null : current));
+      setError(null);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo descartar el recordatorio.');
+    }
+  };
+
+  const onPostponeTask = async (taskId: string, minutes: number) => {
+    try {
+      await postponeTask(taskId, minutes);
+      setPostponeSelectorTaskId((current) => (current === taskId ? null : current));
+      setError(null);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo posponer el recordatorio.');
     }
   };
 
@@ -507,22 +530,22 @@ export function AgendaSection() {
         </button>
       </div>
 
-      <div className="rounded-3xl bg-white p-4 shadow-sm">
-        <label className="mb-1.5 block text-sm font-medium text-slate-700">Filtrar por mascota</label>
-        <select
-          value={petFilter}
-          onChange={(e) => setPetFilter(e.target.value)}
-          className={inp}
-        >
-          <option value="all">Todas las mascotas</option>
-          {pets.map((pet) => (
-            <option key={pet.id} value={pet.id}>{pet.name}</option>
-          ))}
-        </select>
-      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="rounded-3xl bg-white p-4 shadow-sm md:col-span-1">
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Filtrar por mascota</label>
+          <select
+            value={petFilter}
+            onChange={(e) => setPetFilter(e.target.value)}
+            className={inp}
+          >
+            <option value="all">Todas las mascotas</option>
+            {pets.map((pet) => (
+              <option key={pet.id} value={pet.id}>{pet.name}</option>
+            ))}
+          </select>
+        </div>
 
-      {agendaTasks.length > 0 && (
-        <div className="rounded-3xl bg-white p-4 shadow-sm">
+        <div className="rounded-3xl bg-white p-4 shadow-sm md:col-span-1">
           <div className="mb-2 flex items-center justify-between text-sm">
             <span className="font-semibold text-slate-700">Progreso del listado</span>
             <span className="font-bold text-emerald-600">{progress}%</span>
@@ -535,7 +558,18 @@ export function AgendaSection() {
             <span>{pending.length} pendiente{pending.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
-      )}
+
+        <div className="rounded-3xl bg-white p-4 shadow-sm md:col-span-1">
+          <p className="mb-2 text-sm font-medium text-slate-700">Accion</p>
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-emerald-300 bg-white py-3.5 font-semibold text-emerald-600"
+          >
+            <Plus size={18} /> {addActionLabel}
+          </button>
+        </div>
+      </div>
 
       <div className="space-y-2">
         {agendaTasks.length === 0 ? (
@@ -547,8 +581,8 @@ export function AgendaSection() {
         ) : (
           <>
             {pending.map((task) => (
-              <button key={task.id} type="button" onClick={() => onToggleTask(task.id)}
-                className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 shadow-sm transition active:scale-[0.98]">
+              <div key={task.id} className="rounded-3xl bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg shrink-0">{PREV_MAP[task.category]?.emoji}</span>
                 <div className="flex-1 text-left">
                   <p className="font-semibold text-slate-900">{task.title}</p>
@@ -559,7 +593,51 @@ export function AgendaSection() {
                   </div>
                 </div>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 text-lg">✓</span>
-              </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void onToggleTask(task.id);
+                    }}
+                    className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                  >
+                    Realizado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void onDiscardTask(task.id);
+                    }}
+                    className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPostponeSelectorTaskId((current) => (current === task.id ? null : task.id))}
+                    className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700"
+                  >
+                    Posponer
+                  </button>
+                </div>
+                {postponeSelectorTaskId === task.id && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[5, 10, 15, 30].map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        onClick={() => {
+                          void onPostponeTask(task.id, minutes);
+                        }}
+                        className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-700"
+                      >
+                        {minutes} min
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
             {done.map((task) => (
               <button key={task.id} type="button" onClick={() => onToggleTask(task.id)}
@@ -579,11 +657,6 @@ export function AgendaSection() {
           </>
         )}
       </div>
-
-      <button type="button" onClick={() => setShowForm(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-emerald-300 bg-white/80 py-4 font-semibold text-emerald-600">
-        <Plus size={18} /> {tab === 'food' ? 'Agregar comida' : 'Agregar tarea'}
-      </button>
 
       {/* form modal */}
       {showForm && (

@@ -469,6 +469,39 @@ export async function updatePreventiveTaskSchedule(
   return true;
 }
 
+export async function updatePreventiveTaskReminders(
+  taskId: string,
+  remindersEnabled: boolean,
+): Promise<boolean> {
+  const { data: existing, error: readError } = await supabase
+    .from('preventive_tasks')
+    .select('metadata')
+    .eq('id', taskId)
+    .single();
+
+  if (readError) {
+    console.error('Error reading preventive task metadata:', readError);
+    return false;
+  }
+
+  const metadata = {
+    ...(existing?.metadata || {}),
+    remindersEnabled,
+  };
+
+  const { error } = await supabase
+    .from('preventive_tasks')
+    .update({ metadata })
+    .eq('id', taskId);
+
+  if (error) {
+    console.error('Error updating preventive task reminders:', error);
+    return false;
+  }
+
+  return true;
+}
+
 export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from('chat_messages')

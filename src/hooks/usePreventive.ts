@@ -4,6 +4,7 @@ import {
   createClinicalEntry,
   createPreventiveTask,
   togglePreventiveTask,
+  updatePreventiveTaskReminders,
   updatePreventiveTaskSchedule,
 } from '../lib/supabase';
 import type { ClinicalEntryCategory, ClinicalTimelineEntry, PreventiveFormData, PreventiveTask } from '../types';
@@ -392,6 +393,36 @@ export function usePreventive() {
     [preventiveTasks, setPreventiveTasks, user],
   );
 
+  const discardTaskReminder = useCallback(
+    async (taskId: string) => {
+      const current = preventiveTasks.find((task) => task.id === taskId);
+      if (!current) {
+        return;
+      }
+
+      if (!user || user.isGuest) {
+        setPreventiveTasks(
+          preventiveTasks.map((task) => (
+            task.id === taskId ? { ...task, remindersEnabled: false } : task
+          )),
+        );
+        return;
+      }
+
+      const updated = await updatePreventiveTaskReminders(taskId, false);
+      if (!updated) {
+        throw new Error('No se pudo descartar el recordatorio en Supabase.');
+      }
+
+      setPreventiveTasks(
+        preventiveTasks.map((task) => (
+          task.id === taskId ? { ...task, remindersEnabled: false } : task
+        )),
+      );
+    },
+    [preventiveTasks, setPreventiveTasks, user],
+  );
+
   const pendingTasks = useMemo(
     () => preventiveTasks.filter((task) => !task.completed),
     [preventiveTasks],
@@ -403,5 +434,6 @@ export function usePreventive() {
     addPreventiveTask,
     toggleTask,
     postponeTask,
+    discardTaskReminder,
   };
 }
