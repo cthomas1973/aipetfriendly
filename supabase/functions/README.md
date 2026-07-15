@@ -15,6 +15,8 @@ Configurar en Supabase Dashboard:
 
 - `SUPABASE_URL`: URL de tu proyecto Supabase
 - `SUPABASE_SERVICE_ROLE_KEY`: Clave de servicio (cuidado: solo en servidor)
+- `APP_BASE_URL`: URL publica de la app web (ej. `https://tu-dominio.com`), usada en botones de emails
+- `EMAIL_LOGO_URL`: opcional, URL absoluta del logo para emails (si no se define usa `${APP_BASE_URL}/logo-aipetfriendly.png`)
 - `AI_API_KEY`: API key del proveedor de IA (OpenAI-compatible)
 - `AI_MODEL`: modelo a usar (ejemplo: `gpt-4o-mini`)
 - `AI_BASE_URL`: endpoint base de API compatible (por defecto `https://api.openai.com/v1`)

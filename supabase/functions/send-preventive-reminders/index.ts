@@ -13,6 +13,7 @@ interface PetRow {
   id: string;
   name: string;
   user_id: string;
+  photo_url: string | null;
 }
 
 interface UserRow {
@@ -30,6 +31,8 @@ const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? '';
 const TWILIO_WHATSAPP_CONTENT_SID = Deno.env.get('TWILIO_WHATSAPP_CONTENT_SID') ?? '';
 const TWILIO_STATUS_CALLBACK_URL = `${SUPABASE_URL}/functions/v1/twilio-whatsapp-status`;
+const WEB_APP_URL = (Deno.env.get('APP_BASE_URL') ?? 'https://aipetfriendly.vercel.app').replace(/\/$/, '');
+const EMAIL_LOGO_URL = Deno.env.get('EMAIL_LOGO_URL') ?? `${WEB_APP_URL}/logo-aipetfriendly.png`;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,6 +47,79 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildReminderEmailHtml(args: {
+  ownerName: string;
+  petName: string;
+  taskTitle: string;
+  scheduledDate: string;
+  notes: string | null;
+  petPhotoUrl: string | null;
+}): string {
+  const ownerName = escapeHtml(args.ownerName);
+  const petName = escapeHtml(args.petName);
+  const taskTitle = escapeHtml(args.taskTitle);
+  const date = escapeHtml(args.scheduledDate);
+  const notes = args.notes ? escapeHtml(args.notes) : '';
+  const petPhotoUrl = args.petPhotoUrl ? escapeHtml(args.petPhotoUrl) : '';
+  const webUrl = escapeHtml(WEB_APP_URL);
+  const logoUrl = escapeHtml(EMAIL_LOGO_URL);
+
+  return `
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recordatorio AiPetFriendly</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f3fbf6;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f3fbf6;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #d1fae5;">
+            <tr>
+              <td style="background:linear-gradient(135deg,#10b981,#059669);padding:20px 24px;color:#ffffff;">
+                <img src="${logoUrl}" alt="AiPetFriendly" width="140" style="display:block;max-width:140px;height:auto;margin-bottom:12px;" />
+                <h1 style="margin:0;font-size:24px;line-height:1.2;font-weight:800;">Recordatorio de salud para ${petName}</h1>
+                <p style="margin:8px 0 0;font-size:14px;line-height:1.5;color:#dcfce7;">Hola ${ownerName}, este aviso te ayuda a mantener al dia los cuidados preventivos de tu mascota.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                ${petPhotoUrl ? `<img src="${petPhotoUrl}" alt="${petName}" style="width:100%;max-width:220px;height:auto;border-radius:14px;display:block;margin:0 auto 16px;border:1px solid #e2e8f0;" />` : ''}
+                <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;border-spacing:0 8px;">
+                  <tr><td style="font-size:14px;color:#475569;width:110px;"><strong>Mascota</strong></td><td style="font-size:15px;color:#0f172a;">${petName}</td></tr>
+                  <tr><td style="font-size:14px;color:#475569;width:110px;"><strong>Tarea</strong></td><td style="font-size:15px;color:#0f172a;">${taskTitle}</td></tr>
+                  <tr><td style="font-size:14px;color:#475569;width:110px;"><strong>Fecha</strong></td><td style="font-size:15px;color:#0f172a;">${date}</td></tr>
+                </table>
+                ${notes ? `<div style="margin-top:10px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;"><p style="margin:0;font-size:14px;color:#334155;"><strong>Nota:</strong> ${notes}</p></div>` : ''}
+                <div style="margin-top:20px;text-align:center;">
+                  <a href="${webUrl}" style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:999px;">Abrir AiPetFriendly</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b;">AiPetFriendly - Recordatorios preventivos. Si ya completaste esta tarea, puedes ignorar este mensaje.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 function normalizeChannels(metadata: Record<string, unknown> | null) {
@@ -245,7 +321,7 @@ Deno.serve(async (req) => {
 
       const { data: pet, error: petError } = await supabase
         .from('pets')
-        .select('id, name, user_id')
+        .select('id, name, user_id, photo_url')
         .eq('id', task.pet_id)
         .single();
 
@@ -266,6 +342,7 @@ Deno.serve(async (req) => {
       }
 
       const petName = (pet as PetRow).name;
+      const petPhotoUrl = (pet as PetRow).photo_url;
       const ownerEmail = (user as UserRow).email;
       const ownerName = (user as UserRow).full_name?.trim() || 'tutor';
       const eventEmail = maybeEmail(metadata);
@@ -282,7 +359,14 @@ Deno.serve(async (req) => {
             const response = await sendEmail(
               targetEmail,
               `AiPetFriendly: recordatorio de ${petName}`,
-              `<h2>Recordatorio AiPetFriendly</h2><p><strong>Mascota:</strong> ${petName}</p><p><strong>Tarea:</strong> ${task.title}</p><p><strong>Fecha:</strong> ${scheduledDate}</p><p>${task.notes ?? ''}</p>`,
+              buildReminderEmailHtml({
+                ownerName,
+                petName,
+                taskTitle: task.title,
+                scheduledDate,
+                notes: task.notes,
+                petPhotoUrl,
+              }),
             );
 
             await saveLog({

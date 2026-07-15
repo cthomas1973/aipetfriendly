@@ -21,6 +21,8 @@ Necesitas cuentas activas en Resend y Twilio.
 ```bash
 npx supabase secrets set RESEND_API_KEY=re_xxx
 npx supabase secrets set EMAIL_FROM="AiPetFriendly <notificaciones@tu-dominio.com>"
+npx supabase secrets set APP_BASE_URL="https://tu-dominio.com"
+npx supabase secrets set EMAIL_LOGO_URL="https://tu-dominio.com/logo-aipetfriendly.png"
 
 npx supabase secrets set TWILIO_ACCOUNT_SID=ACxxxxxxxx
 npx supabase secrets set TWILIO_AUTH_TOKEN=xxxxxxxx
@@ -29,6 +31,8 @@ npx supabase secrets set TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 
 Notas:
 - `EMAIL_FROM` debe ser remitente validado en Resend.
+- `APP_BASE_URL` se usa para el boton "Abrir AiPetFriendly" dentro del email.
+- `EMAIL_LOGO_URL` es opcional; si no se define usa `${APP_BASE_URL}/logo-aipetfriendly.png`.
 - `TWILIO_WHATSAPP_FROM` depende de tu sandbox o numero productivo.
 
 ## 2) Crear secret en GitHub Actions
