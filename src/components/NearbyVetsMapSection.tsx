@@ -5,7 +5,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
 
 const DEFAULT_QUERY = 'veterinaria';
-const DEFAULT_ZOOM = 15;
+const DEFAULT_ZOOM = 14;
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
@@ -21,11 +21,7 @@ function buildEmbedUrl(options?: {
   const hasCoords = typeof options?.lat === 'number' && typeof options?.lng === 'number';
   const cleanedAddress = options?.address?.trim();
 
-  const query = hasCoords
-    ? `${DEFAULT_QUERY} cerca de ${options!.lat},${options!.lng}`
-    : cleanedAddress
-      ? `${DEFAULT_QUERY} cerca de ${cleanedAddress}`
-      : DEFAULT_QUERY;
+  const query = cleanedAddress ? `${DEFAULT_QUERY} ${cleanedAddress}` : DEFAULT_QUERY;
 
   url.searchParams.set('q', query);
 
