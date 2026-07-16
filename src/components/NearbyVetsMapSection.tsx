@@ -27,6 +27,7 @@ function buildPublicMapEmbedUrl(params: { query: string; center?: { lat: number;
   if (params.center) {
     url.searchParams.set('ll', `${params.center.lat},${params.center.lng}`);
     url.searchParams.set('z', '13');
+    url.searchParams.set('near', `${params.center.lat},${params.center.lng}`);
   }
   url.searchParams.set('hl', 'es');
   url.searchParams.set('output', 'embed');
@@ -50,7 +51,7 @@ export function NearbyVetsMapSection() {
         : buildPublicMapEmbedUrl({ query: DEFAULT_QUERY });
     }
 
-    const locationQuery = 'Veterinarias';
+    const locationQuery = `Veterinarias cerca de ${location.lat},${location.lng}`;
     return GOOGLE_MAPS_EMBED_KEY
       ? buildMapUrl({
           apiKey: GOOGLE_MAPS_EMBED_KEY,
@@ -94,6 +95,7 @@ export function NearbyVetsMapSection() {
       {
         enableHighAccuracy: true,
         timeout: 12000,
+        maximumAge: 0,
       },
     );
   };
