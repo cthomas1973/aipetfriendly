@@ -9,6 +9,155 @@ const DEFAULT_ZOOM = 14;
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
+const SEARCH_RADIUS_METERS = 1200;
+const OVERPASS_ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+
+type NearbyVet = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  address: string;
+  distanceMeters: number;
+};
+
+function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const earthRadius = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function buildAddress(tags: Record<string, string> | undefined) {
+  if (!tags) return 'Direccion no informada';
+  const street = tags['addr:street'];
+  const number = tags['addr:housenumber'];
+  const city = tags['addr:city'] || tags['addr:suburb'];
+  const composed = [street, number, city].filter(Boolean).join(' ');
+  return composed || tags.address || 'Direccion no informada';
+}
+
+async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
+  const query = `[out:json][timeout:25];
+(
+  node["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  relation["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+
+  node["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  relation["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+);
+out center tags;`;
+
+  let payload: { elements?: Array<Record<string, unknown>> } | null = null;
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: query,
+      });
+
+      if (!response.ok) continue;
+      payload = (await response.json()) as { elements?: Array<Record<string, unknown>> };
+      break;
+    } catch {
+      continue;
+    }
+  }
+
+  const overpassResults = (payload?.elements ?? [])
+    .map((element) => {
+      const tags = (element.tags as Record<string, string> | undefined) ?? {};
+      const latValue =
+        typeof element.lat === 'number'
+          ? element.lat
+          : element.center && typeof (element.center as { lat?: unknown }).lat === 'number'
+            ? (element.center as { lat: number }).lat
+            : null;
+      const lngValue =
+        typeof element.lon === 'number'
+          ? element.lon
+          : element.center && typeof (element.center as { lon?: unknown }).lon === 'number'
+            ? (element.center as { lon: number }).lon
+            : null;
+
+      if (latValue === null || lngValue === null) return null;
+
+      return {
+        id: `${element.type ?? 'item'}-${element.id ?? Math.random()}`,
+        name: tags.name || 'Veterinaria',
+        lat: latValue,
+        lng: lngValue,
+        address: buildAddress(tags),
+        distanceMeters: haversineDistanceMeters(lat, lng, latValue, lngValue),
+      } as NearbyVet;
+    })
+    .filter((item): item is NearbyVet => item !== null)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 20);
+
+  if (overpassResults.length > 0) {
+    return overpassResults;
+  }
+
+  const latOffset = SEARCH_RADIUS_METERS / 111320;
+  const lngOffset = SEARCH_RADIUS_METERS / (111320 * Math.cos((lat * Math.PI) / 180));
+  const left = lng - lngOffset;
+  const right = lng + lngOffset;
+  const top = lat + latOffset;
+  const bottom = lat - latOffset;
+
+  try {
+    const nominatimUrl = new URL(NOMINATIM_ENDPOINT);
+    nominatimUrl.searchParams.set('q', 'veterinaria');
+    nominatimUrl.searchParams.set('format', 'jsonv2');
+    nominatimUrl.searchParams.set('addressdetails', '1');
+    nominatimUrl.searchParams.set('limit', '20');
+    nominatimUrl.searchParams.set('bounded', '1');
+    nominatimUrl.searchParams.set('viewbox', `${left},${top},${right},${bottom}`);
+
+    const response = await fetch(nominatimUrl.toString(), {
+      headers: { 'Accept-Language': 'es' },
+    });
+
+    if (!response.ok) return [];
+
+    const places = (await response.json()) as Array<{
+      place_id: number;
+      lat: string;
+      lon: string;
+      display_name: string;
+      name?: string;
+    }>;
+
+    return places
+      .map((place) => {
+        const placeLat = Number(place.lat);
+        const placeLng = Number(place.lon);
+        if (!Number.isFinite(placeLat) || !Number.isFinite(placeLng)) return null;
+
+        return {
+          id: `nominatim-${place.place_id}`,
+          name: place.name || place.display_name.split(',')[0] || 'Veterinaria',
+          lat: placeLat,
+          lng: placeLng,
+          address: place.display_name,
+          distanceMeters: haversineDistanceMeters(lat, lng, placeLat, placeLng),
+        } as NearbyVet;
+      })
+      .filter((item): item is NearbyVet => item !== null)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+}
 
 function buildEmbedUrl(options?: {
   lat?: number;
@@ -107,8 +256,29 @@ export function NearbyVetsMapSection() {
   const [manualAddress, setManualAddress] = useState('');
   const [manualSearching, setManualSearching] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [nearbyVets, setNearbyVets] = useState<NearbyVet[]>([]);
+  const [loadingVets, setLoadingVets] = useState(false);
+  const [vetsError, setVetsError] = useState<string | null>(null);
 
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+  const loadNearbyVets = useCallback(async (lat: number, lng: number) => {
+    setLoadingVets(true);
+    setVetsError(null);
+
+    try {
+      const vets = await fetchNearbyVets(lat, lng);
+      setNearbyVets(vets);
+      if (vets.length === 0) {
+        setVetsError('No se encontraron veterinarias registradas en esta zona.');
+      }
+    } catch {
+      setNearbyVets([]);
+      setVetsError('No se pudieron cargar veterinarias cercanas para esta ubicacion.');
+    } finally {
+      setLoadingVets(false);
+    }
+  }, []);
 
   const openInMapsUrl = useMemo(
     () => buildExternalMapsUrl({ lat: location?.lat, lng: location?.lng, address: manualAddress }),
@@ -181,6 +351,7 @@ export function NearbyVetsMapSection() {
             refreshToken: Date.now(),
           }),
         );
+        await loadNearbyVets(nextLocation.lat, nextLocation.lng);
         return;
       }
 
@@ -229,6 +400,7 @@ export function NearbyVetsMapSection() {
           refreshToken: Date.now(),
         }),
       );
+      await loadNearbyVets(nextLocation.lat, nextLocation.lng);
 
       if (!silent && browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
         setLocationError(`Ubicacion aproximada (${Math.round(browserAccuracy)} m). Se centro el mapa con precision reducida.`);
@@ -252,10 +424,11 @@ export function NearbyVetsMapSection() {
       }
 
       refreshMap(buildEmbedUrl({ refreshToken: Date.now() }));
+      setNearbyVets([]);
     } finally {
       setLocating(false);
     }
-  }, [isNativeAndroid, refreshMap]);
+  }, [isNativeAndroid, refreshMap, loadNearbyVets]);
 
   useEffect(() => {
     const isMobileWeb = !Capacitor.isNativePlatform() && typeof window !== 'undefined' && window.innerWidth < 768;
@@ -289,6 +462,7 @@ export function NearbyVetsMapSection() {
             refreshToken: Date.now(),
           }),
         );
+        await loadNearbyVets(point.lat, point.lng);
         return;
       }
 
@@ -298,6 +472,7 @@ export function NearbyVetsMapSection() {
           refreshToken: Date.now(),
         }),
       );
+      setNearbyVets([]);
       setManualError('No pudimos geocodificar la direccion exacta. Mostramos busqueda cercana por texto.');
     } catch {
       setManualError('No se pudo buscar por direccion. Intenta nuevamente.');
@@ -439,6 +614,31 @@ export function NearbyVetsMapSection() {
           <Navigation size={16} />
           Abrir en Google Maps
         </a>
+      </div>
+
+      <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
+        <p className="text-sm font-semibold text-slate-900">Veterinarias cercanas</p>
+        {loadingVets && <p className="mt-2 text-sm text-slate-500">Buscando veterinarias en tu zona...</p>}
+        {!loadingVets && vetsError && <p className="mt-2 text-sm text-amber-700">{vetsError}</p>}
+        {!loadingVets && !vetsError && nearbyVets.length > 0 && (
+          <ul className="mt-3 space-y-2 text-sm text-slate-700">
+            {nearbyVets.map((vet) => {
+              const vetMapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${vet.lat},${vet.lng}`)}`;
+              return (
+                <li key={vet.id} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                  <p className="font-semibold text-slate-900">{vet.name}</p>
+                  <p className="text-xs text-slate-600">{vet.address}</p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-emerald-700">{Math.round(vet.distanceMeters)} m</span>
+                    <a href={vetMapLink} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-700 underline">
+                      Ver en Google Maps
+                    </a>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </section>
   );
