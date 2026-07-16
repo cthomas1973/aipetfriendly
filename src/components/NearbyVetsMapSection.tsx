@@ -7,6 +7,7 @@ import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-s
 const DEFAULT_QUERY = 'veterinaria';
 const DEFAULT_ZOOM = 15;
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
+const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 
 function buildEmbedUrl(params?: { lat: number; lng: number }) {
   const url = new URL('https://maps.google.com/maps');
@@ -125,10 +126,10 @@ export function NearbyVetsMapSection() {
       }
 
       const browserAccuracy = browserPosition.coords.accuracy ?? Number.MAX_SAFE_INTEGER;
-      if (browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
+      if (browserAccuracy > MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS) {
         if (!silent) {
           setLocationError(
-            `Ubicacion imprecisa (${Math.round(browserAccuracy)} m). Activa ubicacion precisa en el telefono y vuelve a intentar.`,
+            `Ubicacion demasiado imprecisa (${Math.round(browserAccuracy)} m). Activa ubicacion precisa en el telefono y vuelve a intentar.`,
           );
         }
         return;
@@ -141,6 +142,10 @@ export function NearbyVetsMapSection() {
       setLocation(nextLocation);
       setLocationAccuracy(browserAccuracy);
       setMapUrl(buildEmbedUrl(nextLocation));
+
+      if (!silent && browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
+        setLocationError(`Ubicacion aproximada (${Math.round(browserAccuracy)} m). Se centro el mapa con precision reducida.`);
+      }
     } catch (error) {
       const geoError = error as GeolocationPositionError | { message?: string };
       const denied =
@@ -166,7 +171,10 @@ export function NearbyVetsMapSection() {
   }, [isNativeAndroid]);
 
   useEffect(() => {
-    void requestLocation(true);
+    const isMobileWeb = !Capacitor.isNativePlatform() && typeof window !== 'undefined' && window.innerWidth < 768;
+    if (!isMobileWeb) {
+      void requestLocation(true);
+    }
   }, [requestLocation]);
 
   const openLocationSettings = async () => {
