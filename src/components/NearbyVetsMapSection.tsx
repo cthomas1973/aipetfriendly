@@ -1,243 +1,135 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LocateFixed, MapPin, Navigation } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { LocateFixed, MapPin, Navigation, Search } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
-import { Circle, MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
-import { divIcon, type LatLngExpression } from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 
-const SEARCH_RADIUS_METERS = 1200;
+const DEFAULT_QUERY = 'veterinaria';
+const DEFAULT_ZOOM = 15;
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
-const OVERPASS_ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
-const FALLBACK_CENTER: LatLngExpression = [-34.6037, -58.3816];
 
-const vetMarkerIcon = divIcon({
-  className: '',
-  html: '<div style="width:28px;height:28px;border-radius:999px;background:#ef4444;border:3px solid #fff;box-shadow:0 6px 16px rgba(239,68,68,.45)"></div>',
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
-});
+function buildEmbedUrl(options?: {
+  lat?: number;
+  lng?: number;
+  address?: string;
+  refreshToken?: number;
+}) {
+  const url = new URL('https://maps.google.com/maps');
 
-const locationMarkerIcon = divIcon({
-  className: '',
-  html: '<div style="width:26px;height:26px;border-radius:999px;background:#2563eb;border:3px solid #fff;box-shadow:0 6px 16px rgba(37,99,235,.45)"></div>',
-  iconSize: [26, 26],
-  iconAnchor: [13, 13],
-});
+  const hasCoords = typeof options?.lat === 'number' && typeof options?.lng === 'number';
+  const cleanedAddress = options?.address?.trim();
 
-type NearbyVet = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  address: string;
-  distanceMeters: number;
-};
+  const query = hasCoords
+    ? `${DEFAULT_QUERY} cerca de ${options!.lat},${options!.lng}`
+    : cleanedAddress
+      ? `${DEFAULT_QUERY} cerca de ${cleanedAddress}`
+      : DEFAULT_QUERY;
 
-function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const toRad = (v: number) => (v * Math.PI) / 180;
-  const earthRadius = 6371000;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return 2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+  url.searchParams.set('q', query);
 
-function buildAddress(tags: Record<string, string> | undefined) {
-  if (!tags) return 'Direccion no informada';
-  const street = tags['addr:street'];
-  const number = tags['addr:housenumber'];
-  const city = tags['addr:city'] || tags['addr:suburb'];
-  const composed = [street, number, city].filter(Boolean).join(' ');
-  return composed || tags.address || 'Direccion no informada';
-}
-
-function RecenterMap({ center }: { center: LatLngExpression }) {
-  const map = useMap();
-
-  useEffect(() => {
-    map.setView(center, 15, { animate: true });
-  }, [center, map]);
-
-  return null;
-}
-
-async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
-  const query = `[out:json][timeout:25];
-(
-  node["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  relation["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-
-  node["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  relation["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-
-  node["veterinary"="yes"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way["veterinary"="yes"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  relation["veterinary"="yes"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-
-  node["name"~"vet|veterin",i](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way["name"~"vet|veterin",i](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  relation["name"~"vet|veterin",i](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-);
-out center tags;`;
-
-  let payload: { elements?: Array<Record<string, unknown>> } | null = null;
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: query,
-      });
-
-      if (!response.ok) continue;
-      payload = (await response.json()) as { elements?: Array<Record<string, unknown>> };
-      break;
-    } catch {
-      continue;
-    }
+  if (hasCoords) {
+    const point = `${options!.lat},${options!.lng}`;
+    url.searchParams.set('ll', point);
+    url.searchParams.set('sll', point);
+    url.searchParams.set('near', point);
   }
 
-  const overpassResults = (payload?.elements ?? [])
-    .map((element) => {
-      const tags = (element.tags as Record<string, string> | undefined) ?? {};
-      const latValue =
-        typeof element.lat === 'number'
-          ? element.lat
-          : element.center && typeof (element.center as { lat?: unknown }).lat === 'number'
-            ? (element.center as { lat: number }).lat
-            : null;
-      const lngValue =
-        typeof element.lon === 'number'
-          ? element.lon
-          : element.center && typeof (element.center as { lon?: unknown }).lon === 'number'
-            ? (element.center as { lon: number }).lon
-            : null;
+  url.searchParams.set('t', '');
+  url.searchParams.set('z', String(DEFAULT_ZOOM));
+  url.searchParams.set('hl', 'es');
+  url.searchParams.set('ie', 'UTF8');
+  url.searchParams.set('iwloc', '');
+  if (options?.refreshToken) {
+    url.searchParams.set('v', String(options.refreshToken));
+  }
+  url.searchParams.set('output', 'embed');
 
-      if (latValue === null || lngValue === null) return null;
+  return url.toString();
+}
 
-      return {
-        id: `${element.type ?? 'item'}-${element.id ?? Math.random()}`,
-        name: tags.name || 'Veterinaria',
-        lat: latValue,
-        lng: lngValue,
-        address: buildAddress(tags),
-        distanceMeters: haversineDistanceMeters(lat, lng, latValue, lngValue),
-      } as NearbyVet;
-    })
-    .filter((item): item is NearbyVet => item !== null)
-    .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, 30);
+function buildExternalMapsUrl(options?: { lat?: number; lng?: number; address?: string }) {
+  const url = new URL('https://www.google.com/maps/search/');
 
-  if (overpassResults.length > 0) {
-    return overpassResults;
+  const hasCoords = typeof options?.lat === 'number' && typeof options?.lng === 'number';
+  const cleanedAddress = options?.address?.trim();
+
+  const query = hasCoords
+    ? `${options!.lat},${options!.lng} ${DEFAULT_QUERY}`
+    : cleanedAddress
+      ? `${DEFAULT_QUERY} cerca de ${cleanedAddress}`
+      : DEFAULT_QUERY;
+
+  url.searchParams.set('api', '1');
+  url.searchParams.set('query', query);
+
+  return url.toString();
+}
+
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const url = new URL(NOMINATIM_ENDPOINT);
+  url.searchParams.set('q', address);
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('addressdetails', '0');
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      'Accept-Language': 'es',
+    },
+  });
+
+  if (!response.ok) {
+    return null;
   }
 
-  // Fallback when Overpass has sparse tags or temporary gaps for the area.
-  const latOffset = SEARCH_RADIUS_METERS / 111320;
-  const lngOffset = SEARCH_RADIUS_METERS / (111320 * Math.cos((lat * Math.PI) / 180));
-  const left = lng - lngOffset;
-  const right = lng + lngOffset;
-  const top = lat + latOffset;
-  const bottom = lat - latOffset;
-
-  try {
-    const nominatimUrl = new URL(NOMINATIM_ENDPOINT);
-    nominatimUrl.searchParams.set('q', 'veterinaria');
-    nominatimUrl.searchParams.set('format', 'jsonv2');
-    nominatimUrl.searchParams.set('addressdetails', '1');
-    nominatimUrl.searchParams.set('limit', '30');
-    nominatimUrl.searchParams.set('bounded', '1');
-    nominatimUrl.searchParams.set('viewbox', `${left},${top},${right},${bottom}`);
-
-    const response = await fetch(nominatimUrl.toString(), {
-      headers: {
-        'Accept-Language': 'es',
-      },
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const places = (await response.json()) as Array<{
-      place_id: number;
-      lat: string;
-      lon: string;
-      display_name: string;
-      name?: string;
-    }>;
-
-    return places
-      .map((place) => {
-        const placeLat = Number(place.lat);
-        const placeLng = Number(place.lon);
-        if (!Number.isFinite(placeLat) || !Number.isFinite(placeLng)) {
-          return null;
-        }
-
-        return {
-          id: `nominatim-${place.place_id}`,
-          name: place.name || place.display_name.split(',')[0] || 'Veterinaria',
-          lat: placeLat,
-          lng: placeLng,
-          address: place.display_name,
-          distanceMeters: haversineDistanceMeters(lat, lng, placeLat, placeLng),
-        } as NearbyVet;
-      })
-      .filter((item): item is NearbyVet => item !== null)
-      .sort((a, b) => a.distanceMeters - b.distanceMeters)
-      .slice(0, 30);
-  } catch {
-    return [];
+  const results = (await response.json()) as Array<{ lat: string; lon: string }>;
+  if (!results.length) {
+    return null;
   }
+
+  const lat = Number(results[0].lat);
+  const lng = Number(results[0].lon);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return { lat, lng };
 }
 
 export function NearbyVetsMapSection() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
-  const [nearbyVets, setNearbyVets] = useState<NearbyVet[]>([]);
-  const [selectedVet, setSelectedVet] = useState<NearbyVet | null>(null);
-  const [loadingVets, setLoadingVets] = useState(false);
-  const [vetsError, setVetsError] = useState<string | null>(null);
+  const [mapUrl, setMapUrl] = useState(buildEmbedUrl({ refreshToken: Date.now() }));
+  const [mapFrameKey, setMapFrameKey] = useState(0);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [showSettingsCta, setShowSettingsCta] = useState(false);
+  const [manualAddress, setManualAddress] = useState('');
+  const [manualSearching, setManualSearching] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
-  const mapCenter = useMemo<LatLngExpression>(
-    () => (location ? [location.lat, location.lng] : FALLBACK_CENTER),
-    [location],
+  const openInMapsUrl = useMemo(
+    () => buildExternalMapsUrl({ lat: location?.lat, lng: location?.lng, address: manualAddress }),
+    [location, manualAddress],
   );
 
-  const loadNearbyVets = useCallback(async (lat: number, lng: number) => {
-    setLoadingVets(true);
-    setVetsError(null);
-
-    try {
-      const vets = await fetchNearbyVets(lat, lng);
-      setNearbyVets(vets);
-      setSelectedVet(null);
-    } catch {
-      setNearbyVets([]);
-      setSelectedVet(null);
-      setVetsError('No se pudieron cargar veterinarias cercanas para esta ubicacion.');
-    } finally {
-      setLoadingVets(false);
-    }
+  const refreshMap = useCallback((nextUrl: string) => {
+    setMapUrl(nextUrl);
+    setMapFrameKey((current) => current + 1);
   }, []);
 
   const requestLocation = useCallback(async (silent = false) => {
     setLocating(true);
-    if (!silent) setLocationError(null);
+    if (!silent) {
+      setLocationError(null);
+      setManualError(null);
+    }
     setPermissionDenied(false);
     setShowSettingsCta(false);
 
@@ -247,7 +139,9 @@ export function NearbyVetsMapSection() {
         if (permission.location === 'denied' || permission.coarseLocation === 'denied') {
           setPermissionDenied(true);
           setShowSettingsCta(true);
-          if (!silent) setLocationError('Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.');
+          if (!silent) {
+            setLocationError('Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.');
+          }
           return;
         }
 
@@ -277,15 +171,27 @@ export function NearbyVetsMapSection() {
           return;
         }
 
-        const nextLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+        const nextLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+
         setLocation(nextLocation);
         setLocationAccuracy(nativeAccuracy);
-        await loadNearbyVets(nextLocation.lat, nextLocation.lng);
+        refreshMap(
+          buildEmbedUrl({
+            lat: nextLocation.lat,
+            lng: nextLocation.lng,
+            refreshToken: Date.now(),
+          }),
+        );
         return;
       }
 
       if (!navigator.geolocation) {
-        if (!silent) setLocationError('Tu navegador no soporta geolocalizacion.');
+        if (!silent) {
+          setLocationError('Tu navegador no soporta geolocalizacion.');
+        }
         return;
       }
 
@@ -313,10 +219,20 @@ export function NearbyVetsMapSection() {
         return;
       }
 
-      const nextLocation = { lat: browserPosition.coords.latitude, lng: browserPosition.coords.longitude };
+      const nextLocation = {
+        lat: browserPosition.coords.latitude,
+        lng: browserPosition.coords.longitude,
+      };
+
       setLocation(nextLocation);
       setLocationAccuracy(browserAccuracy);
-      await loadNearbyVets(nextLocation.lat, nextLocation.lng);
+      refreshMap(
+        buildEmbedUrl({
+          lat: nextLocation.lat,
+          lng: nextLocation.lng,
+          refreshToken: Date.now(),
+        }),
+      );
 
       if (!silent && browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
         setLocationError(`Ubicacion aproximada (${Math.round(browserAccuracy)} m). Se centro el mapa con precision reducida.`);
@@ -335,16 +251,15 @@ export function NearbyVetsMapSection() {
         setLocationError(
           denied
             ? 'Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.'
-            : 'No se pudo obtener tu ubicacion con precision suficiente. Intenta nuevamente en un lugar con mejor senal GPS.',
+            : 'No se pudo obtener tu ubicacion con precision suficiente. Puedes ingresar una direccion manualmente.',
         );
       }
 
-      setNearbyVets([]);
-      setSelectedVet(null);
+      refreshMap(buildEmbedUrl({ refreshToken: Date.now() }));
     } finally {
       setLocating(false);
     }
-  }, [isNativeAndroid, loadNearbyVets]);
+  }, [isNativeAndroid, refreshMap]);
 
   useEffect(() => {
     const isMobileWeb = !Capacitor.isNativePlatform() && typeof window !== 'undefined' && window.innerWidth < 768;
@@ -353,20 +268,68 @@ export function NearbyVetsMapSection() {
     }
   }, [requestLocation]);
 
+  const handleManualSearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const cleanedAddress = manualAddress.trim();
+    if (!cleanedAddress) {
+      setManualError('Ingresa una direccion para buscar veterinarias cercanas.');
+      return;
+    }
+
+    setManualSearching(true);
+    setManualError(null);
+    setLocationError(null);
+
+    try {
+      const point = await geocodeAddress(cleanedAddress);
+      if (point) {
+        setLocation(point);
+        setLocationAccuracy(null);
+        refreshMap(
+          buildEmbedUrl({
+            lat: point.lat,
+            lng: point.lng,
+            address: cleanedAddress,
+            refreshToken: Date.now(),
+          }),
+        );
+        return;
+      }
+
+      refreshMap(
+        buildEmbedUrl({
+          address: cleanedAddress,
+          refreshToken: Date.now(),
+        }),
+      );
+      setManualError('No pudimos geocodificar la direccion exacta. Mostramos busqueda cercana por texto.');
+    } catch {
+      setManualError('No se pudo buscar por direccion. Intenta nuevamente.');
+    } finally {
+      setManualSearching(false);
+    }
+  };
+
   const openLocationSettings = async () => {
     try {
       if (isNativeAndroid) {
         try {
-          await NativeSettings.openAndroid({ option: AndroidSettings.Location });
+          await NativeSettings.openAndroid({
+            option: AndroidSettings.Location,
+          });
           return;
         } catch {
-          await NativeSettings.openAndroid({ option: AndroidSettings.ApplicationDetails });
+          await NativeSettings.openAndroid({
+            option: AndroidSettings.ApplicationDetails,
+          });
         }
         return;
       }
 
       if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
-        await NativeSettings.openIOS({ option: IOSSettings.App });
+        await NativeSettings.openIOS({
+          option: IOSSettings.App,
+        });
         return;
       }
 
@@ -385,7 +348,7 @@ export function NearbyVetsMapSection() {
           </span>
           <div className="flex-1">
             <p className="font-extrabold text-slate-900">Veterinarias Cercanas</p>
-            <p className="text-sm text-slate-500">Toca un globo para ver su tarjeta</p>
+            <p className="text-sm text-slate-500">Mapa interactivo dentro de AiPetFriendly</p>
           </div>
         </div>
 
@@ -407,14 +370,35 @@ export function NearbyVetsMapSection() {
             {location
               ? locationAccuracy
                 ? `Radio 10 cuadras (${Math.round(locationAccuracy)} m de precision)`
-                : 'Mapa centrado en tu zona'
-              : 'Centrando en tu zona...'}
+                : 'Ubicacion manual aplicada'
+              : 'Modo busqueda general'}
           </span>
         </div>
+
+        <form onSubmit={handleManualSearch} className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            value={manualAddress}
+            onChange={(event) => {
+              setManualAddress(event.target.value);
+            }}
+            placeholder="Ingresa direccion o barrio (ej: Av. Rivadavia 1988, CABA)"
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
+          />
+          <button
+            type="submit"
+            disabled={manualSearching}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-900 disabled:opacity-60"
+          >
+            <Search size={16} />
+            {manualSearching ? 'Buscando...' : 'Buscar por direccion'}
+          </button>
+        </form>
 
         {locationError && (
           <div className="mt-3 space-y-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
             <p>{locationError}</p>
+            <p>Si no funciona la geolocalizacion, usa la busqueda por direccion.</p>
             {(permissionDenied || showSettingsCta) && isNativeAndroid && (
               <button
                 type="button"
@@ -428,68 +412,38 @@ export function NearbyVetsMapSection() {
             )}
           </div>
         )}
+
+        {manualError && <p className="mt-2 text-sm text-amber-700">{manualError}</p>}
+      </div>
+
+      <div className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        Mapa en modo compatible. Para la version completa con API oficial, define VITE_GOOGLE_MAPS_EMBED_API_KEY.
       </div>
 
       <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-emerald-100">
-        <div className="h-[62vh] min-h-[460px] w-full">
-          <MapContainer center={mapCenter} zoom={15} className="h-full w-full" scrollWheelZoom>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <RecenterMap center={mapCenter} />
-
-            {location && (
-              <>
-                <Circle center={[location.lat, location.lng]} radius={SEARCH_RADIUS_METERS} pathOptions={{ color: '#10b981' }} />
-                <Marker position={[location.lat, location.lng]} icon={locationMarkerIcon} />
-              </>
-            )}
-
-            {nearbyVets.map((vet) => (
-              <Marker
-                key={vet.id}
-                position={[vet.lat, vet.lng]}
-                icon={vetMarkerIcon}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedVet(vet);
-                  },
-                }}
-              />
-            ))}
-          </MapContainer>
-        </div>
+        <iframe
+          key={mapFrameKey}
+          id="mapa-veterinarias"
+          title="Veterinarias cercanas"
+          src={mapUrl}
+          className="h-[62vh] min-h-[460px] w-full border-0"
+          loading="lazy"
+          allowFullScreen
+          referrerPolicy="no-referrer-when-downgrade"
+        />
       </div>
 
       <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
-        {loadingVets && <p className="text-sm text-slate-500">Actualizando veterinarias cercanas...</p>}
-        {vetsError && <p className="text-sm text-amber-700">{vetsError}</p>}
-        {!loadingVets && !vetsError && nearbyVets.length > 0 && (
-          <p className="text-sm text-slate-700">{nearbyVets.length} veterinarias detectadas. Toca un globo en el mapa para ver la tarjeta.</p>
-        )}
-        {!loadingVets && !vetsError && nearbyVets.length === 0 && (
-          <p className="text-sm text-slate-700">No se encontraron veterinarias en esta zona.</p>
-        )}
+        <a
+          href={openInMapsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
+        >
+          <Navigation size={16} />
+          Abrir en Google Maps
+        </a>
       </div>
-
-      {selectedVet && (
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Veterinaria seleccionada</p>
-          <h3 className="mt-1 text-lg font-extrabold text-slate-900">{selectedVet.name}</h3>
-          <p className="mt-2 text-sm text-slate-700">{selectedVet.address}</p>
-          <p className="mt-1 text-sm font-semibold text-emerald-700">{Math.round(selectedVet.distanceMeters)} m</p>
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedVet.lat},${selectedVet.lng}`)}`}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
-          >
-            <Navigation size={16} />
-            Abrir seleccionada en Google Maps
-          </a>
-        </div>
-      )}
     </section>
   );
 }
