@@ -10,7 +10,12 @@ const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const SEARCH_RADIUS_METERS = 1200;
-const OVERPASS_ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const FETCH_TIMEOUT_MS = 8000;
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
+];
 
 type NearbyVet = {
   id: string;
@@ -41,6 +46,17 @@ function buildAddress(tags: Record<string, string> | undefined) {
   return composed || tags.address || 'Direccion no informada';
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
   const query = `[out:json][timeout:25];
 (
@@ -55,15 +71,22 @@ async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
 out center tags;`;
 
   let payload: { elements?: Array<Record<string, unknown>> } | null = null;
+  let anyEndpointReachable = false;
+
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: query,
-      });
+      const response = await fetchWithTimeout(
+        endpoint,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: query,
+        },
+        FETCH_TIMEOUT_MS,
+      );
 
       if (!response.ok) continue;
+      anyEndpointReachable = true;
       payload = (await response.json()) as { elements?: Array<Record<string, unknown>> };
       break;
     } catch {
@@ -122,11 +145,20 @@ out center tags;`;
     nominatimUrl.searchParams.set('bounded', '1');
     nominatimUrl.searchParams.set('viewbox', `${left},${top},${right},${bottom}`);
 
-    const response = await fetch(nominatimUrl.toString(), {
-      headers: { 'Accept-Language': 'es' },
-    });
+    const response = await fetchWithTimeout(
+      nominatimUrl.toString(),
+      { headers: { 'Accept-Language': 'es' } },
+      FETCH_TIMEOUT_MS,
+    );
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      if (!anyEndpointReachable) {
+        throw new Error('network-unreachable');
+      }
+      return [];
+    }
+
+    anyEndpointReachable = true;
 
     const places = (await response.json()) as Array<{
       place_id: number;
@@ -154,7 +186,10 @@ out center tags;`;
       .filter((item): item is NearbyVet => item !== null)
       .sort((a, b) => a.distanceMeters - b.distanceMeters)
       .slice(0, 20);
-  } catch {
+  } catch (error) {
+    if (!anyEndpointReachable) {
+      throw error instanceof Error ? error : new Error('network-unreachable');
+    }
     return [];
   }
 }
@@ -272,9 +307,14 @@ export function NearbyVetsMapSection() {
       if (vets.length === 0) {
         setVetsError('No se encontraron veterinarias registradas en esta zona.');
       }
-    } catch {
+    } catch (error) {
       setNearbyVets([]);
-      setVetsError('No se pudieron cargar veterinarias cercanas para esta ubicacion.');
+      const isNetworkError = error instanceof Error && error.message === 'network-unreachable';
+      setVetsError(
+        isNetworkError
+          ? 'No se pudo conectar con el servicio de veterinarias. Revisa tu conexion (datos moviles/WiFi) y toca Reintentar.'
+          : 'No se pudieron cargar veterinarias cercanas para esta ubicacion.',
+      );
     } finally {
       setLoadingVets(false);
     }
@@ -619,7 +659,22 @@ export function NearbyVetsMapSection() {
       <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
         <p className="text-sm font-semibold text-slate-900">Veterinarias cercanas</p>
         {loadingVets && <p className="mt-2 text-sm text-slate-500">Buscando veterinarias en tu zona...</p>}
-        {!loadingVets && vetsError && <p className="mt-2 text-sm text-amber-700">{vetsError}</p>}
+        {!loadingVets && vetsError && (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm text-amber-700">{vetsError}</p>
+            {location && (
+              <button
+                type="button"
+                onClick={() => {
+                  void loadNearbyVets(location.lat, location.lng);
+                }}
+                className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800"
+              >
+                Reintentar busqueda de veterinarias
+              </button>
+            )}
+          </div>
+        )}
         {!loadingVets && !vetsError && nearbyVets.length > 0 && (
           <ul className="mt-3 space-y-2 text-sm text-slate-700">
             {nearbyVets.map((vet) => {
