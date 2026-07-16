@@ -6,7 +6,7 @@ import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-s
 
 const DEFAULT_QUERY = 'Veterinarias cerca de mi';
 const GOOGLE_MAPS_EMBED_KEY = (import.meta.env.VITE_GOOGLE_MAPS_EMBED_API_KEY as string | undefined)?.trim() || '';
-const MIN_ACCEPTABLE_ACCURACY_METERS = 300;
+const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 
 function buildMapUrl(params: { apiKey: string; query: string; center?: { lat: number; lng: number } | null }) {
   const url = new URL('https://www.google.com/maps/embed/v1/search');
@@ -42,6 +42,7 @@ export function NearbyVetsMapSection() {
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [showSettingsCta, setShowSettingsCta] = useState(false);
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
   const mapUrl = useMemo(() => {
@@ -54,7 +55,7 @@ export function NearbyVetsMapSection() {
         : buildPublicMapEmbedUrl({ query: DEFAULT_QUERY });
     }
 
-    const locationQuery = 'Veterinarias';
+    const locationQuery = `Veterinarias cerca de ${location.lat},${location.lng}`;
     return GOOGLE_MAPS_EMBED_KEY
       ? buildMapUrl({
           apiKey: GOOGLE_MAPS_EMBED_KEY,
@@ -71,12 +72,14 @@ export function NearbyVetsMapSection() {
     setLocating(true);
     setLocationError(null);
     setPermissionDenied(false);
+    setShowSettingsCta(false);
 
     try {
       if (Capacitor.isNativePlatform()) {
         const permission = await Geolocation.requestPermissions();
         if (permission.location === 'denied' || permission.coarseLocation === 'denied') {
           setPermissionDenied(true);
+          setShowSettingsCta(true);
           setLocationError('Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.');
           return;
         }
@@ -95,11 +98,21 @@ export function NearbyVetsMapSection() {
           });
         }
 
+        const nativeAccuracy = position.coords.accuracy ?? Number.MAX_SAFE_INTEGER;
+        if (nativeAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
+          setPermissionDenied(isNativeAndroid);
+          setShowSettingsCta(isNativeAndroid);
+          setLocationError(
+            `Ubicacion imprecisa (${Math.round(nativeAccuracy)} m). Activa "Ubicacion precisa" y GPS de alta precision para centrar correctamente.`,
+          );
+          return;
+        }
+
         setLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
-        setLocationAccuracy(position.coords.accuracy ?? null);
+        setLocationAccuracy(nativeAccuracy);
         return;
       }
 
@@ -122,11 +135,19 @@ export function NearbyVetsMapSection() {
         browserPosition = await getBrowserPosition(20000);
       }
 
+      const browserAccuracy = browserPosition.coords.accuracy ?? Number.MAX_SAFE_INTEGER;
+      if (browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
+        setLocationError(
+          `Ubicacion imprecisa (${Math.round(browserAccuracy)} m). Activa ubicacion precisa en el telefono y vuelve a intentar.`,
+        );
+        return;
+      }
+
       setLocation({
         lat: browserPosition.coords.latitude,
         lng: browserPosition.coords.longitude,
       });
-      setLocationAccuracy(browserPosition.coords.accuracy ?? null);
+      setLocationAccuracy(browserAccuracy);
     } catch (error) {
       const geoError = error as GeolocationPositionError | { message?: string };
       const denied =
@@ -213,7 +234,7 @@ export function NearbyVetsMapSection() {
         {locationError && (
           <div className="mt-3 space-y-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
             <p>{locationError}</p>
-            {permissionDenied && isNativeAndroid && (
+            {(permissionDenied || showSettingsCta) && isNativeAndroid && (
               <button
                 type="button"
                 onClick={() => {
