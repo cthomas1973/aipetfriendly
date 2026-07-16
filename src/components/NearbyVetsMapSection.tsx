@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { LocateFixed, MapPin, Navigation } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
 
 const DEFAULT_QUERY = 'Veterinarias cerca de mi';
 const GOOGLE_MAPS_EMBED_KEY = (import.meta.env.VITE_GOOGLE_MAPS_EMBED_API_KEY as string | undefined)?.trim() || '';
+const MIN_ACCEPTABLE_ACCURACY_METERS = 300;
 
 function buildMapUrl(params: { apiKey: string; query: string; center?: { lat: number; lng: number } | null }) {
   const url = new URL('https://www.google.com/maps/embed/v1/search');
@@ -36,6 +38,7 @@ function buildPublicMapEmbedUrl(params: { query: string; center?: { lat: number;
 
 export function NearbyVetsMapSection() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -51,7 +54,7 @@ export function NearbyVetsMapSection() {
         : buildPublicMapEmbedUrl({ query: DEFAULT_QUERY });
     }
 
-    const locationQuery = `Veterinarias cerca de ${location.lat},${location.lng}`;
+    const locationQuery = 'Veterinarias';
     return GOOGLE_MAPS_EMBED_KEY
       ? buildMapUrl({
           apiKey: GOOGLE_MAPS_EMBED_KEY,
@@ -64,40 +67,84 @@ export function NearbyVetsMapSection() {
         });
   }, [location]);
 
-  const requestLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError('Tu navegador no soporta geolocalizacion.');
-      return;
-    }
-
+  const requestLocation = async () => {
     setLocating(true);
     setLocationError(null);
     setPermissionDenied(false);
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const permission = await Geolocation.requestPermissions();
+        if (permission.location === 'denied' || permission.coarseLocation === 'denied') {
+          setPermissionDenied(true);
+          setLocationError('Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.');
+          return;
+        }
+
+        let position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+
+        if ((position.coords.accuracy ?? Number.MAX_SAFE_INTEGER) > MIN_ACCEPTABLE_ACCURACY_METERS) {
+          position = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0,
+          });
+        }
+
         setLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
-        setLocating(false);
-      },
-      (error) => {
-        setLocating(false);
-        const denied = error.code === error.PERMISSION_DENIED;
-        setPermissionDenied(denied);
-        setLocationError(
-          denied
-            ? 'Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.'
-            : 'No se pudo obtener tu ubicacion. Intenta nuevamente.',
-        );
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0,
-      },
-    );
+        setLocationAccuracy(position.coords.accuracy ?? null);
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        setLocationError('Tu navegador no soporta geolocalizacion.');
+        return;
+      }
+
+      const getBrowserPosition = (timeout: number) =>
+        new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout,
+            maximumAge: 0,
+          });
+        });
+
+      let browserPosition = await getBrowserPosition(12000);
+      if ((browserPosition.coords.accuracy ?? Number.MAX_SAFE_INTEGER) > MIN_ACCEPTABLE_ACCURACY_METERS) {
+        browserPosition = await getBrowserPosition(20000);
+      }
+
+      setLocation({
+        lat: browserPosition.coords.latitude,
+        lng: browserPosition.coords.longitude,
+      });
+      setLocationAccuracy(browserPosition.coords.accuracy ?? null);
+    } catch (error) {
+      const geoError = error as GeolocationPositionError | { message?: string };
+      const denied =
+        (typeof (geoError as GeolocationPositionError).code === 'number' &&
+          (geoError as GeolocationPositionError).code === 1) ||
+        geoError.message?.toLowerCase().includes('denied') ||
+        geoError.message?.toLowerCase().includes('permission') ||
+        false;
+
+      setPermissionDenied(denied);
+      setLocationError(
+        denied
+          ? 'Permiso de ubicacion denegado. Puedes habilitarlo y reintentar.'
+          : 'No se pudo obtener tu ubicacion con precision suficiente. Intenta nuevamente en un lugar con mejor senal GPS.',
+      );
+    } finally {
+      setLocating(false);
+    }
   };
 
   const openLocationSettings = async () => {
@@ -155,7 +202,11 @@ export function NearbyVetsMapSection() {
 
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
             <Navigation size={13} />
-            {location ? 'Mapa centrado en tu zona' : 'Modo busqueda general'}
+            {location
+              ? locationAccuracy
+                ? `Mapa centrado en tu zona (${Math.round(locationAccuracy)} m)`
+                : 'Mapa centrado en tu zona'
+              : 'Modo busqueda general'}
           </span>
         </div>
 
