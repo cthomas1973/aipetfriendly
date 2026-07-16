@@ -50,7 +50,7 @@ export function NearbyVetsMapSection() {
         : buildPublicMapEmbedUrl({ query: DEFAULT_QUERY });
     }
 
-    const locationQuery = `Veterinarias cerca de ${location.lat},${location.lng}`;
+    const locationQuery = 'Veterinarias';
     return GOOGLE_MAPS_EMBED_KEY
       ? buildMapUrl({
           apiKey: GOOGLE_MAPS_EMBED_KEY,
@@ -101,9 +101,16 @@ export function NearbyVetsMapSection() {
   const openLocationSettings = async () => {
     try {
       if (isNativeAndroid) {
-        await NativeSettings.openAndroid({
-          option: AndroidSettings.ApplicationDetails,
-        });
+        try {
+          await NativeSettings.openAndroid({
+            option: AndroidSettings.Location,
+          });
+          return;
+        } catch {
+          await NativeSettings.openAndroid({
+            option: AndroidSettings.ApplicationDetails,
+          });
+        }
         return;
       }
 

@@ -13,10 +13,23 @@ import {
 import type { BillingPricingSettings, Species } from '../types';
 
 function detectUserCountryCode(): string {
+  const timezoneToCountry: Record<string, string> = {
+    'America/Argentina/Buenos_Aires': 'AR',
+    'America/Buenos_Aires': 'AR',
+    'America/Argentina/Cordoba': 'AR',
+    'America/Argentina/Mendoza': 'AR',
+    'America/Argentina/Salta': 'AR',
+    'America/Argentina/Tucuman': 'AR',
+    'America/Argentina/Ushuaia': 'AR',
+  };
+
   try {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     if (timezone.includes('Argentina')) {
       return 'AR';
+    }
+    if (timezoneToCountry[timezone]) {
+      return timezoneToCountry[timezone];
     }
   } catch {
     // no-op
@@ -149,13 +162,14 @@ export function PaywallCard() {
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);
   const checkoutCountryCode = useMemo(() => {
-    const fromProfilePhone = countryCodeFromDial(defaultNotifPhoneCountry);
+    const hasLocalPhone = defaultNotifPhoneLocal.trim().length > 0;
+    const fromProfilePhone = hasLocalPhone ? countryCodeFromDial(defaultNotifPhoneCountry) : null;
     if (fromProfilePhone) {
       return fromProfilePhone;
     }
 
     return detectedCountryCode;
-  }, [defaultNotifPhoneCountry, detectedCountryCode]);
+  }, [defaultNotifPhoneCountry, defaultNotifPhoneLocal, detectedCountryCode]);
   const isArgentinaCheckout = checkoutCountryCode === 'AR';
   const arsFormatter = useMemo(() => new Intl.NumberFormat('es-AR', {
     style: 'currency',
