@@ -9,9 +9,9 @@ const DEFAULT_ZOOM = 15;
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 
-function buildEmbedUrl(params?: { lat: number; lng: number }) {
+function buildEmbedUrl(params?: { lat: number; lng: number }, refreshToken?: number) {
   const url = new URL('https://maps.google.com/maps');
-  const query = params ? DEFAULT_QUERY : DEFAULT_QUERY;
+  const query = params ? `${params.lat},${params.lng} ${DEFAULT_QUERY}` : DEFAULT_QUERY;
 
   url.searchParams.set('q', query);
   if (params) {
@@ -25,6 +25,10 @@ function buildEmbedUrl(params?: { lat: number; lng: number }) {
   url.searchParams.set('hl', 'es');
   url.searchParams.set('ie', 'UTF8');
   url.searchParams.set('iwloc', '');
+  if (refreshToken) {
+    // Force iframe refresh so Google reruns the search around the new detected location.
+    url.searchParams.set('v', String(refreshToken));
+  }
   url.searchParams.set('output', 'embed');
 
   return url.toString();
@@ -43,7 +47,8 @@ function buildExternalMapsUrl(params?: { lat: number; lng: number }) {
 export function NearbyVetsMapSection() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
-  const [mapUrl, setMapUrl] = useState(buildEmbedUrl());
+  const [mapUrl, setMapUrl] = useState(buildEmbedUrl(undefined, Date.now()));
+  const [mapFrameKey, setMapFrameKey] = useState(0);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -107,7 +112,8 @@ export function NearbyVetsMapSection() {
         };
         setLocation(nextLocation);
         setLocationAccuracy(nativeAccuracy);
-        setMapUrl(buildEmbedUrl(nextLocation));
+        setMapUrl(buildEmbedUrl(nextLocation, Date.now()));
+        setMapFrameKey((current) => current + 1);
         return;
       }
 
@@ -148,7 +154,8 @@ export function NearbyVetsMapSection() {
       };
       setLocation(nextLocation);
       setLocationAccuracy(browserAccuracy);
-      setMapUrl(buildEmbedUrl(nextLocation));
+      setMapUrl(buildEmbedUrl(nextLocation, Date.now()));
+      setMapFrameKey((current) => current + 1);
 
       if (!silent && browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
         setLocationError(`Ubicacion aproximada (${Math.round(browserAccuracy)} m). Se centro el mapa con precision reducida.`);
@@ -171,7 +178,8 @@ export function NearbyVetsMapSection() {
         );
       }
 
-      setMapUrl(buildEmbedUrl());
+      setMapUrl(buildEmbedUrl(undefined, Date.now()));
+      setMapFrameKey((current) => current + 1);
     } finally {
       setLocating(false);
     }
@@ -269,6 +277,7 @@ export function NearbyVetsMapSection() {
 
       <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-emerald-100">
         <iframe
+          key={mapFrameKey}
           id="mapa-veterinarias"
           title="Veterinarias cercanas"
           src={mapUrl}
