@@ -21,6 +21,9 @@ type VetPlace = {
   lat: number;
   lng: number;
   address: string;
+  openingHours: string;
+  contact: string;
+  website: string | null;
   distanceMeters: number;
 };
 
@@ -52,6 +55,30 @@ function buildAddress(tags: Record<string, string> | undefined) {
   const city = tags['addr:city'] || tags['addr:suburb'];
   const composed = [street, number, city].filter(Boolean).join(' ');
   return composed || tags.address || 'Direccion no informada';
+}
+
+function pickTag(tags: Record<string, string>, keys: string[]) {
+  for (const key of keys) {
+    const value = tags[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function normalizeWebsite(url: string) {
+  const value = url.trim();
+  if (!value) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `https://${value}`;
 }
 
 async function fetchNearbyVets(lat: number, lng: number): Promise<VetPlace[]> {
@@ -102,6 +129,12 @@ async function fetchNearbyVets(lat: number, lng: number): Promise<VetPlace[]> {
       }
 
       const distanceMeters = haversineDistanceMeters(lat, lng, latValue, lngValue);
+      const openingHours = pickTag(tags, ['opening_hours']) || 'No informado';
+      const contact =
+        pickTag(tags, ['phone', 'contact:phone', 'contact:mobile', 'mobile', 'contact:whatsapp', 'whatsapp']) ||
+        pickTag(tags, ['email', 'contact:email']) ||
+        'No informado';
+      const website = normalizeWebsite(pickTag(tags, ['website', 'contact:website', 'url']));
 
       return {
         id: `${element.type ?? 'item'}-${element.id ?? Math.random()}`,
@@ -109,6 +142,9 @@ async function fetchNearbyVets(lat: number, lng: number): Promise<VetPlace[]> {
         lat: latValue,
         lng: lngValue,
         address: buildAddress(tags),
+        openingHours,
+        contact,
+        website,
         distanceMeters,
       } as VetPlace;
     })
@@ -384,9 +420,21 @@ export function NearbyVetsMapSection() {
             {nearbyVets.map((vet) => (
               <Marker key={vet.id} position={[vet.lat, vet.lng]} icon={leafletDefaultIcon}>
                 <Popup>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <p className="font-semibold text-slate-900">{vet.name}</p>
                     <p className="text-xs text-slate-600">{vet.address}</p>
+                    <p className="text-xs text-slate-600">Horarios: {vet.openingHours}</p>
+                    <p className="text-xs text-slate-600">Contacto: {vet.contact}</p>
+                    {vet.website && (
+                      <a
+                        href={vet.website}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-semibold text-emerald-700 underline"
+                      >
+                        Ver web
+                      </a>
+                    )}
                     <p className="text-xs text-emerald-700">A {Math.round(vet.distanceMeters)} m</p>
                   </div>
                 </Popup>
@@ -404,10 +452,29 @@ export function NearbyVetsMapSection() {
           <p className="mt-2 text-sm text-slate-500">No encontramos veterinarias dentro de 10 cuadras de tu ubicacion.</p>
         )}
         {!loadingVets && nearbyVets.length > 0 && (
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+          <ul className="mt-3 space-y-3 text-sm text-slate-700">
             {nearbyVets.slice(0, 8).map((vet) => (
-              <li key={`list-${vet.id}`}>
-                {vet.name} - {Math.round(vet.distanceMeters)} m
+              <li key={`list-${vet.id}`} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-900">{vet.name}</p>
+                    <p className="text-xs text-slate-600">{vet.address}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                    {Math.round(vet.distanceMeters)} m
+                  </span>
+                </div>
+                <div className="mt-2 grid gap-1 text-xs text-slate-600">
+                  <p>Horarios: {vet.openingHours}</p>
+                  <p>Contacto: {vet.contact}</p>
+                  {vet.website ? (
+                    <a href={vet.website} target="_blank" rel="noreferrer" className="font-semibold text-emerald-700 underline">
+                      Web oficial
+                    </a>
+                  ) : (
+                    <p>Web: No informada</p>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
