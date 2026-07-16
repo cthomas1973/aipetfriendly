@@ -4,11 +4,8 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
 import { Circle, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import { Icon, type LatLngExpression } from 'leaflet';
+import { divIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 const DEFAULT_CENTER: LatLngExpression = [-34.6098, -58.3921];
 const SEARCH_RADIUS_METERS = 1000;
@@ -27,14 +24,28 @@ type VetPlace = {
   distanceMeters: number;
 };
 
-const leafletDefaultIcon = new Icon({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
+const vetMarkerIcon = divIcon({
+  className: '',
+  html: `
+    <div style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9999px;background:#059669;border:3px solid #ffffff;box-shadow:0 8px 20px rgba(5,150,105,0.35);transform:translateY(-4px)">
+      <span style="color:#ffffff;font-weight:800;font-size:18px;line-height:1">+</span>
+    </div>
+  `,
+  iconSize: [34, 34],
+  iconAnchor: [17, 30],
+  popupAnchor: [0, -28],
+});
+
+const locationMarkerIcon = divIcon({
+  className: '',
+  html: `
+    <div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:#2563eb;border:3px solid #ffffff;box-shadow:0 8px 20px rgba(37,99,235,0.35);transform:translateY(-4px)">
+      <span style="width:10px;height:10px;border-radius:9999px;background:#ffffff"></span>
+    </div>
+  `,
+  iconSize: [30, 30],
+  iconAnchor: [15, 26],
+  popupAnchor: [0, -24],
 });
 
 function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -168,6 +179,7 @@ export function NearbyVetsMapSection() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [nearbyVets, setNearbyVets] = useState<VetPlace[]>([]);
+  const [selectedVet, setSelectedVet] = useState<VetPlace | null>(null);
   const [loadingVets, setLoadingVets] = useState(false);
   const [vetsError, setVetsError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -188,8 +200,10 @@ export function NearbyVetsMapSection() {
     try {
       const vets = await fetchNearbyVets(lat, lng);
       setNearbyVets(vets);
+      setSelectedVet((currentSelected) => currentSelected && vets.some((vet) => vet.id === currentSelected.id) ? currentSelected : vets[0] ?? null);
     } catch {
       setNearbyVets([]);
+      setSelectedVet(null);
       setVetsError('No se pudo cargar el listado de veterinarias cercanas.');
     } finally {
       setLoadingVets(false);
@@ -411,14 +425,23 @@ export function NearbyVetsMapSection() {
             {location && (
               <>
                 <Circle center={[location.lat, location.lng]} radius={SEARCH_RADIUS_METERS} pathOptions={{ color: '#10b981' }} />
-                <Marker position={[location.lat, location.lng]} icon={leafletDefaultIcon}>
+                <Marker position={[location.lat, location.lng]} icon={locationMarkerIcon}>
                   <Popup>Tu ubicacion</Popup>
                 </Marker>
               </>
             )}
 
             {nearbyVets.map((vet) => (
-              <Marker key={vet.id} position={[vet.lat, vet.lng]} icon={leafletDefaultIcon}>
+              <Marker
+                key={vet.id}
+                position={[vet.lat, vet.lng]}
+                icon={vetMarkerIcon}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedVet(vet);
+                  },
+                }}
+              >
                 <Popup>
                   <div className="space-y-2">
                     <p className="font-semibold text-slate-900">{vet.name}</p>
@@ -454,7 +477,21 @@ export function NearbyVetsMapSection() {
         {!loadingVets && nearbyVets.length > 0 && (
           <ul className="mt-3 space-y-3 text-sm text-slate-700">
             {nearbyVets.slice(0, 8).map((vet) => (
-              <li key={`list-${vet.id}`} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+              <li
+                key={`list-${vet.id}`}
+                className={`rounded-2xl p-3 ring-1 transition ${selectedVet?.id === vet.id ? 'bg-emerald-50 ring-emerald-200' : 'bg-slate-50 ring-slate-100'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setSelectedVet(vet);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedVet(vet);
+                  }
+                }}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-slate-900">{vet.name}</p>
@@ -480,6 +517,49 @@ export function NearbyVetsMapSection() {
           </ul>
         )}
       </div>
+
+      {selectedVet && (
+        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Veterinaria seleccionada</p>
+              <h3 className="mt-1 text-lg font-extrabold text-slate-900">{selectedVet.name}</h3>
+            </div>
+            <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+              {Math.round(selectedVet.distanceMeters)} m
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-2 text-sm text-slate-700">
+            <p><span className="font-semibold text-slate-900">Direccion:</span> {selectedVet.address}</p>
+            <p><span className="font-semibold text-slate-900">Dias y horarios:</span> {selectedVet.openingHours}</p>
+            <p><span className="font-semibold text-slate-900">Contacto:</span> {selectedVet.contact}</p>
+            <p>
+              <span className="font-semibold text-slate-900">Web:</span>{' '}
+              {selectedVet.website ? (
+                <a href={selectedVet.website} target="_blank" rel="noreferrer" className="font-semibold text-emerald-700 underline">
+                  Abrir web
+                </a>
+              ) : (
+                'No informada'
+              )}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (location) {
+                setSelectedVet(selectedVet);
+              }
+            }}
+            className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
+          >
+            <Navigation size={16} />
+            Centrar seleccionada
+          </button>
+        </div>
+      )}
     </section>
   );
 }
