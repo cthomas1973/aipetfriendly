@@ -11,6 +11,7 @@ const SEARCH_RADIUS_METERS = 1200;
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 const OVERPASS_ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const FALLBACK_CENTER: LatLngExpression = [-34.6037, -58.3816];
 
 const vetMarkerIcon = divIcon({
@@ -67,7 +68,25 @@ function RecenterMap({ center }: { center: LatLngExpression }) {
 }
 
 async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
-  const query = `[out:json][timeout:25];\n(\n  node["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});\n  way["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});\n  relation["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});\n);\nout center tags;`;
+  const query = `[out:json][timeout:25];
+(
+  node["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  relation["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+
+  node["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  relation["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+
+  node["veterinary"="yes"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way["veterinary"="yes"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  relation["veterinary"="yes"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+
+  node["name"~"vet|veterin",i](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way["name"~"vet|veterin",i](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  relation["name"~"vet|veterin",i](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+);
+out center tags;`;
 
   let payload: { elements?: Array<Record<string, unknown>> } | null = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
@@ -86,9 +105,7 @@ async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
     }
   }
 
-  if (!payload?.elements) return [];
-
-  return payload.elements
+  const overpassResults = (payload?.elements ?? [])
     .map((element) => {
       const tags = (element.tags as Record<string, string> | undefined) ?? {};
       const latValue =
@@ -118,6 +135,69 @@ async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
     .filter((item): item is NearbyVet => item !== null)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, 30);
+
+  if (overpassResults.length > 0) {
+    return overpassResults;
+  }
+
+  // Fallback when Overpass has sparse tags or temporary gaps for the area.
+  const latOffset = SEARCH_RADIUS_METERS / 111320;
+  const lngOffset = SEARCH_RADIUS_METERS / (111320 * Math.cos((lat * Math.PI) / 180));
+  const left = lng - lngOffset;
+  const right = lng + lngOffset;
+  const top = lat + latOffset;
+  const bottom = lat - latOffset;
+
+  try {
+    const nominatimUrl = new URL(NOMINATIM_ENDPOINT);
+    nominatimUrl.searchParams.set('q', 'veterinaria');
+    nominatimUrl.searchParams.set('format', 'jsonv2');
+    nominatimUrl.searchParams.set('addressdetails', '1');
+    nominatimUrl.searchParams.set('limit', '30');
+    nominatimUrl.searchParams.set('bounded', '1');
+    nominatimUrl.searchParams.set('viewbox', `${left},${top},${right},${bottom}`);
+
+    const response = await fetch(nominatimUrl.toString(), {
+      headers: {
+        'Accept-Language': 'es',
+      },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const places = (await response.json()) as Array<{
+      place_id: number;
+      lat: string;
+      lon: string;
+      display_name: string;
+      name?: string;
+    }>;
+
+    return places
+      .map((place) => {
+        const placeLat = Number(place.lat);
+        const placeLng = Number(place.lon);
+        if (!Number.isFinite(placeLat) || !Number.isFinite(placeLng)) {
+          return null;
+        }
+
+        return {
+          id: `nominatim-${place.place_id}`,
+          name: place.name || place.display_name.split(',')[0] || 'Veterinaria',
+          lat: placeLat,
+          lng: placeLng,
+          address: place.display_name,
+          distanceMeters: haversineDistanceMeters(lat, lng, placeLat, placeLng),
+        } as NearbyVet;
+      })
+      .filter((item): item is NearbyVet => item !== null)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .slice(0, 30);
+  } catch {
+    return [];
+  }
 }
 
 export function NearbyVetsMapSection() {
