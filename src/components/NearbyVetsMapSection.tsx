@@ -11,11 +11,18 @@ const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 
 function buildEmbedUrl(params?: { lat: number; lng: number }) {
   const url = new URL('https://maps.google.com/maps');
-  const query = params ? `${params.lat},${params.lng} ${DEFAULT_QUERY}` : DEFAULT_QUERY;
+  const query = params ? DEFAULT_QUERY : DEFAULT_QUERY;
 
   url.searchParams.set('q', query);
+  if (params) {
+    // Anchor search results to the user's zone to avoid re-centering on broad zoom gestures.
+    const point = `${params.lat},${params.lng}`;
+    url.searchParams.set('ll', point);
+    url.searchParams.set('near', point);
+  }
   url.searchParams.set('t', '');
   url.searchParams.set('z', String(DEFAULT_ZOOM));
+  url.searchParams.set('hl', 'es');
   url.searchParams.set('ie', 'UTF8');
   url.searchParams.set('iwloc', '');
   url.searchParams.set('output', 'embed');
