@@ -13,6 +13,8 @@
  * publicacion ya no existe o fue pausada.
  *
  * Requiere GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
+ * Opcional (para el email de resumen): RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL
+ * Si faltan las variables de email, el script sigue funcionando igual pero no envia el aviso.
  *
  * Medida de seguridad: si la mayoria de las consultas a ML devuelven bloqueo
  * (403/error de red/timeout), el script NO desactiva nada (para evitar apagar
@@ -29,6 +31,75 @@ const NOT_FOUND_PATTERNS = [
   /esta publicaci[oó]n fue pausada/i,
   /el producto que buscas no est[aá] disponible/i,
 ];
+
+function escapeHtml(input) {
+  return String(input ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCount, inactiveProducts, aborted }) {
+  const { RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL } = process.env;
+
+  if (!RESEND_API_KEY || !ADMIN_NOTIFICATION_EMAIL) {
+    console.log('\n[email] RESEND_API_KEY o ADMIN_NOTIFICATION_EMAIL no configurados, no se envia resumen por email.');
+    return;
+  }
+
+  const emailFrom = EMAIL_FROM || 'AiPetFriendly <onboarding@resend.dev>';
+  const subject = aborted
+    ? `AiPetFriendly - Chequeo ML abortado (demasiados bloqueos)`
+    : `AiPetFriendly - Chequeo ML: ${inactiveCount} inactivo(s) de ${total}`;
+
+  const inactiveListHtml = inactiveProducts.length > 0
+    ? `<ul>${inactiveProducts.map((p) => `<li><strong>${escapeHtml(p.mla_id)}</strong> - ${escapeHtml(String(p.title || '').slice(0, 80))}</li>`).join('')}</ul>`
+    : '<p>Ninguno.</p>';
+
+  const html = `
+<!doctype html>
+<html lang="es">
+  <body style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+    <h2>Resumen del chequeo de productos Mercado Libre</h2>
+    ${aborted ? '<p style="color:#b45309;"><strong>Atencion:</strong> el chequeo se aborto sin desactivar productos porque hubo demasiados bloqueos de red/IP.</p>' : ''}
+    <p><strong>Total de productos revisados:</strong> ${total}</p>
+    <p><strong>Activos:</strong> ${activeCount}</p>
+    <p><strong>Inactivos (desactivados):</strong> ${inactiveCount}</p>
+    <p><strong>Sin verificar (bloqueados/error):</strong> ${blockedCount}</p>
+    <h3>Productos marcados como inactivos</h3>
+    ${inactiveListHtml}
+    <p style="margin-top:20px;font-size:12px;color:#64748b;">Este email se envia automaticamente en cada ejecucion del workflow "Check ML Products Status".</p>
+  </body>
+</html>`;
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: emailFrom,
+        to: [ADMIN_NOTIFICATION_EMAIL],
+        subject,
+        html,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error(`[email] Error enviando resumen: ${JSON.stringify(payload)}`);
+      return;
+    }
+
+    console.log(`[email] Resumen enviado a ${ADMIN_NOTIFICATION_EMAIL} (id: ${payload?.id || 'sin id'})`);
+  } catch (err) {
+    console.error(`[email] Error de red enviando resumen: ${err.message}`);
+  }
+}
 
 async function fetchAllActiveProducts(supabaseUrl, supabaseKey) {
   const params = new URLSearchParams({
@@ -97,6 +168,14 @@ async function main() {
 
   if (products.length === 0) {
     console.log('No hay productos activos para verificar.');
+    await sendSummaryEmail({
+      total: 0,
+      activeCount: 0,
+      inactiveCount: 0,
+      blockedCount: 0,
+      inactiveProducts: [],
+      aborted: false,
+    });
     return;
   }
 
@@ -131,11 +210,27 @@ async function main() {
   if (blockedRatio > 0.5) {
     console.error(`\n[ALERTA] ${Math.round(blockedRatio * 100)}% de las consultas fueron bloqueadas por ML.`);
     console.error('[ALERTA] No se desactiva ningun producto para evitar falsos positivos masivos.');
+    await sendSummaryEmail({
+      total: products.length,
+      activeCount,
+      inactiveCount,
+      blockedCount,
+      inactiveProducts: toDeactivate,
+      aborted: true,
+    });
     process.exit(1);
   }
 
   if (toDeactivate.length === 0) {
     console.log('\nTodos los productos verificados siguen activos. Nada que hacer.');
+    await sendSummaryEmail({
+      total: products.length,
+      activeCount,
+      inactiveCount,
+      blockedCount,
+      inactiveProducts: toDeactivate,
+      aborted: false,
+    });
     return;
   }
 
@@ -148,6 +243,15 @@ async function main() {
       console.error(`  ✗ Error desactivando ${product.mla_id}: ${err.message}`);
     }
   }
+
+  await sendSummaryEmail({
+    total: products.length,
+    activeCount,
+    inactiveCount,
+    blockedCount,
+    inactiveProducts: toDeactivate,
+    aborted: false,
+  });
 
   console.log('\n=== Verificacion completada ===');
 }

@@ -4,6 +4,10 @@ name: Check ML Products Status
 # sigue existiendo/activo en Mercado Libre. Si esta pausado, cerrado o la
 # publicacion fue eliminada, lo desactiva (active=false) del catalogo.
 #
+# En cada ejecucion envia un email de resumen (total revisados, activos,
+# inactivos y el listado de los inactivos) usando Resend, si estan
+# configurados los secrets RESEND_API_KEY y ADMIN_NOTIFICATION_EMAIL.
+#
 # Nota: si ML bloquea las consultas (403) para mas del 50% de los productos,
 # el script no desactiva nada para evitar apagar el catalogo entero por un
 # bloqueo temporal de IP — revisar el log del job si eso ocurre.
@@ -33,3 +37,6 @@ jobs:
         env:
           SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM:            ${{ secrets.EMAIL_FROM }}
+          ADMIN_NOTIFICATION_EMAIL: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
