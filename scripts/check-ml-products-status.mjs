@@ -14,15 +14,68 @@
  * la URL real que ve el usuario y se buscan frases que ML muestra cuando una
  * publicacion ya no existe o fue pausada.
  *
- * Requiere GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
+ * IMPORTANTE (bloqueo anti-bot de ML): Mercado Libre bloquea el trafico de
+ * IPs de datacenter/cloud (Vercel, GitHub Actions) tanto en su API oficial
+ * como al visitar la ficha del producto (muestra un muro de login en vez del
+ * HTML real). Por eso la extraccion de precio solo funciona de forma
+ * confiable ejecutando este script MANUALMENTE desde una PC con conexion
+ * residencial normal (no desde el cron de GitHub Actions).
+ *
+ * Requiere: SUPABASE_URL, SUPABASE_SERVICE_KEY
  * Opcional (para el email de resumen): RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL
  * Si faltan las variables de email, el script sigue funcionando igual pero no envia el aviso.
+ *
+ * Uso local (PC, no GitHub Actions): completa .env.local con las variables
+ * de arriba (ver .env.local.example) y ejecuta:
+ *   npm run check-ml-prices
  *
  * Medida de seguridad: si la mayoria de las consultas a ML devuelven bloqueo
  * (403/error de red/timeout), el script NO desactiva nada (para evitar apagar
  * todo el catalogo por un bloqueo temporal de IP) y termina con error para
  * que se note en el historial de Actions.
  */
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+// Carga variables desde .env.local solo si no vinieron ya del entorno
+// (en GitHub Actions siempre vienen inyectadas via `env:` del workflow, asi
+// que este loader es un no-op ahi; solo aplica para corridas manuales locales).
+function loadLocalEnvFile() {
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const envPath = path.join(scriptDir, '..', '.env.local');
+
+  let content;
+  try {
+    content = readFileSync(envPath, 'utf8');
+  } catch {
+    return;
+  }
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    let value = line.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadLocalEnvFile();
 
 const NOT_FOUND_PATTERNS = [
   /parece que esta p[aá]gina no existe/i,

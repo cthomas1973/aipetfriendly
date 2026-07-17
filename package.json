@@ -10,7 +10,8 @@
     "cap:sync": "npx cap sync",
     "android:sync": "npm run build && node scripts/fix-capacitor-windows.mjs && npx cap sync android",
     "android:open": "npx cap open android",
-    "android:update": "npm run android:sync && npm run android:open"
+    "android:update": "npm run android:sync && npm run android:open",
+    "check-ml-prices": "node scripts/check-ml-products-status.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
