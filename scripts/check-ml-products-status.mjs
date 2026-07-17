@@ -3,7 +3,9 @@
  * check-ml-products-status.mjs
  * Cron diario: revisa cada producto activo en beneficios_productos visitando
  * su URL real (permalink) en Mercado Libre y desactiva los que ya no existen
- * o estan pausados/cerrados.
+ * o estan pausados/cerrados. Tambien extrae el precio actual de la ficha
+ * (JSON-LD/meta tags) y lo actualiza en Supabase si cambio, para que la app
+ * (que lee beneficios_productos.price) muestre siempre el precio vigente.
  *
  * IMPORTANTE: no se usa el endpoint /items/{id} de la API porque los productos
  * cargados desde URLs tipo /p/MLAxxxx (ficha de catalogo con varios vendedores)
@@ -41,7 +43,7 @@ function escapeHtml(input) {
     .replaceAll("'", '&#39;');
 }
 
-async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCount, inactiveProducts, aborted }) {
+async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCount, priceUpdatedCount, inactiveProducts, aborted }) {
   const { RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL } = process.env;
 
   if (!RESEND_API_KEY || !ADMIN_NOTIFICATION_EMAIL) {
@@ -68,6 +70,7 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
     <p><strong>Activos:</strong> ${activeCount}</p>
     <p><strong>Inactivos (desactivados):</strong> ${inactiveCount}</p>
     <p><strong>Sin verificar (bloqueados/error):</strong> ${blockedCount}</p>
+    <p><strong>Precios actualizados:</strong> ${priceUpdatedCount ?? 0}</p>
     <h3>Productos marcados como inactivos</h3>
     ${inactiveListHtml}
     <p style="margin-top:20px;font-size:12px;color:#64748b;">Este email se envia automaticamente en cada ejecucion del workflow "Check ML Products Status".</p>
@@ -103,7 +106,7 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
 
 async function fetchAllActiveProducts(supabaseUrl, supabaseKey) {
   const params = new URLSearchParams({
-    select: 'id,mla_id,title,permalink',
+    select: 'id,mla_id,title,permalink,price',
     active: 'eq.true',
     order: 'updated_at.asc',
   });
@@ -128,9 +131,69 @@ async function deactivateProduct(supabaseUrl, supabaseKey, id) {
   if (!res.ok) throw new Error(`Error desactivando ${id}: ${res.status} ${await res.text()}`);
 }
 
+async function updateProductPrice(supabaseUrl, supabaseKey, id, price) {
+  const res = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({ price, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`Error actualizando precio ${id}: ${res.status} ${await res.text()}`);
+}
+
+// Busca el precio actual del producto en el HTML de la ficha (JSON-LD o meta tags).
+// Devuelve null si no lo encuentra o no se puede parsear con confianza.
+function extractPriceFromHtml(html) {
+  const ldJsonBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+
+  for (const block of ldJsonBlocks) {
+    const jsonText = block.replace(/^<script[^>]*>/i, '').replace(/<\/script>$/i, '');
+    try {
+      const parsed = JSON.parse(jsonText);
+      const candidates = Array.isArray(parsed) ? parsed : [parsed];
+
+      for (const candidate of candidates) {
+        const offers = candidate?.offers;
+        const offerList = Array.isArray(offers) ? offers : offers ? [offers] : [];
+
+        for (const offer of offerList) {
+          const price = Number(offer?.price);
+          if (Number.isFinite(price) && price > 0) {
+            return price;
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  const metaItemprop = html.match(/itemprop=["']price["']\s+content=["']([\d.,]+)["']/i);
+  if (metaItemprop) {
+    const parsed = Number(metaItemprop[1].replace(/\./g, '').replace(',', '.'));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  const metaProductPrice = html.match(/property=["']product:price:amount["']\s+content=["']([\d.,]+)["']/i);
+  if (metaProductPrice) {
+    const parsed = Number(metaProductPrice[1].replace(/\./g, '').replace(',', '.'));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 // Resultado posible por producto: 'active' | 'inactive' | 'blocked' (no se pudo verificar)
 async function checkPermalinkStatus(permalink) {
-  if (!permalink) return 'blocked';
+  if (!permalink) return { status: 'blocked', price: null };
 
   try {
     const res = await fetch(permalink, {
@@ -142,15 +205,19 @@ async function checkPermalinkStatus(permalink) {
       signal: AbortSignal.timeout(15000),
     });
 
-    if (res.status === 404) return 'inactive';
-    if (res.status === 403 || res.status === 429) return 'blocked';
-    if (!res.ok) return 'blocked';
+    if (res.status === 404) return { status: 'inactive', price: null };
+    if (res.status === 403 || res.status === 429) return { status: 'blocked', price: null };
+    if (!res.ok) return { status: 'blocked', price: null };
 
     const html = await res.text();
     const isNotFound = NOT_FOUND_PATTERNS.some(pattern => pattern.test(html));
-    return isNotFound ? 'inactive' : 'active';
+    if (isNotFound) {
+      return { status: 'inactive', price: null };
+    }
+
+    return { status: 'active', price: extractPriceFromHtml(html) };
   } catch {
-    return 'blocked';
+    return { status: 'blocked', price: null };
   }
 }
 
@@ -182,10 +249,11 @@ async function main() {
   let blockedCount = 0;
   let inactiveCount = 0;
   let activeCount = 0;
+  let priceUpdatedCount = 0;
   const toDeactivate = [];
 
   for (const product of products) {
-    const status = await checkPermalinkStatus(product.permalink);
+    const { status, price } = await checkPermalinkStatus(product.permalink);
 
     if (status === 'blocked') {
       blockedCount++;
@@ -196,13 +264,23 @@ async function main() {
       console.log(`[X] ${product.mla_id} — INACTIVO en ML: "${String(product.title || '').slice(0, 50)}"`);
     } else {
       activeCount++;
+
+      if (price !== null && Number(product.price) !== price) {
+        try {
+          await updateProductPrice(supabaseUrl, SUPABASE_SERVICE_KEY, product.id, price);
+          priceUpdatedCount++;
+          console.log(`[$] ${product.mla_id} — precio actualizado: ${product.price ?? 'sin dato'} -> ${price}`);
+        } catch (err) {
+          console.error(`[$] ${product.mla_id} — error actualizando precio: ${err.message}`);
+        }
+      }
     }
 
     // Pausa breve entre requests para no saturar
     await new Promise(r => setTimeout(r, 500));
   }
 
-  console.log(`\n=== RESUMEN: ${activeCount} activos, ${inactiveCount} inactivos, ${blockedCount} sin verificar ===`);
+  console.log(`\n=== RESUMEN: ${activeCount} activos, ${inactiveCount} inactivos, ${blockedCount} sin verificar, ${priceUpdatedCount} precios actualizados ===`);
 
   // Medida de seguridad: si mas de la mitad de las consultas fueron bloqueadas,
   // no confiamos en los resultados y no desactivamos nada.
@@ -215,6 +293,7 @@ async function main() {
       activeCount,
       inactiveCount,
       blockedCount,
+      priceUpdatedCount,
       inactiveProducts: toDeactivate,
       aborted: true,
     });
@@ -228,6 +307,7 @@ async function main() {
       activeCount,
       inactiveCount,
       blockedCount,
+      priceUpdatedCount,
       inactiveProducts: toDeactivate,
       aborted: false,
     });
@@ -249,6 +329,7 @@ async function main() {
     activeCount,
     inactiveCount,
     blockedCount,
+    priceUpdatedCount,
     inactiveProducts: toDeactivate,
     aborted: false,
   });
