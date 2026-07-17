@@ -9,11 +9,19 @@ import { useAppState } from '../context/AppStateContext';
 // el que ya administra App.tsx.
 
 const ADSENSE_CLIENT_ID = (import.meta.env.VITE_ADSENSE_CLIENT_ID as string | undefined)?.trim() || '';
+export { ADSENSE_CLIENT_ID };
 const ADSENSE_SCRIPT_SRC = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
 
 let adSenseScriptPromise: Promise<void> | null = null;
 
-function loadAdSenseScript(clientId: string): Promise<void> {
+// Exportado para poder cargar el script de AdSense tambien en paginas publicas
+// sin anuncios (ej. LandingSection), asi el bot de revision de Google puede
+// detectarlo aunque el resto de la app este detras de login.
+export function loadAdSenseScript(clientId: string = ADSENSE_CLIENT_ID): Promise<void> {
+  if (!clientId) {
+    return Promise.resolve();
+  }
+
   if (adSenseScriptPromise) {
     return adSenseScriptPromise;
   }

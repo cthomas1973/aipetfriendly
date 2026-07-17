@@ -12,6 +12,7 @@ import { AdminUsersSection } from './components/AdminUsersSection';
 import { AgendaSection } from './components/AgendaSection';
 import { AuthScreens } from './components/AuthScreens';
 import { ChatSection } from './components/ChatSection';
+import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetsSection } from './components/PetsSection';
 import {
@@ -182,6 +183,7 @@ function AppContent() {
   } = useAppState();
   const [showLogo, setShowLogo] = useState(true);
   const [switchingUser, setSwitchingUser] = useState(false);
+  const [showAuthGate, setShowAuthGate] = useState(false);
   const [popupQueue, setPopupQueue] = useState<ReminderPopupItem[]>([]);
   const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
   const { toggleTask, postponeTask, discardTaskReminder } = usePreventive();
@@ -190,6 +192,7 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
 
   // Sincronizar con Supabase
@@ -305,6 +308,10 @@ function AppContent() {
       return <AuthScreens initialMode="reset-password" />;
     }
 
+    if (isLandingRoute) {
+      return <LandingSection onEnterApp={() => setShowAuthGate(true)} />;
+    }
+
     if (!user) {
       return <AuthScreens />;
     }
@@ -369,7 +376,7 @@ function AppContent() {
           </button>
         </div>
 
-        {!isResetPasswordRoute && (
+        {!isResetPasswordRoute && !isLandingRoute && (
           <DesktopTabNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
         )}
 
@@ -408,7 +415,7 @@ function AppContent() {
         </section>
       </main>
 
-      {!isResetPasswordRoute && (
+      {!isResetPasswordRoute && !isLandingRoute && (
         <BottomNav
           activeTab={activeTab}
           onChange={setActiveTab}
