@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Crown, ExternalLink, LocateFixed, Tags, Truck, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { AdBanner } from './AdBanner';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import { updateUserNotificationProfile } from '../lib/supabase';
@@ -1093,6 +1094,8 @@ export function OffersSection() {
         </div>
         )}
       </div>
+
+      <AdBanner adSenseSlotId="2222222222" />
     </section>
   );
 }

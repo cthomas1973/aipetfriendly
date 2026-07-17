@@ -6,6 +6,7 @@ import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-s
 import { Circle, MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { divIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { AdBanner } from './AdBanner';
 
 const DEFAULT_QUERY = 'veterinaria';
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
@@ -703,6 +704,8 @@ export function NearbyVetsMapSection() {
           </ul>
         )}
       </div>
+
+      <AdBanner adSenseSlotId="1111111111" />
     </section>
   );
 }
