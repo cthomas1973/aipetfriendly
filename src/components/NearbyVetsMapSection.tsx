@@ -14,6 +14,7 @@ import {
   getVeterinaryClaimLanding,
   submitVeterinaryClaimDecision,
   suggestVeterinary,
+  triggerVeterinaryConsentWhatsApp,
   validateVeterinary,
 } from '../lib/supabase';
 import type { VeterinaryClaimLanding, VeterinaryIncubatorItem, VeterinaryProfile } from '../types';
@@ -437,7 +438,6 @@ export function NearbyVetsMapSection() {
   const [suggestAddress, setSuggestAddress] = useState('');
   const [suggestZone, setSuggestZone] = useState('');
   const [suggestPhone, setSuggestPhone] = useState('');
-  const [suggestNotifyVet, setSuggestNotifyVet] = useState(false);
   const [lastSuggestedVet, setLastSuggestedVet] = useState<VeterinaryIncubatorItem | null>(null);
 
   const [claimToken, setClaimToken] = useState<string | null>(null);
@@ -606,6 +606,7 @@ export function NearbyVetsMapSection() {
     address: string;
     shareIdentity: boolean;
     claimToken?: string;
+    upvotesCount?: number;
   }) => {
     const digitsOnlyPhone = (args.vetPhone || '').replace(/\D/g, '');
     if (!digitsOnlyPhone) {
@@ -622,10 +623,15 @@ export function NearbyVetsMapSection() {
       ? `La sugerencia fue hecha por ${userAlias} (${petSummary}).`
       : 'La sugerencia fue enviada por la comunidad AiPetFriendly (anonima).';
 
+    const backingText = typeof args.upvotesCount === 'number'
+      ? `Mas de ${args.upvotesCount} usuarios solicitaron que aparezcas en la app.`
+      : 'Usuarios de tu zona solicitaron que aparezcas en la app.';
+
     const consentMessage = [
       `Hola ${args.vetName}.`,
       'Te escribe el equipo de AiPetFriendly.',
       whoSuggested,
+      backingText,
       `Queremos pedirte consentimiento para publicar tus datos en la zona ${args.zoneLabel}.`,
       `Datos sugeridos: ${args.vetName} | ${args.address}${args.vetPhone ? ` | WhatsApp ${args.vetPhone}` : ''}.`,
       'Puedes confirmar o corregir datos, rechazar la publicacion, o activar Premium para aparecer destacada.',
@@ -677,26 +683,14 @@ export function NearbyVetsMapSection() {
       setSuggestAddress('');
       setSuggestZone(cleanedZone);
       setSuggestPhone('');
-      setSuggestNotifyVet(false);
       applyZoneSelection(cleanedZone, true);
       await loadIncubator(cleanedZone);
-
-      if (suggestNotifyVet) {
-        notifySuggestedVetByWhatsApp({
-          vetName: created.name,
-          vetPhone: suggestPhone.trim() || created.phoneWhatsapp,
-          zoneLabel: cleanedZone,
-          address: cleanedAddress,
-          shareIdentity: true,
-          claimToken: created.claimToken,
-        });
-      }
     } catch {
       setSuggestionError('No se pudo registrar la sugerencia en este momento.');
     } finally {
       setSuggesting(false);
     }
-  }, [applyZoneSelection, incubatorZone, loadIncubator, location?.lat, location?.lng, notifySuggestedVetByWhatsApp, suggestAddress, suggestName, suggestNotifyVet, suggestPhone, suggestZone, user]);
+  }, [applyZoneSelection, incubatorZone, loadIncubator, location?.lat, location?.lng, suggestAddress, suggestName, suggestPhone, suggestZone, user]);
 
   const handleValidateVet = useCallback(async (vetId: string) => {
     if (!user || user.isGuest) {
@@ -716,8 +710,13 @@ export function NearbyVetsMapSection() {
         : item
     )));
 
-    if (updated.upvotesCount >= updated.validationsGoal) {
-      setSectionMessage(`${updated.name} alcanzo el umbral y ya esta lista para activar su perfil.`);
+    if (updated.upvotesCount > 5) {
+      const autoDispatch = await triggerVeterinaryConsentWhatsApp(updated.id);
+      if (autoDispatch.sent) {
+        setSectionMessage(`${updated.name} supero los 5 respaldos. Se envio automaticamente la solicitud de consentimiento por WhatsApp.`);
+      } else {
+        setSectionMessage(`${updated.name} alcanzo el umbral y ya esta lista para activar su perfil.`);
+      }
     } else {
       setSectionMessage('Gracias por validar la veterinaria sugerida.');
     }
@@ -1341,7 +1340,7 @@ export function NearbyVetsMapSection() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-slate-900">Incubadora comunitaria</p>
-            <p className="text-xs text-slate-500">Veterinarias sugeridas y validadas por vecinos de la zona.</p>
+            <p className="text-xs text-slate-500">Veterinarias sugeridas y validadas por vecinos. Al superar 5 respaldos, se envia WhatsApp automaticamente para consentimiento.</p>
           </div>
           <button
             type="button"
@@ -1438,7 +1437,7 @@ export function NearbyVetsMapSection() {
                           >
                             {item.userHasValidated ? 'Ya validaste' : 'Yo tambien me atiendo aca'}
                           </button>
-                          {item.phoneWhatsapp && (
+                          {user?.isAdmin && item.phoneWhatsapp && (
                             <button
                               type="button"
                               onClick={() => notifySuggestedVetByWhatsApp({
@@ -1448,10 +1447,11 @@ export function NearbyVetsMapSection() {
                                 address: item.address,
                                 shareIdentity: false,
                                 claimToken: item.claimToken,
+                                upvotesCount: item.upvotesCount,
                               })}
                               className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
                             >
-                              Pedir consentimiento por WhatsApp
+                              Reenviar consentimiento (admin)
                             </button>
                           )}
                         </div>
@@ -1502,7 +1502,7 @@ export function NearbyVetsMapSection() {
                           >
                             {item.userHasValidated ? 'Ya validaste' : 'Yo tambien me atiendo aca'}
                           </button>
-                          {item.phoneWhatsapp && (
+                          {user?.isAdmin && item.phoneWhatsapp && (
                             <button
                               type="button"
                               onClick={() => notifySuggestedVetByWhatsApp({
@@ -1512,10 +1512,11 @@ export function NearbyVetsMapSection() {
                                 address: item.address,
                                 shareIdentity: false,
                                 claimToken: item.claimToken,
+                                upvotesCount: item.upvotesCount,
                               })}
                               className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700"
                             >
-                              Solicitar permiso a la veterinaria
+                              Reenviar consentimiento (admin)
                             </button>
                           )}
                         </div>
@@ -1778,28 +1779,8 @@ export function NearbyVetsMapSection() {
                 <input value={suggestPhone} onChange={(event) => setSuggestPhone(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold text-slate-700">Quieres que le avisemos que tu la sugeriste?</p>
-                <p className="mt-1 text-[11px] text-slate-500">Si eliges que si y hay WhatsApp, enviaremos mensaje indicando tu alias (email antes de @) y los nombres de tus mascotas. Si no, queda anonimo.</p>
-                <div className="mt-2 flex gap-3">
-                  <label className="inline-flex items-center gap-1 text-xs text-slate-700">
-                    <input
-                      type="radio"
-                      name="notify-vet"
-                      checked={suggestNotifyVet}
-                      onChange={() => setSuggestNotifyVet(true)}
-                    />
-                    Si, avisar
-                  </label>
-                  <label className="inline-flex items-center gap-1 text-xs text-slate-700">
-                    <input
-                      type="radio"
-                      name="notify-vet"
-                      checked={!suggestNotifyVet}
-                      onChange={() => setSuggestNotifyVet(false)}
-                    />
-                    No, anonimo
-                  </label>
-                </div>
+                <p className="text-xs font-semibold text-slate-700">Solicitud de consentimiento automatica</p>
+                <p className="mt-1 text-[11px] text-slate-500">Cuando esta veterinaria supere los 5 respaldos comunitarios, AiPetFriendly enviara automaticamente el WhatsApp con el enlace a la landing de consentimiento.</p>
               </div>
             </div>
 

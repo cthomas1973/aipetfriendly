@@ -867,6 +867,30 @@ export async function submitVeterinaryClaimDecision(args: {
   return row ? mapVeterinaryProfileRow(row) : null;
 }
 
+export async function triggerVeterinaryConsentWhatsApp(veterinaryId: string): Promise<{
+  sent: boolean;
+  reason?: string;
+}> {
+  if (!isSupabaseConfigured) {
+    return { sent: false, reason: 'supabase_not_configured' };
+  }
+
+  const { data, error } = await supabase.functions.invoke('send-veterinary-consent-whatsapp', {
+    body: { veterinaryId },
+  });
+
+  if (error) {
+    console.error('Error triggering veterinary consent WhatsApp:', error);
+    return { sent: false, reason: 'invoke_error' };
+  }
+
+  const payload = (data || {}) as { sent?: boolean; reason?: string };
+  return {
+    sent: Boolean(payload.sent),
+    reason: payload.reason,
+  };
+}
+
 export async function claimVeterinaryProfile(args: {
   claimToken: string;
   plan: 'free' | 'premium';
