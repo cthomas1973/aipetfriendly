@@ -292,22 +292,88 @@ drop policy if exists "Authenticated users can read own veterinary validations" 
 drop policy if exists "Authenticated users can validate veterinary once" on public.veterinary_validations;
 drop policy if exists "Authenticated users can remove own veterinary validation" on public.veterinary_validations;
 
-create policy "Anyone can view active veterinary profiles" on public.veterinary_profiles
-  for select using (status in ('ACTIVE_FREE', 'ACTIVE_PREMIUM'));
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'veterinary_profiles'
+      and policyname = 'Anyone can view active veterinary profiles'
+  ) then
+    create policy "Anyone can view active veterinary profiles" on public.veterinary_profiles
+      for select using (status in ('ACTIVE_FREE', 'ACTIVE_PREMIUM'));
+  end if;
+end $$;
 
-create policy "Authenticated users can view incubator and claimable veterinary profiles" on public.veterinary_profiles
-  for select to authenticated using (true);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'veterinary_profiles'
+      and policyname = 'Authenticated users can view incubator and claimable veterinary profiles'
+  ) then
+    create policy "Authenticated users can view incubator and claimable veterinary profiles" on public.veterinary_profiles
+      for select to authenticated using (true);
+  end if;
+end $$;
 
-create policy "Authenticated users can suggest veterinary profiles" on public.veterinary_profiles
-  for insert to authenticated with check (
-    auth.uid() = suggested_by_user_id and status = 'IN_INCUBATOR'
-  );
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'veterinary_profiles'
+      and policyname = 'Authenticated users can suggest veterinary profiles'
+  ) then
+    create policy "Authenticated users can suggest veterinary profiles" on public.veterinary_profiles
+      for insert to authenticated with check (
+        auth.uid() = suggested_by_user_id and status = 'IN_INCUBATOR'
+      );
+  end if;
+end $$;
 
-create policy "Authenticated users can read own veterinary validations" on public.veterinary_validations
-  for select to authenticated using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'veterinary_validations'
+      and policyname = 'Authenticated users can read own veterinary validations'
+  ) then
+    create policy "Authenticated users can read own veterinary validations" on public.veterinary_validations
+      for select to authenticated using (auth.uid() = user_id);
+  end if;
+end $$;
 
-create policy "Authenticated users can validate veterinary once" on public.veterinary_validations
-  for insert to authenticated with check (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'veterinary_validations'
+      and policyname = 'Authenticated users can validate veterinary once'
+  ) then
+    create policy "Authenticated users can validate veterinary once" on public.veterinary_validations
+      for insert to authenticated with check (auth.uid() = user_id);
+  end if;
+end $$;
 
-create policy "Authenticated users can remove own veterinary validation" on public.veterinary_validations
-  for delete to authenticated using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'veterinary_validations'
+      and policyname = 'Authenticated users can remove own veterinary validation'
+  ) then
+    create policy "Authenticated users can remove own veterinary validation" on public.veterinary_validations
+      for delete to authenticated using (auth.uid() = user_id);
+  end if;
+end $$;
