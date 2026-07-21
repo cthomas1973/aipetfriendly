@@ -137,6 +137,48 @@ function toTimeString(date: Date) {
   return `${hours}:${minutes}`;
 }
 
+const DUPLICATE_CREATE_WINDOW_MS = 4000;
+
+function buildCreateFingerprint(data: PreventiveFormData) {
+  return JSON.stringify({
+    petId: data.petId,
+    title: data.title.trim().toLowerCase(),
+    category: data.category,
+    dueDate: data.dueDate,
+    completed: Boolean(data.completed),
+    notes: data.notes?.trim() ?? '',
+    dose: data.dose?.trim() ?? '',
+    frequency: data.frequency?.trim() ?? '',
+    scheduleTimes: data.scheduleTimes ?? [],
+    startDate: data.startDate ?? '',
+    endDate: data.endDate ?? '',
+    durationDays: data.durationDays ?? null,
+    remindersEnabled: data.remindersEnabled ?? null,
+    appointmentReason: data.appointmentReason?.trim() ?? '',
+    appointmentTime: data.appointmentTime?.trim() ?? '',
+    appointmentLocation: data.appointmentLocation?.trim() ?? '',
+    appointmentReference: data.appointmentReference?.trim() ?? '',
+    notificationLeadTime: data.notificationLeadTime?.trim() ?? '',
+    notificationChannels: data.notificationChannels ?? [],
+    notificationEmail: data.notificationEmail?.trim().toLowerCase() ?? '',
+    notificationPhone: data.notificationPhone?.trim() ?? '',
+    foodBrand: data.foodBrand?.trim() ?? '',
+    foodVariety: data.foodVariety?.trim() ?? '',
+    foodBagWeightKg: data.foodBagWeightKg ?? null,
+    foodPurchaseDate: data.foodPurchaseDate ?? '',
+    foodPurchaseGroupId: data.foodPurchaseGroupId ?? '',
+    foodSharedPetIds: data.foodSharedPetIds ?? [],
+    foodAppliesToPetsCount: data.foodAppliesToPetsCount ?? null,
+    foodEstimatedDailyKgTotal: data.foodEstimatedDailyKgTotal ?? null,
+    foodEstimatedDailyKgPerPet: data.foodEstimatedDailyKgPerPet ?? null,
+    foodEstimatedDurationDays: data.foodEstimatedDurationDays ?? null,
+    foodPreviousPurchaseDate: data.foodPreviousPurchaseDate ?? '',
+    foodUseAsDefaultNext: data.foodUseAsDefaultNext ?? null,
+    foodEntryType: data.foodEntryType ?? '',
+    createClinicalEntry: data.createClinicalEntry ?? null,
+  });
+}
+
 export function usePreventive() {
   const {
     preventiveTasks,
@@ -148,6 +190,8 @@ export function usePreventive() {
 
   const preventiveTasksRef = useRef(preventiveTasks);
   const clinicalEntriesRef = useRef(clinicalEntries);
+  const inFlightCreatesRef = useRef<Map<string, Promise<PreventiveTask>>>(new Map());
+  const recentCreatesRef = useRef<Map<string, { task: PreventiveTask; createdAtMs: number }>>(new Map());
 
   useEffect(() => {
     preventiveTasksRef.current = preventiveTasks;
@@ -159,6 +203,20 @@ export function usePreventive() {
 
   const addPreventiveTask = useCallback(
     async (data: PreventiveFormData) => {
+      const fingerprint = buildCreateFingerprint(data);
+      const now = Date.now();
+
+      const inFlight = inFlightCreatesRef.current.get(fingerprint);
+      if (inFlight) {
+        return inFlight;
+      }
+
+      const recentCreate = recentCreatesRef.current.get(fingerprint);
+      if (recentCreate && now - recentCreate.createdAtMs < DUPLICATE_CREATE_WINDOW_MS) {
+        return recentCreate.task;
+      }
+
+      const createTaskPromise = (async () => {
       if (!user) {
         throw new Error('Debes iniciar sesion para registrar preventivos.');
       }
@@ -316,6 +374,27 @@ export function usePreventive() {
       preventiveTasksRef.current = nextTasks;
       setPreventiveTasks(nextTasks);
       return saved;
+      })();
+
+      inFlightCreatesRef.current.set(fingerprint, createTaskPromise);
+
+      try {
+        const createdTask = await createTaskPromise;
+        recentCreatesRef.current.set(fingerprint, {
+          task: createdTask,
+          createdAtMs: Date.now(),
+        });
+
+        for (const [key, value] of recentCreatesRef.current.entries()) {
+          if (Date.now() - value.createdAtMs > DUPLICATE_CREATE_WINDOW_MS * 3) {
+            recentCreatesRef.current.delete(key);
+          }
+        }
+
+        return createdTask;
+      } finally {
+        inFlightCreatesRef.current.delete(fingerprint);
+      }
     },
     [setClinicalEntries, setPreventiveTasks, user],
   );
