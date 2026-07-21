@@ -46,7 +46,7 @@ export type PreventiveCategory =
   | 'feeding'
   | 'other';
 
-export type VeterinaryStatus = 'IN_INCUBATOR' | 'CLAIMABLE_PROFILE' | 'ACTIVE_FREE' | 'ACTIVE_PREMIUM';
+export type VeterinaryStatus = 'IN_INCUBATOR' | 'CLAIMABLE_PROFILE' | 'ACTIVE_FREE' | 'ACTIVE_PREMIUM' | 'REJECTED';
 
 export interface Pet {
   id: string;
@@ -149,6 +149,18 @@ export interface VeterinaryProfile {
   claimToken?: string;
   claimSourceRefUserId?: string;
   isVerified: boolean;
+  contactEmail?: string;
+  consentGranted: boolean;
+  basicDataConfirmed: boolean;
+  subscriptionPlan: 'free' | 'premium';
+  subscriptionBillingMode?: 'monthly_auto' | 'annual';
+  businessDays?: string;
+  businessHours?: string;
+  services?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  highlightPriority: number;
   activatedAt?: string;
   lastValidationAt?: string;
   createdAt: string;
@@ -170,6 +182,22 @@ export interface VeterinaryClaimPreview {
   validationsGoal: number;
   isClaimed: boolean;
   suggestedClients: number;
+}
+
+export interface VeterinaryClaimLanding extends VeterinaryClaimPreview {
+  contactEmail?: string;
+  consentGranted: boolean;
+  basicDataConfirmed: boolean;
+  subscriptionPlan: 'free' | 'premium';
+  subscriptionBillingMode?: 'monthly_auto' | 'annual';
+  businessDays?: string;
+  businessHours?: string;
+  services?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  veterinaryPremiumMonthlyArs: number;
+  veterinaryPremiumAnnualArs: number;
 }
 
 export interface ClinicalNoteFormData {
@@ -212,6 +240,8 @@ export interface BillingPricingSettings {
   premiumAnnualAutoUsd: number;
   premiumMonthlyManualArs: number;
   premiumMonthlyManualUsd: number;
+  veterinaryPremiumMonthlyArs: number;
+  veterinaryPremiumAnnualArs: number;
 }
 
 export interface PetAiUsageRow {

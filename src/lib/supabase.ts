@@ -13,6 +13,7 @@ import type {
   AppUser,
   SubscriptionPlan,
   UserAccessLevel,
+  VeterinaryClaimLanding,
   VeterinaryClaimPreview,
   VeterinaryIncubatorItem,
   VeterinaryProfile,
@@ -585,6 +586,21 @@ function mapVeterinaryProfileRow(row: any): VeterinaryProfile {
     claimToken: row.claim_token || undefined,
     claimSourceRefUserId: row.claim_source_ref_user_id || undefined,
     isVerified: Boolean(row.is_verified),
+    contactEmail: row.contact_email || undefined,
+    consentGranted: Boolean(row.consent_granted),
+    basicDataConfirmed: Boolean(row.basic_data_confirmed),
+    subscriptionPlan: row.subscription_plan === 'premium' ? 'premium' : 'free',
+    subscriptionBillingMode:
+      row.subscription_billing_mode === 'monthly_auto' || row.subscription_billing_mode === 'annual'
+        ? row.subscription_billing_mode
+        : undefined,
+    businessDays: row.business_days || undefined,
+    businessHours: row.business_hours || undefined,
+    services: row.services || undefined,
+    websiteUrl: row.website_url || undefined,
+    instagramUrl: row.instagram_url || undefined,
+    facebookUrl: row.facebook_url || undefined,
+    highlightPriority: Number(row.highlight_priority || 0),
     activatedAt: row.activated_at || undefined,
     lastValidationAt: row.last_validation_at || undefined,
     createdAt: row.created_at,
@@ -604,6 +620,28 @@ function mapVeterinaryClaimPreviewRow(row: any): VeterinaryClaimPreview {
     validationsGoal: Number(row.validations_goal || 5),
     isClaimed: Boolean(row.is_claimed),
     suggestedClients: Number(row.suggested_clients || row.upvotes_count || 0),
+  };
+}
+
+function mapVeterinaryClaimLandingRow(row: any): VeterinaryClaimLanding {
+  return {
+    ...mapVeterinaryClaimPreviewRow(row),
+    contactEmail: row.contact_email || undefined,
+    consentGranted: Boolean(row.consent_granted),
+    basicDataConfirmed: Boolean(row.basic_data_confirmed),
+    subscriptionPlan: row.subscription_plan === 'premium' ? 'premium' : 'free',
+    subscriptionBillingMode:
+      row.subscription_billing_mode === 'monthly_auto' || row.subscription_billing_mode === 'annual'
+        ? row.subscription_billing_mode
+        : undefined,
+    businessDays: row.business_days || undefined,
+    businessHours: row.business_hours || undefined,
+    services: row.services || undefined,
+    websiteUrl: row.website_url || undefined,
+    instagramUrl: row.instagram_url || undefined,
+    facebookUrl: row.facebook_url || undefined,
+    veterinaryPremiumMonthlyArs: Number(row.veterinary_premium_monthly_ars || 0),
+    veterinaryPremiumAnnualArs: Number(row.veterinary_premium_annual_ars || 0),
   };
 }
 
@@ -690,6 +728,35 @@ export async function fetchVeterinaryIncubatorByZone(args: {
   }));
 }
 
+export async function fetchActiveVeterinaryProfilesByZone(args: {
+  zoneLabel: string;
+  limit?: number;
+}): Promise<VeterinaryProfile[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.min(args.limit ?? 50, 100));
+  const cleanedZone = args.zoneLabel.trim();
+  const zoneFilter = cleanedZone.length > 0 ? `%${cleanedZone}%` : '%';
+
+  const { data, error } = await supabase
+    .from('veterinary_profiles')
+    .select('id,name,zone_label,address,phone_whatsapp,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at,contact_email,consent_granted,basic_data_confirmed,subscription_plan,subscription_billing_mode,business_days,business_hours,services,website_url,instagram_url,facebook_url,highlight_priority')
+    .in('status', ['ACTIVE_FREE', 'ACTIVE_PREMIUM'])
+    .ilike('zone_label', zoneFilter)
+    .order('highlight_priority', { ascending: false })
+    .order('upvotes_count', { ascending: false })
+    .limit(safeLimit);
+
+  if (error) {
+    console.error('Error fetching active veterinary profiles:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => mapVeterinaryProfileRow(row));
+}
+
 export async function validateVeterinary(veterinaryId: string): Promise<VeterinaryProfile | null> {
   if (!isSupabaseConfigured) {
     return null;
@@ -724,6 +791,80 @@ export async function getVeterinaryClaimPreview(claimToken: string): Promise<Vet
 
   const row = Array.isArray(data) ? data[0] : data;
   return row ? mapVeterinaryClaimPreviewRow(row) : null;
+}
+
+export async function getVeterinaryClaimLanding(claimToken: string): Promise<VeterinaryClaimLanding | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('get_veterinary_claim_landing', {
+    p_claim_token: claimToken,
+  });
+
+  if (error || !data) {
+    console.error('Error fetching veterinary claim landing:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapVeterinaryClaimLandingRow(row) : null;
+}
+
+export async function submitVeterinaryClaimDecision(args: {
+  claimToken: string;
+  action: 'correct' | 'reject' | 'subscribe';
+  name?: string;
+  zoneLabel?: string;
+  address?: string;
+  phoneWhatsapp?: string;
+  contactEmail?: string;
+  consentGranted?: boolean;
+  basicDataConfirmed?: boolean;
+  businessDays?: string;
+  businessHours?: string;
+  services?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  subscriptionBillingMode?: 'monthly_auto' | 'annual';
+  notifyIdentity?: boolean;
+  suggestedOwnerAlias?: string;
+  suggestedOwnerPets?: string;
+}): Promise<VeterinaryProfile | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('submit_veterinary_claim_decision', {
+    p_claim_token: args.claimToken,
+    p_action: args.action,
+    p_name: args.name ?? null,
+    p_zone_label: args.zoneLabel ?? null,
+    p_address: args.address ?? null,
+    p_phone_whatsapp: args.phoneWhatsapp ?? null,
+    p_contact_email: args.contactEmail ?? null,
+    p_consent_granted: args.consentGranted ?? null,
+    p_basic_data_confirmed: args.basicDataConfirmed ?? null,
+    p_business_days: args.businessDays ?? null,
+    p_business_hours: args.businessHours ?? null,
+    p_services: args.services ?? null,
+    p_website_url: args.websiteUrl ?? null,
+    p_instagram_url: args.instagramUrl ?? null,
+    p_facebook_url: args.facebookUrl ?? null,
+    p_subscription_billing_mode: args.subscriptionBillingMode ?? null,
+    p_notify_identity: args.notifyIdentity ?? false,
+    p_suggested_owner_alias: args.suggestedOwnerAlias ?? null,
+    p_suggested_owner_pets: args.suggestedOwnerPets ?? null,
+  });
+
+  if (error || !data) {
+    console.error('Error submitting veterinary claim decision:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapVeterinaryProfileRow(row) : null;
 }
 
 export async function claimVeterinaryProfile(args: {
@@ -892,6 +1033,8 @@ const DEFAULT_BILLING_PRICING: BillingPricingSettings = {
   premiumAnnualAutoUsd: 99.9,
   premiumMonthlyManualArs: 9900,
   premiumMonthlyManualUsd: 9.9,
+  veterinaryPremiumMonthlyArs: 24900,
+  veterinaryPremiumAnnualArs: 239000,
 };
 
 export async function fetchBillingPricingSettings(): Promise<BillingPricingSettings> {
@@ -914,6 +1057,12 @@ export async function fetchBillingPricingSettings(): Promise<BillingPricingSetti
     premiumAnnualAutoUsd: Number(row.premium_annual_auto_usd ?? DEFAULT_BILLING_PRICING.premiumAnnualAutoUsd),
     premiumMonthlyManualArs: Number(row.premium_monthly_manual_ars ?? DEFAULT_BILLING_PRICING.premiumMonthlyManualArs),
     premiumMonthlyManualUsd: Number(row.premium_monthly_manual_usd ?? DEFAULT_BILLING_PRICING.premiumMonthlyManualUsd),
+    veterinaryPremiumMonthlyArs: Number(
+      row.veterinary_premium_monthly_ars ?? DEFAULT_BILLING_PRICING.veterinaryPremiumMonthlyArs,
+    ),
+    veterinaryPremiumAnnualArs: Number(
+      row.veterinary_premium_annual_ars ?? DEFAULT_BILLING_PRICING.veterinaryPremiumAnnualArs,
+    ),
   };
 }
 
@@ -936,6 +1085,12 @@ export async function fetchAdminBillingPricingSettings(): Promise<BillingPricing
     premiumAnnualAutoUsd: Number(row.premium_annual_auto_usd),
     premiumMonthlyManualArs: Number(row.premium_monthly_manual_ars),
     premiumMonthlyManualUsd: Number(row.premium_monthly_manual_usd),
+    veterinaryPremiumMonthlyArs: Number(
+      row.veterinary_premium_monthly_ars ?? DEFAULT_BILLING_PRICING.veterinaryPremiumMonthlyArs,
+    ),
+    veterinaryPremiumAnnualArs: Number(
+      row.veterinary_premium_annual_ars ?? DEFAULT_BILLING_PRICING.veterinaryPremiumAnnualArs,
+    ),
   };
 }
 
@@ -947,6 +1102,8 @@ export async function updateAdminBillingPricingSettings(settings: BillingPricing
     p_premium_annual_auto_usd: settings.premiumAnnualAutoUsd,
     p_premium_monthly_manual_ars: settings.premiumMonthlyManualArs,
     p_premium_monthly_manual_usd: settings.premiumMonthlyManualUsd,
+    p_veterinary_premium_monthly_ars: settings.veterinaryPremiumMonthlyArs,
+    p_veterinary_premium_annual_ars: settings.veterinaryPremiumAnnualArs,
   });
 
   if (error) {

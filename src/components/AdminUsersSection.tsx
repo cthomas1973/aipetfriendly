@@ -58,6 +58,8 @@ export function AdminUsersSection() {
     premiumAnnualAutoUsd: 99.9,
     premiumMonthlyManualArs: 9900,
     premiumMonthlyManualUsd: 9.9,
+    veterinaryPremiumMonthlyArs: 24900,
+    veterinaryPremiumAnnualArs: 239000,
   });
 
   const filtered = useMemo(() => {
@@ -124,6 +126,8 @@ export function AdminUsersSection() {
         pricing.premiumAnnualAutoUsd,
         pricing.premiumMonthlyManualArs,
         pricing.premiumMonthlyManualUsd,
+        pricing.veterinaryPremiumMonthlyArs,
+        pricing.veterinaryPremiumAnnualArs,
       ];
 
       if (values.some((value) => Number.isNaN(value) || value < 0)) {
@@ -371,6 +375,38 @@ export function AdminUsersSection() {
                     premiumMonthlyManualUsd: Number(e.target.value || 0),
                   }))}
                   className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-200">
+            <p className="text-sm font-semibold text-amber-900">Veterinarias Premium (mapa destacado)</p>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <label className="text-sm text-amber-900">
+                Mensual ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.veterinaryPremiumMonthlyArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    veterinaryPremiumMonthlyArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                />
+              </label>
+              <label className="text-sm text-amber-900">
+                Anual ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.veterinaryPremiumAnnualArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    veterinaryPremiumAnnualArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
                 />
               </label>
             </div>

@@ -159,6 +159,8 @@ export function PaywallCard() {
     premiumAnnualAutoUsd: 99.9,
     premiumMonthlyManualArs: 9900,
     premiumMonthlyManualUsd: 9.9,
+    veterinaryPremiumMonthlyArs: 24900,
+    veterinaryPremiumAnnualArs: 239000,
   });
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);

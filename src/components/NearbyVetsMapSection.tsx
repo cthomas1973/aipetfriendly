@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { LocateFixed, MapPin, MessageCircleHeart, Navigation, Search, X } from 'lucide-react';
+import { LocateFixed, MapPin, MessageCircleHeart, Navigation, Search, Star, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
@@ -9,13 +9,14 @@ import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
 import { useAppState } from '../context/AppStateContext';
 import {
-  claimVeterinaryProfile,
+  fetchActiveVeterinaryProfilesByZone,
   fetchVeterinaryIncubatorByZone,
-  getVeterinaryClaimPreview,
+  getVeterinaryClaimLanding,
+  submitVeterinaryClaimDecision,
   suggestVeterinary,
   validateVeterinary,
 } from '../lib/supabase';
-import type { VeterinaryClaimPreview, VeterinaryIncubatorItem } from '../types';
+import type { VeterinaryClaimLanding, VeterinaryIncubatorItem, VeterinaryProfile } from '../types';
 
 const DEFAULT_QUERY = 'veterinaria';
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
@@ -61,7 +62,6 @@ type NearbyVet = {
   distanceMeters: number;
 };
 
-type ClaimPlan = 'free' | 'premium';
 const VET_ZONE_FAVORITE_KEY = 'apf_vet_zone_favorite';
 
 function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -396,7 +396,15 @@ function buildClaimUrl(claimToken: string, refUserId?: string) {
 }
 
 function buildVetInvitationMessage(vetName: string, claimUrl: string) {
-  return `Hola ${vetName}! Soy usuario de AIPetFriendly y te sugeri para que aparezcas en el mapa de nuestra zona. Completa tu perfil aca para que los vecinos te encuentren: ${claimUrl}`;
+  return `Hola ${vetName}, te contacta el equipo de AiPetFriendly. Queremos invitarte a activar tu perfil verificado para que las familias de tu zona te encuentren facilmente. Desde este enlace puedes confirmar o corregir datos, rechazar la publicacion o activar plan premium: ${claimUrl}`;
+}
+
+function formatArs(value: number) {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export function NearbyVetsMapSection() {
@@ -418,6 +426,9 @@ export function NearbyVetsMapSection() {
   const [incubatorItems, setIncubatorItems] = useState<VeterinaryIncubatorItem[]>([]);
   const [loadingIncubator, setLoadingIncubator] = useState(false);
   const [incubatorError, setIncubatorError] = useState<string | null>(null);
+  const [activeProfiles, setActiveProfiles] = useState<VeterinaryProfile[]>([]);
+  const [loadingActiveProfiles, setLoadingActiveProfiles] = useState(false);
+  const [activeProfilesError, setActiveProfilesError] = useState<string | null>(null);
 
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -430,10 +441,24 @@ export function NearbyVetsMapSection() {
   const [lastSuggestedVet, setLastSuggestedVet] = useState<VeterinaryIncubatorItem | null>(null);
 
   const [claimToken, setClaimToken] = useState<string | null>(null);
-  const [claimPreview, setClaimPreview] = useState<VeterinaryClaimPreview | null>(null);
+  const [claimPreview, setClaimPreview] = useState<VeterinaryClaimLanding | null>(null);
   const [loadingClaimPreview, setLoadingClaimPreview] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
-  const [claimingPlan, setClaimingPlan] = useState<ClaimPlan | null>(null);
+  const [claimActionLoading, setClaimActionLoading] = useState<'correct' | 'reject' | 'subscribe' | null>(null);
+  const [claimFormName, setClaimFormName] = useState('');
+  const [claimFormZone, setClaimFormZone] = useState('');
+  const [claimFormAddress, setClaimFormAddress] = useState('');
+  const [claimFormPhone, setClaimFormPhone] = useState('');
+  const [claimFormEmail, setClaimFormEmail] = useState('');
+  const [claimFormBusinessDays, setClaimFormBusinessDays] = useState('');
+  const [claimFormBusinessHours, setClaimFormBusinessHours] = useState('');
+  const [claimFormServices, setClaimFormServices] = useState('');
+  const [claimFormWebsite, setClaimFormWebsite] = useState('');
+  const [claimFormInstagram, setClaimFormInstagram] = useState('');
+  const [claimFormFacebook, setClaimFormFacebook] = useState('');
+  const [claimConsentGranted, setClaimConsentGranted] = useState(false);
+  const [claimBasicDataConfirmed, setClaimBasicDataConfirmed] = useState(false);
+  const [claimBillingMode, setClaimBillingMode] = useState<'monthly_auto' | 'annual'>('monthly_auto');
 
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
@@ -517,6 +542,51 @@ export function NearbyVetsMapSection() {
     }
   }, [user]);
 
+  const loadActiveProfiles = useCallback(async (zoneLabel: string) => {
+    setLoadingActiveProfiles(true);
+    setActiveProfilesError(null);
+
+    try {
+      const profiles = await fetchActiveVeterinaryProfilesByZone({
+        zoneLabel,
+        limit: 50,
+      });
+      setActiveProfiles(profiles);
+    } catch {
+      setActiveProfiles([]);
+      setActiveProfilesError('No se pudo cargar el listado de veterinarias activas para esta zona.');
+    } finally {
+      setLoadingActiveProfiles(false);
+    }
+  }, []);
+
+  const sortedActiveProfiles = useMemo(() => {
+    const scored = activeProfiles.map((profile) => {
+      const hasCoords = typeof profile.latitude === 'number' && typeof profile.longitude === 'number' && !!location;
+      const distanceMeters = hasCoords
+        ? haversineDistanceMeters(location!.lat, location!.lng, profile.latitude!, profile.longitude!)
+        : Number.MAX_SAFE_INTEGER;
+
+      return {
+        profile,
+        isPremium: profile.subscriptionPlan === 'premium' || profile.status === 'ACTIVE_PREMIUM',
+        distanceMeters,
+      };
+    });
+
+    scored.sort((a, b) => {
+      if (a.isPremium !== b.isPremium) {
+        return a.isPremium ? -1 : 1;
+      }
+      if (a.distanceMeters !== b.distanceMeters) {
+        return a.distanceMeters - b.distanceMeters;
+      }
+      return b.profile.upvotesCount - a.profile.upvotesCount;
+    });
+
+    return scored;
+  }, [activeProfiles, location]);
+
   const openInviteOnWhatsApp = useCallback((item: { name: string; claimToken?: string }) => {
     if (!item.claimToken) {
       setSectionMessage('La veterinaria fue sugerida, pero todavia no se genero un enlace de claim.');
@@ -535,6 +605,7 @@ export function NearbyVetsMapSection() {
     zoneLabel: string;
     address: string;
     shareIdentity: boolean;
+    claimToken?: string;
   }) => {
     const digitsOnlyPhone = (args.vetPhone || '').replace(/\D/g, '');
     if (!digitsOnlyPhone) {
@@ -542,21 +613,23 @@ export function NearbyVetsMapSection() {
       return;
     }
 
-    const userAlias = user?.email?.split('@')[0] || 'usuario-anonimo';
+    const userAlias = user?.email?.split('@')[0] || 'usuario';
     const ownerPetNames = pets.map((pet) => pet.name).filter(Boolean);
     const petSummary = ownerPetNames.length > 0 ? ownerPetNames.join(', ') : 'mascotas de la comunidad';
+    const claimUrl = args.claimToken ? buildClaimUrl(args.claimToken, user?.id) : '';
 
     const whoSuggested = args.shareIdentity
-      ? `El usuario ${userAlias}, dueno de ${petSummary}, te sugirio para aparecer en la app.`
-      : 'Un usuario de la comunidad te sugirio para aparecer en la app (anonimo).';
+      ? `La sugerencia fue hecha por ${userAlias} (${petSummary}).`
+      : 'La sugerencia fue enviada por la comunidad AiPetFriendly (anonima).';
 
     const consentMessage = [
-      `Hola ${args.vetName}!`,
-      'Te escribe AiPetFriendly.',
+      `Hola ${args.vetName}.`,
+      'Te escribe el equipo de AiPetFriendly.',
       whoSuggested,
       `Queremos pedirte consentimiento para publicar tus datos en la zona ${args.zoneLabel}.`,
       `Datos sugeridos: ${args.vetName} | ${args.address}${args.vetPhone ? ` | WhatsApp ${args.vetPhone}` : ''}.`,
-      'Si confirmas estos datos te subimos al mapa. Si prefieres, puedes corregirlos, negarte o suscribirte para mejorar tu visibilidad.',
+      'Puedes confirmar o corregir datos, rechazar la publicacion, o activar Premium para aparecer destacada.',
+      claimUrl ? `Activalo aqui: ${claimUrl}` : '',
     ].join(' ');
 
     const url = `https://wa.me/${digitsOnlyPhone}?text=${encodeURIComponent(consentMessage)}`;
@@ -615,6 +688,7 @@ export function NearbyVetsMapSection() {
           zoneLabel: cleanedZone,
           address: cleanedAddress,
           shareIdentity: true,
+          claimToken: created.claimToken,
         });
       }
     } catch {
@@ -649,23 +723,48 @@ export function NearbyVetsMapSection() {
     }
   }, [user]);
 
-  const handleClaim = useCallback(async (plan: ClaimPlan) => {
+  const handleClaimDecision = useCallback(async (action: 'correct' | 'reject' | 'subscribe') => {
     if (!claimToken) {
       return;
     }
 
-    if (!user || user.isGuest) {
-      setClaimError('Para reclamar esta veterinaria debes iniciar sesion con una cuenta.');
+    if (action === 'subscribe' && (!user || user.isGuest)) {
+      setClaimError('Para activar el plan premium debes iniciar sesion con una cuenta.');
       return;
     }
 
-    setClaimingPlan(plan);
+    setClaimActionLoading(action);
     setClaimError(null);
 
+    if (!claimConsentGranted && action !== 'reject') {
+      setClaimError('Debes aceptar el consentimiento de publicacion para continuar.');
+      setClaimActionLoading(null);
+      return;
+    }
+
     try {
-      const claimed = await claimVeterinaryProfile({ claimToken, plan });
+      const claimed = await submitVeterinaryClaimDecision({
+        claimToken,
+        action,
+        name: claimFormName,
+        zoneLabel: claimFormZone,
+        address: claimFormAddress,
+        phoneWhatsapp: claimFormPhone,
+        contactEmail: claimFormEmail,
+        consentGranted: action === 'reject' ? false : claimConsentGranted,
+        basicDataConfirmed: claimBasicDataConfirmed,
+        businessDays: claimFormBusinessDays,
+        businessHours: claimFormBusinessHours,
+        services: claimFormServices,
+        websiteUrl: claimFormWebsite,
+        instagramUrl: claimFormInstagram,
+        facebookUrl: claimFormFacebook,
+        subscriptionBillingMode: action === 'subscribe' ? claimBillingMode : undefined,
+        notifyIdentity: false,
+      });
+
       if (!claimed) {
-        setClaimError('No se pudo reclamar el perfil en este momento.');
+        setClaimError('No se pudo guardar tu respuesta del perfil en este momento.');
         return;
       }
 
@@ -674,16 +773,30 @@ export function NearbyVetsMapSection() {
         return {
           ...current,
           status: claimed.status,
-          isClaimed: true,
+          isClaimed: claimed.status === 'ACTIVE_FREE' || claimed.status === 'ACTIVE_PREMIUM',
+          consentGranted: claimed.consentGranted,
+          basicDataConfirmed: claimed.basicDataConfirmed,
+          subscriptionPlan: claimed.subscriptionPlan,
+          subscriptionBillingMode: claimed.subscriptionBillingMode,
         };
       });
-      setSectionMessage(`${claimed.name} ahora figura como ${claimed.status === 'ACTIVE_PREMIUM' ? 'Premium' : 'Free'} en AiPetFriendly.`);
+
+      if (action === 'reject') {
+        setSectionMessage(`Registramos que ${claimed.name} no desea aparecer en AiPetFriendly por ahora.`);
+      } else if (action === 'subscribe') {
+        setSectionMessage(`${claimed.name} fue activada en Premium y aparecera destacada en el mapa.`);
+      } else {
+        setSectionMessage(`${claimed.name} fue activada y ya figura en el mapa de su zona.`);
+      }
+
+      await loadActiveProfiles(claimed.zoneLabel || incubatorZone);
+      await loadIncubator(claimed.zoneLabel || incubatorZone);
     } catch {
-      setClaimError('No se pudo completar el claim del perfil.');
+      setClaimError('No se pudo guardar la decision del perfil.');
     } finally {
-      setClaimingPlan(null);
+      setClaimActionLoading(null);
     }
-  }, [claimToken, user]);
+  }, [claimBasicDataConfirmed, claimBillingMode, claimConsentGranted, claimFormAddress, claimFormBusinessDays, claimFormBusinessHours, claimFormEmail, claimFormFacebook, claimFormInstagram, claimFormName, claimFormPhone, claimFormServices, claimFormWebsite, claimFormZone, claimToken, incubatorZone, loadActiveProfiles, loadIncubator, user]);
 
   const openInMapsUrl = useMemo(
     () => buildExternalMapsUrl({ lat: location?.lat, lng: location?.lng, address: manualAddress }),
@@ -710,10 +823,27 @@ export function NearbyVetsMapSection() {
     const run = async () => {
       setLoadingClaimPreview(true);
       setClaimError(null);
-      const preview = await getVeterinaryClaimPreview(claimToken);
+      const preview = await getVeterinaryClaimLanding(claimToken);
       if (!preview) {
         setClaimError('El enlace de claim no es valido o ya expiro.');
+        setLoadingClaimPreview(false);
+        return;
       }
+
+      setClaimFormName(preview.name || '');
+      setClaimFormZone(preview.zoneLabel || '');
+      setClaimFormAddress(preview.address || '');
+      setClaimFormPhone(preview.phoneWhatsapp || '');
+      setClaimFormEmail(preview.contactEmail || '');
+      setClaimFormBusinessDays(preview.businessDays || '');
+      setClaimFormBusinessHours(preview.businessHours || '');
+      setClaimFormServices(preview.services || '');
+      setClaimFormWebsite(preview.websiteUrl || '');
+      setClaimFormInstagram(preview.instagramUrl || '');
+      setClaimFormFacebook(preview.facebookUrl || '');
+      setClaimConsentGranted(preview.consentGranted);
+      setClaimBasicDataConfirmed(preview.basicDataConfirmed);
+      setClaimBillingMode(preview.subscriptionBillingMode || 'monthly_auto');
       setClaimPreview(preview);
       setLoadingClaimPreview(false);
     };
@@ -748,6 +878,14 @@ export function NearbyVetsMapSection() {
     }
     void loadIncubator(incubatorZone);
   }, [incubatorZone, loadIncubator, user]);
+
+  useEffect(() => {
+    if (!incubatorZone.trim()) {
+      setActiveProfiles([]);
+      return;
+    }
+    void loadActiveProfiles(incubatorZone);
+  }, [incubatorZone, loadActiveProfiles]);
 
   const requestLocation = useCallback(async (silent = false) => {
     setLocating(true);
@@ -1136,6 +1274,70 @@ export function NearbyVetsMapSection() {
       </div>
 
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Veterinarias activas en AiPetFriendly</p>
+            <p className="text-xs text-slate-500">Ordenadas por plan premium y luego cercania a tu ubicacion.</p>
+          </div>
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">Premium primero</span>
+        </div>
+
+        {loadingActiveProfiles && <p className="mt-3 text-sm text-slate-500">Cargando veterinarias activas...</p>}
+        {activeProfilesError && <p className="mt-3 text-sm text-amber-700">{activeProfilesError}</p>}
+
+        {!loadingActiveProfiles && !activeProfilesError && sortedActiveProfiles.length === 0 && (
+          <p className="mt-3 text-sm text-slate-500">Aun no hay veterinarias activas en esta zona.</p>
+        )}
+
+        {!loadingActiveProfiles && !activeProfilesError && sortedActiveProfiles.length > 0 && (
+          <ul className="mt-3 space-y-2">
+            {sortedActiveProfiles.map(({ profile, isPremium, distanceMeters }) => (
+              <li
+                key={profile.id}
+                className={`rounded-xl border p-3 ${isPremium ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50'}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{profile.name}</p>
+                    <p className="text-xs text-slate-600">{profile.address}</p>
+                    <p className="mt-1 text-xs text-slate-500">Zona: {profile.zoneLabel}</p>
+                  </div>
+                  {isPremium ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                      <Star size={12} /> Premium
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700">Free</span>
+                  )}
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  {distanceMeters < Number.MAX_SAFE_INTEGER ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">
+                      A {Math.round(distanceMeters)} m
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-200 px-2 py-1 font-semibold text-slate-700">Distancia no disponible</span>
+                  )}
+
+                  {profile.phoneWhatsapp && (
+                    <a
+                      href={`https://wa.me/${profile.phoneWhatsapp.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-700"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-slate-900">Incubadora comunitaria</p>
@@ -1245,6 +1447,7 @@ export function NearbyVetsMapSection() {
                                 zoneLabel: item.zoneLabel,
                                 address: item.address,
                                 shareIdentity: false,
+                                claimToken: item.claimToken,
                               })}
                               className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
                             >
@@ -1308,6 +1511,7 @@ export function NearbyVetsMapSection() {
                                 zoneLabel: item.zoneLabel,
                                 address: item.address,
                                 shareIdentity: false,
+                                claimToken: item.claimToken,
                               })}
                               className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700"
                             >
@@ -1341,54 +1545,198 @@ export function NearbyVetsMapSection() {
 
       {(claimToken || claimPreview || loadingClaimPreview || claimError) && (
         <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
-          <p className="text-sm font-semibold text-slate-900">Claim Your Profile</p>
+          <p className="text-sm font-semibold text-slate-900">Activacion de perfil veterinario</p>
           {loadingClaimPreview && <p className="mt-2 text-sm text-slate-500">Cargando datos del perfil sugerido...</p>}
           {claimError && <p className="mt-2 text-sm text-amber-700">{claimError}</p>}
 
           {claimPreview && (
             <div className="mt-3 space-y-2">
-              <p className="text-sm font-semibold text-slate-900">{claimPreview.name}</p>
-              <p className="text-xs text-slate-600">{claimPreview.address}</p>
-              <p className="text-xs text-emerald-700">
-                Hay {claimPreview.suggestedClients} clientes en {claimPreview.zoneLabel} pidiendo que te sumes a AiPetFriendly.
-              </p>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <p className="text-sm font-semibold text-emerald-800">{claimPreview.name}</p>
+                <p className="text-xs text-emerald-700">{claimPreview.address}</p>
+                <p className="mt-1 text-xs text-emerald-700">
+                  {claimPreview.suggestedClients} familias en {claimPreview.zoneLabel} la recomendaron.
+                </p>
+              </div>
 
-              {claimPreview.isClaimed ? (
-                <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                  Este perfil ya fue activado.
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-700">
+                  Nombre comercial
+                  <input
+                    value={claimFormName}
+                    onChange={(event) => setClaimFormName(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    disabled={claimPreview.subscriptionPlan === 'premium' && claimPreview.status === 'ACTIVE_PREMIUM'}
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Zona
+                  <input
+                    value={claimFormZone}
+                    onChange={(event) => setClaimFormZone(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700 sm:col-span-2">
+                  Direccion
+                  <input
+                    value={claimFormAddress}
+                    onChange={(event) => setClaimFormAddress(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    disabled={claimPreview.subscriptionPlan === 'premium' && claimPreview.status === 'ACTIVE_PREMIUM'}
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  WhatsApp
+                  <input
+                    value={claimFormPhone}
+                    onChange={(event) => setClaimFormPhone(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Email de contacto
+                  <input
+                    type="email"
+                    value={claimFormEmail}
+                    onChange={(event) => setClaimFormEmail(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Dias de atencion
+                  <input
+                    value={claimFormBusinessDays}
+                    onChange={(event) => setClaimFormBusinessDays(event.target.value)}
+                    placeholder="Lunes a sabado"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Horarios
+                  <input
+                    value={claimFormBusinessHours}
+                    onChange={(event) => setClaimFormBusinessHours(event.target.value)}
+                    placeholder="09:00 a 19:00"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700 sm:col-span-2">
+                  Servicios
+                  <input
+                    value={claimFormServices}
+                    onChange={(event) => setClaimFormServices(event.target.value)}
+                    placeholder="Clinica, cirugias, guardia, laboratorio"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Sitio web
+                  <input
+                    value={claimFormWebsite}
+                    onChange={(event) => setClaimFormWebsite(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Instagram
+                  <input
+                    value={claimFormInstagram}
+                    onChange={(event) => setClaimFormInstagram(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={claimConsentGranted}
+                  onChange={(event) => setClaimConsentGranted(event.target.checked)}
+                  className="mt-0.5"
+                />
+                Acepto que estos datos se publiquen en AiPetFriendly.
+              </label>
+
+              <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={claimBasicDataConfirmed}
+                  onChange={(event) => setClaimBasicDataConfirmed(event.target.checked)}
+                  className="mt-0.5"
+                />
+                Confirmo que los datos basicos son correctos.
+              </label>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-800">Suscripcion Premium</p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Mensual: {formatArs(claimPreview.veterinaryPremiumMonthlyArs)} · Anual: {formatArs(claimPreview.veterinaryPremiumAnnualArs)}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setClaimBillingMode('monthly_auto')}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${claimBillingMode === 'monthly_auto' ? 'border-amber-400 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                  >
+                    Mensual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClaimBillingMode('annual')}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${claimBillingMode === 'annual' ? 'border-amber-400 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                  >
+                    Anual
+                  </button>
+                </div>
+              </div>
+
+              {claimPreview.status === 'REJECTED' ? (
+                <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                  Este perfil fue marcado como no disponible para publicacion.
                 </p>
               ) : (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
                   <button
                     type="button"
                     onClick={() => {
-                      void handleClaim('free');
+                      void handleClaimDecision('correct');
                     }}
-                    disabled={claimingPlan !== null}
+                    disabled={claimActionLoading !== null}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                   >
-                    {claimingPlan === 'free' ? 'Activando...' : 'Activar Plan Free'}
+                    {claimActionLoading === 'correct' ? 'Guardando...' : 'Corregir / Confirmar'}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      void handleClaim('premium');
+                      void handleClaimDecision('reject');
                     }}
-                    disabled={claimingPlan !== null}
-                    className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
+                    disabled={claimActionLoading !== null}
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"
                   >
-                    {claimingPlan === 'premium' ? 'Activando...' : 'Activar Plan Premium'}
+                    {claimActionLoading === 'reject' ? 'Guardando...' : 'No quiero aparecer'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleClaimDecision('subscribe');
+                    }}
+                    disabled={claimActionLoading !== null}
+                    className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    {claimActionLoading === 'subscribe' ? 'Activando...' : 'Suscribirme Premium'}
                   </button>
                 </div>
               )}
 
-              {(!user || user.isGuest) && !claimPreview.isClaimed && (
+              {(!user || user.isGuest) && claimPreview.status !== 'REJECTED' && (
                 <button
                   type="button"
                   onClick={() => setActiveTab('subscription')}
                   className="mt-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
                 >
-                  Iniciar sesion para reclamar
+                  Iniciar sesion para activar Premium
                 </button>
               )}
             </div>
