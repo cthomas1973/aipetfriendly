@@ -285,6 +285,13 @@ grant execute on function public.claim_veterinary_profile(text, text) to authent
 alter table public.veterinary_profiles enable row level security;
 alter table public.veterinary_validations enable row level security;
 
+drop policy if exists "Anyone can view active veterinary profiles" on public.veterinary_profiles;
+drop policy if exists "Authenticated users can view incubator and claimable veterinary profiles" on public.veterinary_profiles;
+drop policy if exists "Authenticated users can suggest veterinary profiles" on public.veterinary_profiles;
+drop policy if exists "Authenticated users can read own veterinary validations" on public.veterinary_validations;
+drop policy if exists "Authenticated users can validate veterinary once" on public.veterinary_validations;
+drop policy if exists "Authenticated users can remove own veterinary validation" on public.veterinary_validations;
+
 create policy "Anyone can view active veterinary profiles" on public.veterinary_profiles
   for select using (status in ('ACTIVE_FREE', 'ACTIVE_PREMIUM'));
 
