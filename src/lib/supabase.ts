@@ -13,6 +13,9 @@ import type {
   AppUser,
   SubscriptionPlan,
   UserAccessLevel,
+  VeterinaryClaimPreview,
+  VeterinaryIncubatorItem,
+  VeterinaryProfile,
 } from '../types';
 
 interface PetAssistantRequest {
@@ -78,6 +81,7 @@ interface CheckoutContext {
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 // Cliente mock para desarrollo sin Supabase
 const mockClient = {
@@ -113,6 +117,8 @@ const mockClient = {
 export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey)
   : (mockClient as any);
+
+export { isSupabaseConfigured };
 
 export async function fetchUserProfile(userId: string): Promise<AppUser | null> {
   const { data: user, error } = await supabase
@@ -560,6 +566,186 @@ export async function updatePreventiveTaskReminders(
   }
 
   return true;
+}
+
+function mapVeterinaryProfileRow(row: any): VeterinaryProfile {
+  return {
+    id: row.id,
+    name: row.name,
+    zoneLabel: row.zone_label,
+    address: row.address,
+    phoneWhatsapp: row.phone_whatsapp || undefined,
+    latitude: typeof row.latitude === 'number' ? row.latitude : undefined,
+    longitude: typeof row.longitude === 'number' ? row.longitude : undefined,
+    status: row.status,
+    suggestedByUserId: row.suggested_by_user_id || undefined,
+    upvotesCount: Number(row.upvotes_count || 0),
+    validationsGoal: Number(row.validations_goal || 5),
+    claimedByOwnerId: row.claimed_by_owner_id || undefined,
+    claimToken: row.claim_token || undefined,
+    claimSourceRefUserId: row.claim_source_ref_user_id || undefined,
+    isVerified: Boolean(row.is_verified),
+    activatedAt: row.activated_at || undefined,
+    lastValidationAt: row.last_validation_at || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapVeterinaryClaimPreviewRow(row: any): VeterinaryClaimPreview {
+  return {
+    id: row.id,
+    name: row.name,
+    zoneLabel: row.zone_label,
+    address: row.address,
+    phoneWhatsapp: row.phone_whatsapp || undefined,
+    status: row.status,
+    upvotesCount: Number(row.upvotes_count || 0),
+    validationsGoal: Number(row.validations_goal || 5),
+    isClaimed: Boolean(row.is_claimed),
+    suggestedClients: Number(row.suggested_clients || row.upvotes_count || 0),
+  };
+}
+
+export async function suggestVeterinary(input: {
+  name: string;
+  zoneLabel: string;
+  address: string;
+  phoneWhatsapp?: string;
+  latitude?: number;
+  longitude?: number;
+  claimSourceRefUserId?: string;
+}): Promise<VeterinaryProfile | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('create_veterinary_suggestion', {
+    p_name: input.name,
+    p_zone_label: input.zoneLabel,
+    p_address: input.address,
+    p_phone_whatsapp: input.phoneWhatsapp ?? null,
+    p_latitude: input.latitude ?? null,
+    p_longitude: input.longitude ?? null,
+    p_claim_source_ref_user_id: input.claimSourceRefUserId ?? null,
+  });
+
+  if (error || !data) {
+    console.error('Error creating veterinary suggestion:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapVeterinaryProfileRow(row) : null;
+}
+
+export async function fetchVeterinaryIncubatorByZone(args: {
+  zoneLabel: string;
+  userId?: string;
+  limit?: number;
+}): Promise<VeterinaryIncubatorItem[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.min(args.limit ?? 25, 50));
+  const cleanedZone = args.zoneLabel.trim();
+  const zoneFilter = cleanedZone.length > 0 ? `%${cleanedZone}%` : '%';
+
+  const { data, error } = await supabase
+    .from('veterinary_profiles')
+    .select('id,name,zone_label,address,phone_whatsapp,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at')
+    .in('status', ['IN_INCUBATOR', 'CLAIMABLE_PROFILE'])
+    .ilike('zone_label', zoneFilter)
+    .order('upvotes_count', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(safeLimit);
+
+  if (error) {
+    console.error('Error fetching veterinary incubator:', error);
+    return [];
+  }
+
+  const profiles: VeterinaryProfile[] = (data || []).map((row: any) => mapVeterinaryProfileRow(row));
+  if (!args.userId || profiles.length === 0) {
+    return profiles.map((profile) => ({ ...profile, userHasValidated: false }));
+  }
+
+  const profileIds = profiles.map((profile) => profile.id);
+  const { data: votes, error: votesError } = await supabase
+    .from('veterinary_validations')
+    .select('veterinary_id')
+    .eq('user_id', args.userId)
+    .in('veterinary_id', profileIds);
+
+  if (votesError) {
+    console.error('Error fetching user veterinary validations:', votesError);
+    return profiles.map((profile) => ({ ...profile, userHasValidated: false }));
+  }
+
+  const validatedIds = new Set((votes || []).map((row: any) => row.veterinary_id as string));
+  return profiles.map((profile) => ({
+    ...profile,
+    userHasValidated: validatedIds.has(profile.id),
+  }));
+}
+
+export async function validateVeterinary(veterinaryId: string): Promise<VeterinaryProfile | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('validate_veterinary', {
+    p_veterinary_id: veterinaryId,
+  });
+
+  if (error || !data) {
+    console.error('Error validating veterinary:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapVeterinaryProfileRow(row) : null;
+}
+
+export async function getVeterinaryClaimPreview(claimToken: string): Promise<VeterinaryClaimPreview | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('get_veterinary_claim_preview', {
+    p_claim_token: claimToken,
+  });
+
+  if (error || !data) {
+    console.error('Error fetching veterinary claim preview:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapVeterinaryClaimPreviewRow(row) : null;
+}
+
+export async function claimVeterinaryProfile(args: {
+  claimToken: string;
+  plan: 'free' | 'premium';
+}): Promise<VeterinaryProfile | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('claim_veterinary_profile', {
+    p_claim_token: args.claimToken,
+    p_plan: args.plan,
+  });
+
+  if (error || !data) {
+    console.error('Error claiming veterinary profile:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapVeterinaryProfileRow(row) : null;
 }
 
 export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> {

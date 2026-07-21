@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { LocateFixed, MapPin, Navigation, Search } from 'lucide-react';
+import { LocateFixed, MapPin, MessageCircleHeart, Navigation, Search, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
@@ -7,6 +7,15 @@ import { Circle, MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { divIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
+import { useAppState } from '../context/AppStateContext';
+import {
+  claimVeterinaryProfile,
+  fetchVeterinaryIncubatorByZone,
+  getVeterinaryClaimPreview,
+  suggestVeterinary,
+  validateVeterinary,
+} from '../lib/supabase';
+import type { VeterinaryClaimPreview, VeterinaryIncubatorItem } from '../types';
 
 const DEFAULT_QUERY = 'veterinaria';
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
@@ -50,6 +59,8 @@ type NearbyVet = {
   address: string;
   distanceMeters: number;
 };
+
+type ClaimPlan = 'free' | 'premium';
 
 function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
   const toRad = (v: number) => (v * Math.PI) / 180;
@@ -279,7 +290,39 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
   return { lat, lng };
 }
 
+function inferZoneLabel(address: string) {
+  const parts = address
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return parts[parts.length - 2];
+  }
+
+  return parts[0] || 'Tu zona';
+}
+
+function buildClaimUrl(claimToken: string, refUserId?: string) {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const claimUrl = new URL(window.location.origin + window.location.pathname);
+  claimUrl.searchParams.set('tab', 'map');
+  claimUrl.searchParams.set('vet_claim', claimToken);
+  if (refUserId) {
+    claimUrl.searchParams.set('ref', refUserId);
+  }
+  return claimUrl.toString();
+}
+
+function buildVetInvitationMessage(vetName: string, claimUrl: string) {
+  return `Hola ${vetName}! Soy usuario de AIPetFriendly y te sugeri para que aparezcas en el mapa de nuestra zona. Completa tu perfil aca para que los vecinos te encuentren: ${claimUrl}`;
+}
+
 export function NearbyVetsMapSection() {
+  const { user, setActiveTab } = useAppState();
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
@@ -293,6 +336,27 @@ export function NearbyVetsMapSection() {
   const [selectedVetId, setSelectedVetId] = useState<string | null>(null);
   const [loadingVets, setLoadingVets] = useState(false);
   const [vetsError, setVetsError] = useState<string | null>(null);
+  const [incubatorZone, setIncubatorZone] = useState('Tu zona');
+  const [incubatorItems, setIncubatorItems] = useState<VeterinaryIncubatorItem[]>([]);
+  const [loadingIncubator, setLoadingIncubator] = useState(false);
+  const [incubatorError, setIncubatorError] = useState<string | null>(null);
+
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [suggestName, setSuggestName] = useState('');
+  const [suggestAddress, setSuggestAddress] = useState('');
+  const [suggestZone, setSuggestZone] = useState('');
+  const [suggestPhone, setSuggestPhone] = useState('');
+  const [lastSuggestedVet, setLastSuggestedVet] = useState<VeterinaryIncubatorItem | null>(null);
+
+  const [claimToken, setClaimToken] = useState<string | null>(null);
+  const [claimPreview, setClaimPreview] = useState<VeterinaryClaimPreview | null>(null);
+  const [loadingClaimPreview, setLoadingClaimPreview] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimingPlan, setClaimingPlan] = useState<ClaimPlan | null>(null);
+
+  const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
@@ -326,10 +390,206 @@ export function NearbyVetsMapSection() {
     }
   }, []);
 
+  const loadIncubator = useCallback(async (zoneLabel: string) => {
+    if (!user || user.isGuest) {
+      setIncubatorItems([]);
+      return;
+    }
+
+    setLoadingIncubator(true);
+    setIncubatorError(null);
+
+    try {
+      const items = await fetchVeterinaryIncubatorByZone({
+        zoneLabel,
+        userId: user.id,
+        limit: 30,
+      });
+      setIncubatorItems(items);
+    } catch {
+      setIncubatorItems([]);
+      setIncubatorError('No se pudo cargar la incubadora de veterinarias para esta zona.');
+    } finally {
+      setLoadingIncubator(false);
+    }
+  }, [user]);
+
+  const openInviteOnWhatsApp = useCallback((item: { name: string; claimToken?: string }) => {
+    if (!item.claimToken) {
+      setSectionMessage('La veterinaria fue sugerida, pero todavia no se genero un enlace de claim.');
+      return;
+    }
+
+    const claimUrl = buildClaimUrl(item.claimToken, user?.id);
+    const inviteMessage = buildVetInvitationMessage(item.name, claimUrl);
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(inviteMessage)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+  }, [user?.id]);
+
+  const handleSuggestVet = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user || user.isGuest) {
+      setSuggestionError('Debes iniciar sesion para sugerir veterinarias.');
+      return;
+    }
+
+    const cleanedName = suggestName.trim();
+    const cleanedAddress = suggestAddress.trim();
+    const cleanedZone = (suggestZone.trim() || incubatorZone || 'Tu zona').trim();
+
+    if (!cleanedName || !cleanedAddress || !cleanedZone) {
+      setSuggestionError('Completa nombre, direccion y zona para enviar la sugerencia.');
+      return;
+    }
+
+    setSuggesting(true);
+    setSuggestionError(null);
+
+    try {
+      const created = await suggestVeterinary({
+        name: cleanedName,
+        address: cleanedAddress,
+        zoneLabel: cleanedZone,
+        phoneWhatsapp: suggestPhone.trim() || undefined,
+        latitude: location?.lat,
+        longitude: location?.lng,
+      });
+
+      if (!created) {
+        setSuggestionError('No se pudo registrar la veterinaria sugerida.');
+        return;
+      }
+
+      setLastSuggestedVet({ ...created, userHasValidated: false });
+      setSectionMessage(`Sugerencia enviada: ${created.name}. Ahora puedes invitarla por WhatsApp.`);
+      setShowSuggestModal(false);
+      setSuggestName('');
+      setSuggestAddress('');
+      setSuggestZone(cleanedZone);
+      setSuggestPhone('');
+      setIncubatorZone(cleanedZone);
+      await loadIncubator(cleanedZone);
+    } catch {
+      setSuggestionError('No se pudo registrar la sugerencia en este momento.');
+    } finally {
+      setSuggesting(false);
+    }
+  }, [incubatorZone, loadIncubator, location?.lat, location?.lng, suggestAddress, suggestName, suggestPhone, suggestZone, user]);
+
+  const handleValidateVet = useCallback(async (vetId: string) => {
+    if (!user || user.isGuest) {
+      setSectionMessage('Debes iniciar sesion para validar una veterinaria sugerida.');
+      return;
+    }
+
+    const updated = await validateVeterinary(vetId);
+    if (!updated) {
+      setSectionMessage('No se pudo registrar tu validacion.');
+      return;
+    }
+
+    setIncubatorItems((current) => current.map((item) => (
+      item.id === vetId
+        ? { ...item, ...updated, userHasValidated: true }
+        : item
+    )));
+
+    if (updated.upvotesCount >= updated.validationsGoal) {
+      setSectionMessage(`${updated.name} alcanzo el umbral y ya esta lista para activar su perfil.`);
+    } else {
+      setSectionMessage('Gracias por validar la veterinaria sugerida.');
+    }
+  }, [user]);
+
+  const handleClaim = useCallback(async (plan: ClaimPlan) => {
+    if (!claimToken) {
+      return;
+    }
+
+    if (!user || user.isGuest) {
+      setClaimError('Para reclamar esta veterinaria debes iniciar sesion con una cuenta.');
+      return;
+    }
+
+    setClaimingPlan(plan);
+    setClaimError(null);
+
+    try {
+      const claimed = await claimVeterinaryProfile({ claimToken, plan });
+      if (!claimed) {
+        setClaimError('No se pudo reclamar el perfil en este momento.');
+        return;
+      }
+
+      setClaimPreview((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          status: claimed.status,
+          isClaimed: true,
+        };
+      });
+      setSectionMessage(`${claimed.name} ahora figura como ${claimed.status === 'ACTIVE_PREMIUM' ? 'Premium' : 'Free'} en AiPetFriendly.`);
+    } catch {
+      setClaimError('No se pudo completar el claim del perfil.');
+    } finally {
+      setClaimingPlan(null);
+    }
+  }, [claimToken, user]);
+
   const openInMapsUrl = useMemo(
     () => buildExternalMapsUrl({ lat: location?.lat, lng: location?.lng, address: manualAddress }),
     [location, manualAddress],
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('vet_claim');
+    const tabFromUrl = params.get('tab');
+    if (tabFromUrl === 'map') {
+      setActiveTab('map');
+    }
+    if (tokenFromUrl) {
+      setClaimToken(tokenFromUrl);
+    }
+  }, [setActiveTab]);
+
+  useEffect(() => {
+    if (!claimToken) {
+      return;
+    }
+
+    const run = async () => {
+      setLoadingClaimPreview(true);
+      setClaimError(null);
+      const preview = await getVeterinaryClaimPreview(claimToken);
+      if (!preview) {
+        setClaimError('El enlace de claim no es valido o ya expiro.');
+      }
+      setClaimPreview(preview);
+      setLoadingClaimPreview(false);
+    };
+
+    void run();
+  }, [claimToken]);
+
+  useEffect(() => {
+    if (!showSuggestModal) {
+      return;
+    }
+
+    setSuggestZone((current) => (current.trim().length > 0 ? current : incubatorZone));
+  }, [incubatorZone, showSuggestModal]);
+
+  useEffect(() => {
+    if (!user || user.isGuest) {
+      return;
+    }
+    if (!incubatorZone.trim()) {
+      return;
+    }
+    void loadIncubator(incubatorZone);
+  }, [incubatorZone, loadIncubator, user]);
 
   const requestLocation = useCallback(async (silent = false) => {
     setLocating(true);
@@ -480,6 +740,7 @@ export function NearbyVetsMapSection() {
       if (point) {
         setLocation(point);
         setLocationAccuracy(null);
+        setIncubatorZone(inferZoneLabel(cleanedAddress));
         await loadNearbyVets(point.lat, point.lng);
         return;
       }
@@ -598,6 +859,7 @@ export function NearbyVetsMapSection() {
         )}
 
         {manualError && <p className="mt-2 text-sm text-amber-700">{manualError}</p>}
+        {sectionMessage && <p className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{sectionMessage}</p>}
       </div>
 
       <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-emerald-100">
@@ -704,6 +966,223 @@ export function NearbyVetsMapSection() {
           </ul>
         )}
       </div>
+
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Incubadora comunitaria</p>
+            <p className="text-xs text-slate-500">Veterinarias sugeridas y validadas por vecinos de la zona.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!user || user.isGuest) {
+                setSectionMessage('Debes iniciar sesion para sugerir veterinarias.');
+                return;
+              }
+              setShowSuggestModal(true);
+              setSuggestionError(null);
+            }}
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
+          >
+            <MessageCircleHeart size={14} />
+            Sugerir veterinaria
+          </button>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <input
+            value={incubatorZone}
+            onChange={(event) => setIncubatorZone(event.target.value)}
+            placeholder="Zona o barrio (ej: Caballito, CABA)"
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (!incubatorZone.trim()) {
+                setIncubatorError('Indica una zona para cargar la incubadora.');
+                return;
+              }
+              void loadIncubator(incubatorZone);
+            }}
+            className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Cargar zona
+          </button>
+        </div>
+
+        {!user || user.isGuest ? (
+          <p className="mt-3 text-sm text-amber-700">Inicia sesion para sugerir, validar y ayudar a activar perfiles de veterinarias.</p>
+        ) : null}
+
+        {loadingIncubator && <p className="mt-3 text-sm text-slate-500">Cargando incubadora...</p>}
+        {incubatorError && <p className="mt-3 text-sm text-amber-700">{incubatorError}</p>}
+
+        {!loadingIncubator && incubatorItems.length === 0 && !incubatorError && (
+          <p className="mt-3 text-sm text-slate-500">Todavia no hay sugerencias en esta zona. Puedes cargar la primera.</p>
+        )}
+
+        {!loadingIncubator && incubatorItems.length > 0 && (
+          <ul className="mt-3 space-y-2">
+            {incubatorItems.map((item) => {
+              const reachedGoal = item.upvotesCount >= item.validationsGoal;
+              return (
+                <li key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                      <p className="text-xs text-slate-600">{item.address}</p>
+                      <p className="mt-1 text-xs text-slate-500">Zona: {item.zoneLabel}</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${reachedGoal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {reachedGoal ? 'Lista para activar' : 'En incubadora'}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-xs text-slate-700">
+                    Respaldo comunitario: {item.upvotesCount} / {item.validationsGoal}
+                  </p>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{ width: `${Math.min(100, Math.round((item.upvotesCount / item.validationsGoal) * 100))}%` }}
+                    />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleValidateVet(item.id);
+                      }}
+                      disabled={item.userHasValidated}
+                      className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      {item.userHasValidated ? 'Ya validaste' : 'Yo tambien me atiendo aca'}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {lastSuggestedVet && (
+        <div className="rounded-2xl bg-emerald-50 p-4 shadow-sm ring-1 ring-emerald-200">
+          <p className="text-sm font-semibold text-emerald-800">Hace que {lastSuggestedVet.name} se entere</p>
+          <p className="mt-1 text-xs text-emerald-700">Comparte el enlace de claim para que complete su perfil y aparezca en la zona.</p>
+          <button
+            type="button"
+            onClick={() => openInviteOnWhatsApp(lastSuggestedVet)}
+            className="mt-3 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
+          >
+            Compartir por WhatsApp
+          </button>
+        </div>
+      )}
+
+      {(claimToken || claimPreview || loadingClaimPreview || claimError) && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+          <p className="text-sm font-semibold text-slate-900">Claim Your Profile</p>
+          {loadingClaimPreview && <p className="mt-2 text-sm text-slate-500">Cargando datos del perfil sugerido...</p>}
+          {claimError && <p className="mt-2 text-sm text-amber-700">{claimError}</p>}
+
+          {claimPreview && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm font-semibold text-slate-900">{claimPreview.name}</p>
+              <p className="text-xs text-slate-600">{claimPreview.address}</p>
+              <p className="text-xs text-emerald-700">
+                Hay {claimPreview.suggestedClients} clientes en {claimPreview.zoneLabel} pidiendo que te sumes a AiPetFriendly.
+              </p>
+
+              {claimPreview.isClaimed ? (
+                <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  Este perfil ya fue activado.
+                </p>
+              ) : (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleClaim('free');
+                    }}
+                    disabled={claimingPlan !== null}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                  >
+                    {claimingPlan === 'free' ? 'Activando...' : 'Activar Plan Free'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleClaim('premium');
+                    }}
+                    disabled={claimingPlan !== null}
+                    className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    {claimingPlan === 'premium' ? 'Activando...' : 'Activar Plan Premium'}
+                  </button>
+                </div>
+              )}
+
+              {(!user || user.isGuest) && !claimPreview.isClaimed && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('subscription')}
+                  className="mt-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
+                >
+                  Iniciar sesion para reclamar
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showSuggestModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 md:items-center">
+          <form onSubmit={handleSuggestVet} className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-4 md:rounded-3xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-slate-900">Sugerir veterinaria</p>
+                <p className="text-xs text-slate-500">Incubadora por demanda comunitaria</p>
+              </div>
+              <button type="button" onClick={() => setShowSuggestModal(false)} className="text-slate-400">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Nombre</label>
+                <input value={suggestName} onChange={(event) => setSuggestName(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" required />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Direccion o zona</label>
+                <input value={suggestAddress} onChange={(event) => setSuggestAddress(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" required />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Barrio / zona</label>
+                <input value={suggestZone} onChange={(event) => setSuggestZone(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" required />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Telefono o WhatsApp (opcional)</label>
+                <input value={suggestPhone} onChange={(event) => setSuggestPhone(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+            </div>
+
+            {suggestionError && <p className="mt-3 text-sm text-rose-700">{suggestionError}</p>}
+
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => setShowSuggestModal(false)} className="w-full rounded-full border border-slate-200 py-2 text-sm font-semibold text-slate-700">Cancelar</button>
+              <button type="submit" disabled={suggesting} className="w-full rounded-full bg-emerald-500 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                {suggesting ? 'Enviando...' : 'Enviar sugerencia'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <AdBanner adSenseSlotId="1111111111" />
     </section>

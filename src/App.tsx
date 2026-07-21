@@ -188,11 +188,13 @@ function AppContent() {
   const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
   const { toggleTask, postponeTask, discardTaskReminder } = usePreventive();
   const currentPath = window.location.pathname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
 
   // Sincronizar con Supabase
@@ -310,6 +312,10 @@ function AppContent() {
 
     if (isLandingRoute) {
       return <LandingSection onEnterApp={() => setShowAuthGate(true)} />;
+    }
+
+    if (!user && hasPublicVetClaimRoute) {
+      return <NearbyVetsMapSection />;
     }
 
     if (!user) {

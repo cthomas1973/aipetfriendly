@@ -46,6 +46,8 @@ export type PreventiveCategory =
   | 'feeding'
   | 'other';
 
+export type VeterinaryStatus = 'IN_INCUBATOR' | 'CLAIMABLE_PROFILE' | 'ACTIVE_FREE' | 'ACTIVE_PREMIUM';
+
 export interface Pet {
   id: string;
   userId: string;
@@ -129,6 +131,45 @@ export interface PreventiveFormData {
 export interface PreventiveTask extends PreventiveFormData {
   id: string;
   createdAt: string;
+}
+
+export interface VeterinaryProfile {
+  id: string;
+  name: string;
+  zoneLabel: string;
+  address: string;
+  phoneWhatsapp?: string;
+  latitude?: number;
+  longitude?: number;
+  status: VeterinaryStatus;
+  suggestedByUserId?: string;
+  upvotesCount: number;
+  validationsGoal: number;
+  claimedByOwnerId?: string;
+  claimToken?: string;
+  claimSourceRefUserId?: string;
+  isVerified: boolean;
+  activatedAt?: string;
+  lastValidationAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VeterinaryIncubatorItem extends VeterinaryProfile {
+  userHasValidated: boolean;
+}
+
+export interface VeterinaryClaimPreview {
+  id: string;
+  name: string;
+  zoneLabel: string;
+  address: string;
+  phoneWhatsapp?: string;
+  status: VeterinaryStatus;
+  upvotesCount: number;
+  validationsGoal: number;
+  isClaimed: boolean;
+  suggestedClients: number;
 }
 
 export interface ClinicalNoteFormData {
