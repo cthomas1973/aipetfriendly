@@ -21,6 +21,7 @@ const DEFAULT_QUERY = 'veterinaria';
 const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_REVERSE_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
 const SEARCH_RADIUS_METERS = 1200;
 const FETCH_TIMEOUT_MS = 8000;
 const FALLBACK_CENTER: LatLngExpression = [-34.6037, -58.3816];
@@ -61,6 +62,7 @@ type NearbyVet = {
 };
 
 type ClaimPlan = 'free' | 'premium';
+const VET_ZONE_FAVORITE_KEY = 'apf_vet_zone_favorite';
 
 function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
   const toRad = (v: number) => (v * Math.PI) / 180;
@@ -303,6 +305,82 @@ function inferZoneLabel(address: string) {
   return parts[0] || 'Tu zona';
 }
 
+function readFavoriteZone(userId?: string) {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const scopedKey = userId ? `${VET_ZONE_FAVORITE_KEY}_${userId}` : VET_ZONE_FAVORITE_KEY;
+  const scopedValue = window.localStorage.getItem(scopedKey)?.trim();
+  if (scopedValue) {
+    return scopedValue;
+  }
+
+  const genericValue = window.localStorage.getItem(VET_ZONE_FAVORITE_KEY)?.trim();
+  return genericValue || '';
+}
+
+function writeFavoriteZone(zoneLabel: string, userId?: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const cleaned = zoneLabel.trim();
+  if (!cleaned) {
+    return;
+  }
+
+  window.localStorage.setItem(VET_ZONE_FAVORITE_KEY, cleaned);
+  if (userId) {
+    window.localStorage.setItem(`${VET_ZONE_FAVORITE_KEY}_${userId}`, cleaned);
+  }
+}
+
+async function reverseGeocodeZone(lat: number, lng: number): Promise<string | null> {
+  const reverseUrl = new URL(NOMINATIM_REVERSE_ENDPOINT);
+  reverseUrl.searchParams.set('lat', String(lat));
+  reverseUrl.searchParams.set('lon', String(lng));
+  reverseUrl.searchParams.set('format', 'jsonv2');
+  reverseUrl.searchParams.set('addressdetails', '1');
+  reverseUrl.searchParams.set('zoom', '14');
+
+  const response = await fetchWithTimeout(
+    reverseUrl.toString(),
+    { headers: { 'Accept-Language': 'es' } },
+    FETCH_TIMEOUT_MS,
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as {
+    address?: {
+      suburb?: string;
+      neighbourhood?: string;
+      city_district?: string;
+      city?: string;
+      town?: string;
+      village?: string;
+      county?: string;
+      state?: string;
+    };
+  };
+
+  const zone = [
+    payload.address?.suburb,
+    payload.address?.neighbourhood,
+    payload.address?.city_district,
+    payload.address?.city,
+    payload.address?.town,
+    payload.address?.village,
+    payload.address?.county,
+    payload.address?.state,
+  ].find((item) => Boolean(item && item.trim()));
+
+  return zone?.trim() || null;
+}
+
 function buildClaimUrl(claimToken: string, refUserId?: string) {
   if (typeof window === 'undefined') {
     return '';
@@ -336,7 +414,7 @@ export function NearbyVetsMapSection() {
   const [selectedVetId, setSelectedVetId] = useState<string | null>(null);
   const [loadingVets, setLoadingVets] = useState(false);
   const [vetsError, setVetsError] = useState<string | null>(null);
-  const [incubatorZone, setIncubatorZone] = useState('Tu zona');
+  const [incubatorZone, setIncubatorZone] = useState(() => readFavoriteZone() || 'Tu zona');
   const [incubatorItems, setIncubatorItems] = useState<VeterinaryIncubatorItem[]>([]);
   const [loadingIncubator, setLoadingIncubator] = useState(false);
   const [incubatorError, setIncubatorError] = useState<string | null>(null);
@@ -359,6 +437,30 @@ export function NearbyVetsMapSection() {
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+  const suggestedItems = useMemo(
+    () => incubatorItems.filter((item) => item.status === 'CLAIMABLE_PROFILE'),
+    [incubatorItems],
+  );
+
+  const incubatorOnlyItems = useMemo(
+    () => incubatorItems.filter((item) => item.status === 'IN_INCUBATOR'),
+    [incubatorItems],
+  );
+
+  const applyZoneSelection = useCallback((zoneLabel: string, persist = false) => {
+    const cleaned = zoneLabel.trim();
+    if (!cleaned) {
+      return;
+    }
+
+    setIncubatorZone(cleaned);
+    setSuggestZone(cleaned);
+
+    if (persist) {
+      writeFavoriteZone(cleaned, user?.id);
+    }
+  }, [user?.id]);
 
   const mapCenter = useMemo<LatLngExpression>(
     () => (location ? [location.lat, location.lng] : FALLBACK_CENTER),
@@ -467,14 +569,14 @@ export function NearbyVetsMapSection() {
       setSuggestAddress('');
       setSuggestZone(cleanedZone);
       setSuggestPhone('');
-      setIncubatorZone(cleanedZone);
+      applyZoneSelection(cleanedZone, true);
       await loadIncubator(cleanedZone);
     } catch {
       setSuggestionError('No se pudo registrar la sugerencia en este momento.');
     } finally {
       setSuggesting(false);
     }
-  }, [incubatorZone, loadIncubator, location?.lat, location?.lng, suggestAddress, suggestName, suggestPhone, suggestZone, user]);
+  }, [applyZoneSelection, incubatorZone, loadIncubator, location?.lat, location?.lng, suggestAddress, suggestName, suggestPhone, suggestZone, user]);
 
   const handleValidateVet = useCallback(async (vetId: string) => {
     if (!user || user.isGuest) {
@@ -582,6 +684,16 @@ export function NearbyVetsMapSection() {
   }, [incubatorZone, showSuggestModal]);
 
   useEffect(() => {
+    const preferredZone = readFavoriteZone(user?.id);
+    if (!preferredZone) {
+      return;
+    }
+
+    setIncubatorZone(preferredZone);
+    setSuggestZone(preferredZone);
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!user || user.isGuest) {
       return;
     }
@@ -643,6 +755,11 @@ export function NearbyVetsMapSection() {
           lng: position.coords.longitude,
         };
 
+        const detectedZone = await reverseGeocodeZone(nextLocation.lat, nextLocation.lng).catch(() => null);
+        if (detectedZone) {
+          applyZoneSelection(detectedZone, true);
+        }
+
         setLocation(nextLocation);
         setLocationAccuracy(nativeAccuracy);
         await loadNearbyVets(nextLocation.lat, nextLocation.lng);
@@ -685,6 +802,11 @@ export function NearbyVetsMapSection() {
         lng: browserPosition.coords.longitude,
       };
 
+      const detectedZone = await reverseGeocodeZone(nextLocation.lat, nextLocation.lng).catch(() => null);
+      if (detectedZone) {
+        applyZoneSelection(detectedZone, true);
+      }
+
       setLocation(nextLocation);
       setLocationAccuracy(browserAccuracy);
       await loadNearbyVets(nextLocation.lat, nextLocation.lng);
@@ -714,7 +836,7 @@ export function NearbyVetsMapSection() {
     } finally {
       setLocating(false);
     }
-  }, [isNativeAndroid, loadNearbyVets]);
+  }, [applyZoneSelection, isNativeAndroid, loadNearbyVets]);
 
   useEffect(() => {
     const isMobileWeb = !Capacitor.isNativePlatform() && typeof window !== 'undefined' && window.innerWidth < 768;
@@ -740,7 +862,7 @@ export function NearbyVetsMapSection() {
       if (point) {
         setLocation(point);
         setLocationAccuracy(null);
-        setIncubatorZone(inferZoneLabel(cleanedAddress));
+        applyZoneSelection(inferZoneLabel(cleanedAddress), true);
         await loadNearbyVets(point.lat, point.lng);
         return;
       }
@@ -1004,6 +1126,7 @@ export function NearbyVetsMapSection() {
                 setIncubatorError('Indica una zona para cargar la incubadora.');
                 return;
               }
+              applyZoneSelection(incubatorZone, true);
               void loadIncubator(incubatorZone);
             }}
             className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white"
@@ -1012,11 +1135,13 @@ export function NearbyVetsMapSection() {
           </button>
         </div>
 
+        <p className="mt-2 text-xs text-slate-500">Zona favorita actual: {incubatorZone}</p>
+
         {!user || user.isGuest ? (
           <p className="mt-3 text-sm text-amber-700">Inicia sesion para sugerir, validar y ayudar a activar perfiles de veterinarias.</p>
         ) : null}
 
-        {loadingIncubator && <p className="mt-3 text-sm text-slate-500">Cargando incubadora...</p>}
+        {loadingIncubator && <p className="mt-3 text-sm text-slate-500">Cargando sugerencias e incubadora...</p>}
         {incubatorError && <p className="mt-3 text-sm text-amber-700">{incubatorError}</p>}
 
         {!loadingIncubator && incubatorItems.length === 0 && !incubatorError && (
@@ -1024,48 +1149,103 @@ export function NearbyVetsMapSection() {
         )}
 
         {!loadingIncubator && incubatorItems.length > 0 && (
-          <ul className="mt-3 space-y-2">
-            {incubatorItems.map((item) => {
-              const reachedGoal = item.upvotesCount >= item.validationsGoal;
-              return (
-                <li key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{item.name}</p>
-                      <p className="text-xs text-slate-600">{item.address}</p>
-                      <p className="mt-1 text-xs text-slate-500">Zona: {item.zoneLabel}</p>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${reachedGoal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {reachedGoal ? 'Lista para activar' : 'En incubadora'}
-                    </span>
-                  </div>
+          <div className="mt-3 space-y-4">
+            {suggestedItems.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">Sugeridas por la comunidad</p>
+                <ul className="space-y-2">
+                  {suggestedItems.map((item) => {
+                    const reachedGoal = item.upvotesCount >= item.validationsGoal;
+                    return (
+                      <li key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                            <p className="text-xs text-slate-600">{item.address}</p>
+                            <p className="mt-1 text-xs text-slate-500">Zona: {item.zoneLabel}</p>
+                          </div>
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${reachedGoal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {reachedGoal ? 'Lista para activar' : 'Sugerida'}
+                          </span>
+                        </div>
 
-                  <p className="mt-2 text-xs text-slate-700">
-                    Respaldo comunitario: {item.upvotesCount} / {item.validationsGoal}
-                  </p>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${Math.min(100, Math.round((item.upvotesCount / item.validationsGoal) * 100))}%` }}
-                    />
-                  </div>
+                        <p className="mt-2 text-xs text-slate-700">
+                          Respaldo comunitario: {item.upvotesCount} / {item.validationsGoal}
+                        </p>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{ width: `${Math.min(100, Math.round((item.upvotesCount / item.validationsGoal) * 100))}%` }}
+                          />
+                        </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleValidateVet(item.id);
-                      }}
-                      disabled={item.userHasValidated}
-                      className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                    >
-                      {item.userHasValidated ? 'Ya validaste' : 'Yo tambien me atiendo aca'}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleValidateVet(item.id);
+                            }}
+                            disabled={item.userHasValidated}
+                            className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            {item.userHasValidated ? 'Ya validaste' : 'Yo tambien me atiendo aca'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {incubatorOnlyItems.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">En incubadora</p>
+                <ul className="space-y-2">
+                  {incubatorOnlyItems.map((item) => {
+                    const reachedGoal = item.upvotesCount >= item.validationsGoal;
+                    return (
+                      <li key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                            <p className="text-xs text-slate-600">{item.address}</p>
+                            <p className="mt-1 text-xs text-slate-500">Zona: {item.zoneLabel}</p>
+                          </div>
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${reachedGoal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {reachedGoal ? 'Lista para activar' : 'En incubadora'}
+                          </span>
+                        </div>
+
+                        <p className="mt-2 text-xs text-slate-700">
+                          Respaldo comunitario: {item.upvotesCount} / {item.validationsGoal}
+                        </p>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{ width: `${Math.min(100, Math.round((item.upvotesCount / item.validationsGoal) * 100))}%` }}
+                          />
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleValidateVet(item.id);
+                            }}
+                            disabled={item.userHasValidated}
+                            className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            {item.userHasValidated ? 'Ya validaste' : 'Yo tambien me atiendo aca'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -1141,7 +1321,7 @@ export function NearbyVetsMapSection() {
       )}
 
       {showSuggestModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 md:items-center">
+        <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-900/45 md:items-center">
           <form onSubmit={handleSuggestVet} className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-4 md:rounded-3xl">
             <div className="mb-3 flex items-center justify-between">
               <div>
