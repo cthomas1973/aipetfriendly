@@ -43,6 +43,16 @@ function normalizePhone(phone: string) {
   return `whatsapp:+${digits}`;
 }
 
+function normalizeFrom(phone: string) {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith('whatsapp:')) {
+    return trimmed;
+  }
+
+  const digits = trimmed.replace(/\D/g, '');
+  return `whatsapp:+${digits}`;
+}
+
 function buildClaimUrl(claimToken: string) {
   const claimUrl = new URL(WEB_APP_URL);
   claimUrl.searchParams.set('tab', 'map');
@@ -67,7 +77,7 @@ async function sendWhatsApp(to: string, body: string) {
   }
 
   const form = new URLSearchParams({
-    From: TWILIO_WHATSAPP_FROM,
+    From: normalizeFrom(TWILIO_WHATSAPP_FROM),
     To: to,
     Body: body,
     StatusCallback: TWILIO_STATUS_CALLBACK_URL,
@@ -133,6 +143,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const veterinaryId = typeof body?.veterinaryId === 'string' ? body.veterinaryId.trim() : '';
+    const forceResend = Boolean(body?.force);
 
     if (!veterinaryId) {
       return new Response(JSON.stringify({ error: 'veterinaryId is required' }), {
@@ -182,7 +193,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (vet.consent_whatsapp_sent_at) {
+    if (vet.consent_whatsapp_sent_at && !forceResend) {
       return new Response(JSON.stringify({ sent: false, reason: 'already_sent' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

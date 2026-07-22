@@ -459,6 +459,7 @@ export function NearbyVetsMapSection() {
   const [claimConsentGranted, setClaimConsentGranted] = useState(false);
   const [claimBasicDataConfirmed, setClaimBasicDataConfirmed] = useState(false);
   const [claimBillingMode, setClaimBillingMode] = useState<'monthly_auto' | 'annual'>('monthly_auto');
+  const [resendingConsentVetId, setResendingConsentVetId] = useState<string | null>(null);
 
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
@@ -668,7 +669,7 @@ export function NearbyVetsMapSection() {
     )));
 
     if (updated.upvotesCount > 5) {
-      const autoDispatch = await triggerVeterinaryConsentWhatsApp(updated.id);
+      const autoDispatch = await triggerVeterinaryConsentWhatsApp({ veterinaryId: updated.id });
       if (autoDispatch.sent) {
         setSectionMessage(`${updated.name} supero los 5 respaldos. Se envio automaticamente la solicitud de consentimiento por WhatsApp.`);
       } else {
@@ -684,26 +685,33 @@ export function NearbyVetsMapSection() {
     name: string;
     upvotesCount: number;
   }) => {
-    const dispatch = await triggerVeterinaryConsentWhatsApp(vet.id);
-    if (dispatch.sent) {
-      setSectionMessage(`Solicitud enviada a ${vet.name} por WhatsApp con landing de consentimiento (respaldo: ${vet.upvotesCount}).`);
-      return;
-    }
+    setResendingConsentVetId(vet.id);
+    setSectionMessage(`Enviando consentimiento a ${vet.name}...`);
 
-    if (dispatch.reason === 'already_sent') {
-      setSectionMessage(`${vet.name} ya recibio la solicitud previamente.`);
-      return;
-    }
-    if (dispatch.reason === 'missing_claim_token') {
-      setSectionMessage(`${vet.name} no tiene token de claim. Regenera la sugerencia o revisa el registro.`);
-      return;
-    }
-    if (dispatch.reason === 'missing_whatsapp') {
-      setSectionMessage(`${vet.name} no tiene WhatsApp cargado para poder enviar la solicitud.`);
-      return;
-    }
+    try {
+      const dispatch = await triggerVeterinaryConsentWhatsApp({
+        veterinaryId: vet.id,
+        force: true,
+      });
 
-    setSectionMessage(`No se pudo enviar automaticamente el consentimiento para ${vet.name} (${dispatch.reason || 'error'}).`);
+      if (dispatch.sent) {
+        setSectionMessage(`Solicitud enviada a ${vet.name} por WhatsApp con landing de consentimiento (respaldo: ${vet.upvotesCount}).`);
+        return;
+      }
+
+      if (dispatch.reason === 'missing_claim_token') {
+        setSectionMessage(`${vet.name} no tiene token de claim. Regenera la sugerencia o revisa el registro.`);
+        return;
+      }
+      if (dispatch.reason === 'missing_whatsapp') {
+        setSectionMessage(`${vet.name} no tiene WhatsApp cargado para poder enviar la solicitud.`);
+        return;
+      }
+
+      setSectionMessage(`No se pudo enviar automaticamente el consentimiento para ${vet.name} (${dispatch.error || dispatch.reason || 'error'}).`);
+    } finally {
+      setResendingConsentVetId(null);
+    }
   }, []);
 
   const handleClaimDecision = useCallback(async (action: 'correct' | 'reject' | 'subscribe') => {
@@ -1431,9 +1439,10 @@ export function NearbyVetsMapSection() {
                                   upvotesCount: item.upvotesCount,
                                 });
                               }}
+                              disabled={resendingConsentVetId === item.id}
                               className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
                             >
-                              Reenviar consentimiento (admin)
+                              {resendingConsentVetId === item.id ? 'Enviando...' : 'Reenviar consentimiento (admin)'}
                             </button>
                           )}
                         </div>
@@ -1494,9 +1503,10 @@ export function NearbyVetsMapSection() {
                                   upvotesCount: item.upvotesCount,
                                 });
                               }}
+                              disabled={resendingConsentVetId === item.id}
                               className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700"
                             >
-                              Reenviar consentimiento (admin)
+                              {resendingConsentVetId === item.id ? 'Enviando...' : 'Reenviar consentimiento (admin)'}
                             </button>
                           )}
                         </div>
