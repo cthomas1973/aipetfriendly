@@ -409,7 +409,7 @@ function formatArs(value: number) {
 }
 
 export function NearbyVetsMapSection() {
-  const { user, pets, setActiveTab } = useAppState();
+  const { user, setActiveTab } = useAppState();
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
@@ -599,49 +599,6 @@ export function NearbyVetsMapSection() {
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   }, [user?.id]);
 
-  const notifySuggestedVetByWhatsApp = useCallback((args: {
-    vetName: string;
-    vetPhone?: string;
-    zoneLabel: string;
-    address: string;
-    shareIdentity: boolean;
-    claimToken?: string;
-    upvotesCount?: number;
-  }) => {
-    const digitsOnlyPhone = (args.vetPhone || '').replace(/\D/g, '');
-    if (!digitsOnlyPhone) {
-      setSectionMessage('La sugerencia fue guardada, pero no hay un WhatsApp valido para avisar a la veterinaria.');
-      return;
-    }
-
-    const userAlias = user?.email?.split('@')[0] || 'usuario';
-    const ownerPetNames = pets.map((pet) => pet.name).filter(Boolean);
-    const petSummary = ownerPetNames.length > 0 ? ownerPetNames.join(', ') : 'mascotas de la comunidad';
-    const claimUrl = args.claimToken ? buildClaimUrl(args.claimToken, user?.id) : '';
-
-    const whoSuggested = args.shareIdentity
-      ? `La sugerencia fue hecha por ${userAlias} (${petSummary}).`
-      : 'La sugerencia fue enviada por la comunidad AiPetFriendly (anonima).';
-
-    const backingText = typeof args.upvotesCount === 'number'
-      ? `Mas de ${args.upvotesCount} usuarios solicitaron que aparezcas en la app.`
-      : 'Usuarios de tu zona solicitaron que aparezcas en la app.';
-
-    const consentMessage = [
-      `Hola ${args.vetName}.`,
-      'Te escribe el equipo de AiPetFriendly.',
-      whoSuggested,
-      backingText,
-      `Queremos pedirte consentimiento para publicar tus datos en la zona ${args.zoneLabel}.`,
-      `Datos sugeridos: ${args.vetName} | ${args.address}${args.vetPhone ? ` | WhatsApp ${args.vetPhone}` : ''}.`,
-      'Puedes confirmar o corregir datos, rechazar la publicacion, o activar Premium para aparecer destacada.',
-      claimUrl ? `Activalo aqui: ${claimUrl}` : '',
-    ].join(' ');
-
-    const url = `https://wa.me/${digitsOnlyPhone}?text=${encodeURIComponent(consentMessage)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [pets, user?.email]);
-
   const handleSuggestVet = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user || user.isGuest) {
@@ -721,6 +678,33 @@ export function NearbyVetsMapSection() {
       setSectionMessage('Gracias por validar la veterinaria sugerida.');
     }
   }, [user]);
+
+  const handleAdminResendConsent = useCallback(async (vet: {
+    id: string;
+    name: string;
+    upvotesCount: number;
+  }) => {
+    const dispatch = await triggerVeterinaryConsentWhatsApp(vet.id);
+    if (dispatch.sent) {
+      setSectionMessage(`Solicitud enviada a ${vet.name} por WhatsApp con landing de consentimiento (respaldo: ${vet.upvotesCount}).`);
+      return;
+    }
+
+    if (dispatch.reason === 'already_sent') {
+      setSectionMessage(`${vet.name} ya recibio la solicitud previamente.`);
+      return;
+    }
+    if (dispatch.reason === 'missing_claim_token') {
+      setSectionMessage(`${vet.name} no tiene token de claim. Regenera la sugerencia o revisa el registro.`);
+      return;
+    }
+    if (dispatch.reason === 'missing_whatsapp') {
+      setSectionMessage(`${vet.name} no tiene WhatsApp cargado para poder enviar la solicitud.`);
+      return;
+    }
+
+    setSectionMessage(`No se pudo enviar automaticamente el consentimiento para ${vet.name} (${dispatch.reason || 'error'}).`);
+  }, []);
 
   const handleClaimDecision = useCallback(async (action: 'correct' | 'reject' | 'subscribe') => {
     if (!claimToken) {
@@ -1440,15 +1424,13 @@ export function NearbyVetsMapSection() {
                           {user?.isAdmin && item.phoneWhatsapp && (
                             <button
                               type="button"
-                              onClick={() => notifySuggestedVetByWhatsApp({
-                                vetName: item.name,
-                                vetPhone: item.phoneWhatsapp,
-                                zoneLabel: item.zoneLabel,
-                                address: item.address,
-                                shareIdentity: false,
-                                claimToken: item.claimToken,
-                                upvotesCount: item.upvotesCount,
-                              })}
+                              onClick={() => {
+                                void handleAdminResendConsent({
+                                  id: item.id,
+                                  name: item.name,
+                                  upvotesCount: item.upvotesCount,
+                                });
+                              }}
                               className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
                             >
                               Reenviar consentimiento (admin)
@@ -1505,15 +1487,13 @@ export function NearbyVetsMapSection() {
                           {user?.isAdmin && item.phoneWhatsapp && (
                             <button
                               type="button"
-                              onClick={() => notifySuggestedVetByWhatsApp({
-                                vetName: item.name,
-                                vetPhone: item.phoneWhatsapp,
-                                zoneLabel: item.zoneLabel,
-                                address: item.address,
-                                shareIdentity: false,
-                                claimToken: item.claimToken,
-                                upvotesCount: item.upvotesCount,
-                              })}
+                              onClick={() => {
+                                void handleAdminResendConsent({
+                                  id: item.id,
+                                  name: item.name,
+                                  upvotesCount: item.upvotesCount,
+                                });
+                              }}
                               className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700"
                             >
                               Reenviar consentimiento (admin)
