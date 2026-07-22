@@ -1,4 +1,7 @@
 {
   "name": "send-veterinary-consent-whatsapp",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2"
+  }
 }
