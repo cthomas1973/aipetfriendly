@@ -874,6 +874,8 @@ export async function triggerVeterinaryConsentWhatsApp(args: {
   sent: boolean;
   reason?: string;
   error?: string;
+  providerMessageId?: string | null;
+  providerStatus?: string | null;
 }> {
   if (!isSupabaseConfigured) {
     return { sent: false, reason: 'supabase_not_configured' };
@@ -892,11 +894,19 @@ export async function triggerVeterinaryConsentWhatsApp(args: {
     };
   }
 
-  const payload = (data || {}) as { sent?: boolean; reason?: string; error?: string };
+  const payload = (data || {}) as {
+    sent?: boolean;
+    reason?: string;
+    error?: string;
+    providerMessageId?: string | null;
+    providerStatus?: string | null;
+  };
   return {
     sent: Boolean(payload.sent),
     reason: payload.reason,
     error: payload.error,
+    providerMessageId: payload.providerMessageId,
+    providerStatus: payload.providerStatus,
   };
 }
 

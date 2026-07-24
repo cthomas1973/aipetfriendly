@@ -695,7 +695,9 @@ export function NearbyVetsMapSection() {
       });
 
       if (dispatch.sent) {
-        setSectionMessage(`Solicitud enviada a ${vet.name} por WhatsApp con landing de consentimiento (respaldo: ${vet.upvotesCount}).`);
+        setSectionMessage(
+          `Solicitud encolada en Twilio para ${vet.name} (respaldo: ${vet.upvotesCount}). SID: ${dispatch.providerMessageId || 'N/D'}. Estado inicial: ${dispatch.providerStatus || 'queued'}.`,
+        );
         return;
       }
 

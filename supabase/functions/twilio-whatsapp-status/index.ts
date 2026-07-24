@@ -51,6 +51,25 @@ async function updateLogByMessageId(messageSid: string, status: NotificationStat
   }
 }
 
+async function updateVeterinaryLogByMessageId(messageSid: string, status: NotificationStatus, payload: Record<string, string>) {
+  const update: Record<string, unknown> = {
+    status,
+    provider_status: payload.MessageStatus || status,
+    provider_response: payload,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('veterinary_notification_logs')
+    .update(update)
+    .eq('provider_message_id', messageSid)
+    .eq('channel', 'whatsapp');
+
+  if (error) {
+    throw error;
+  }
+}
+
 async function fetchTwilioMessageStatus(messageSid: string) {
   const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
   const response = await fetch(
@@ -97,6 +116,7 @@ Deno.serve(async (req) => {
 
       const mappedStatus = mapTwilioStatus(payload.MessageStatus ?? null);
       await updateLogByMessageId(payload.MessageSid, mappedStatus, payload);
+      await updateVeterinaryLogByMessageId(payload.MessageSid, mappedStatus, payload);
 
       return new Response(JSON.stringify({ ok: true, messageSid: payload.MessageSid, status: mappedStatus }), {
         status: 200,

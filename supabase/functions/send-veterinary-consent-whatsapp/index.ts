@@ -255,7 +255,13 @@ Deno.serve(async (req) => {
       console.error('notification log error', logError);
     }
 
-    return new Response(JSON.stringify({ sent: true, veterinaryId: vet.id, upvotes: vet.upvotes_count }), {
+    return new Response(JSON.stringify({
+      sent: true,
+      veterinaryId: vet.id,
+      upvotes: vet.upvotes_count,
+      providerMessageId: twilioResponse.sid ?? null,
+      providerStatus: twilioResponse.status ?? 'queued',
+    }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
