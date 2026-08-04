@@ -7,6 +7,7 @@ import {
   PawPrint,
   ShieldCheck,
 } from 'lucide-react';
+import { PET_GUIDES } from '../data/petGuides';
 
 interface LandingSectionProps {
   onEnterApp: () => void;
@@ -92,6 +93,32 @@ export function LandingSection({ onEnterApp }: LandingSectionProps) {
           <BadgeCheck size={16} />
           Sin tarjeta de crédito para empezar.
         </div>
+      </div>
+
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
+        <h2 className="font-bold text-slate-900">Guías y consejos gratuitos</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Recomendaciones sobre adiestramiento, ansiedad y conducta, escritas para ayudarte con
+          los casos más comunes en el día a día con tu mascota.
+        </p>
+        <ul className="mt-3 space-y-2">
+          {PET_GUIDES.slice(0, 4).map((guide) => (
+            <li key={guide.slug}>
+              <a
+                href={`/guias/${guide.slug}`}
+                className="text-sm font-semibold text-emerald-700 hover:underline"
+              >
+                {guide.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <a
+          href="/guias"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-emerald-700 hover:underline"
+        >
+          Ver todas las guías →
+        </a>
       </div>
 
       <div className="text-center">

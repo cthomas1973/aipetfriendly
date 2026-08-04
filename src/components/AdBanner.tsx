@@ -47,14 +47,20 @@ export function loadAdSenseScript(clientId: string = ADSENSE_CLIENT_ID): Promise
 
 interface AdBannerProps {
   adSenseSlotId: string;
+  // Permite mostrar el anuncio a cualquier visitante (incluso sin login), para
+  // paginas de contenido publico (ej. guias) donde si queremos monetizar
+  // trafico organico. En pantallas normales de la app, los anuncios siguen
+  // restringidos a usuarios logueados no premium.
+  forcePublic?: boolean;
 }
 
-export function AdBanner({ adSenseSlotId }: AdBannerProps) {
+export function AdBanner({ adSenseSlotId, forcePublic = false }: AdBannerProps) {
   const { user, subscription } = useAppState();
   const insRef = useRef<HTMLModElement>(null);
 
   const isNative = Capacitor.isNativePlatform();
-  const shouldShowAds = Boolean(user && !user.isGuest && !subscription.isPremiumUser);
+  const shouldShowAds = !subscription.isPremiumUser
+    && (forcePublic || Boolean(user && !user.isGuest));
 
   useEffect(() => {
     if (isNative || !shouldShowAds || !ADSENSE_CLIENT_ID) {

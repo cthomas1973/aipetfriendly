@@ -21,6 +21,7 @@ import {
   PaywallCard,
   SubscriptionBanner,
 } from './components/SubscriptionComponents';
+import { PetGuidesSection } from './components/PetGuidesSection';
 import { AppStateContext, useAppState } from './context/AppStateContext';
 import { usePreventive } from './hooks/usePreventive';
 import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
@@ -191,12 +192,17 @@ function AppContent() {
   const currentPath = window.location.pathname;
   const urlParams = new URLSearchParams(window.location.search);
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
+  const isGuidesRoute = currentPath === '/guias' || currentPath.startsWith('/guias/');
+  const guideSlug = isGuidesRoute ? currentPath.replace(/^\/guias\/?/, '') || undefined : undefined;
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
+  // La barra de tabs de la app solo tiene sentido si hay un usuario navegando
+  // dentro de la app; en /guias sin login se muestra como pagina publica de contenido.
+  const showAppNav = !isResetPasswordRoute && !isLandingRoute && (!isGuidesRoute || Boolean(user));
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -311,6 +317,10 @@ function AppContent() {
       return <AuthScreens initialMode="reset-password" />;
     }
 
+    if (isGuidesRoute) {
+      return <PetGuidesSection slug={guideSlug} />;
+    }
+
     if (isLandingRoute) {
       return <LandingSection onEnterApp={() => setShowAuthGate(true)} />;
     }
@@ -383,7 +393,7 @@ function AppContent() {
           </button>
         </div>
 
-        {!isResetPasswordRoute && !isLandingRoute && (
+        {!isResetPasswordRoute && showAppNav && (
           <DesktopTabNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
         )}
 
@@ -422,7 +432,7 @@ function AppContent() {
         </section>
       </main>
 
-      {!isResetPasswordRoute && !isLandingRoute && (
+      {!isResetPasswordRoute && showAppNav && (
         <BottomNav
           activeTab={activeTab}
           onChange={setActiveTab}
@@ -432,7 +442,7 @@ function AppContent() {
       )}
 
       {!isResetPasswordRoute && (
-        <InstallPwaPrompt liftedForNav={!isLandingRoute} />
+        <InstallPwaPrompt liftedForNav={showAppNav} />
       )}
 
       {popupQueue.length > 0 && !isResetPasswordRoute && (
