@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-import { Capacitor } from '@capacitor/core';
 import {
   BadgeCheck,
   CalendarDays,
@@ -9,7 +7,6 @@ import {
   PawPrint,
   ShieldCheck,
 } from 'lucide-react';
-import { loadAdSenseScript } from './AdBanner';
 
 interface LandingSectionProps {
   onEnterApp: () => void;
@@ -44,15 +41,6 @@ const FEATURES: Array<{ icon: typeof PawPrint; title: string; description: strin
 ];
 
 export function LandingSection({ onEnterApp }: LandingSectionProps) {
-  useEffect(() => {
-    // Carga el script de AdSense solo en web publica (no dentro del WebView
-    // nativo de Android) para que el bot de revision de Google pueda
-    // detectarlo, aunque el resto de la app este detras de autenticacion.
-    if (!Capacitor.isNativePlatform()) {
-      void loadAdSenseScript();
-    }
-  }, []);
-
   return (
     <section className="space-y-8 pb-6">
       <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-center text-white shadow-md md:p-10">
