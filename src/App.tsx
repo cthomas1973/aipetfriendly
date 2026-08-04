@@ -12,6 +12,7 @@ import { AdminUsersSection } from './components/AdminUsersSection';
 import { AgendaSection } from './components/AgendaSection';
 import { AuthScreens } from './components/AuthScreens';
 import { ChatSection } from './components/ChatSection';
+import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetsSection } from './components/PetsSection';
@@ -428,6 +429,10 @@ function AppContent() {
           isAdmin={Boolean(user?.isAdmin)}
           hasMobileBanner={hasMobileBanner}
         />
+      )}
+
+      {!isResetPasswordRoute && (
+        <InstallPwaPrompt liftedForNav={!isLandingRoute} />
       )}
 
       {popupQueue.length > 0 && !isResetPasswordRoute && (
