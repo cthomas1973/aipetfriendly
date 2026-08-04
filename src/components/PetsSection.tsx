@@ -8,6 +8,7 @@ import { useClinical } from '../hooks/useClinical';
 import { usePets } from '../hooks/usePets';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
+import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import {
   buildCountryOptionsForPicker,
@@ -677,6 +678,8 @@ export function PetsSection() {
         </div>
         )
       )}
+
+      <PetGuidesTeaser className="mt-2" />
     </section>
   );
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Brain,
   ChevronLeft,
@@ -10,9 +10,13 @@ import {
 import { AdBanner } from './AdBanner';
 import {
   PET_GUIDE_CATEGORY_LABELS,
-  PET_GUIDES,
+  PET_GUIDE_TYPE_LABELS,
+  filterGuides,
+  getGuidesSortedByDate,
   getPetGuideBySlug,
+  isRecentlyPublished,
   type PetGuideCategory,
+  type PetGuidePetType,
 } from '../data/petGuides';
 
 const CATEGORY_ICONS: Record<PetGuideCategory, typeof PawPrint> = {
@@ -21,6 +25,20 @@ const CATEGORY_ICONS: Record<PetGuideCategory, typeof PawPrint> = {
   conducta: ShieldAlert,
   salud: HeartPulse,
 };
+
+const CATEGORY_FILTERS: Array<{ value: PetGuideCategory | 'todas'; label: string }> = [
+  { value: 'todas', label: 'Todas' },
+  { value: 'adiestramiento', label: PET_GUIDE_CATEGORY_LABELS.adiestramiento },
+  { value: 'ansiedad', label: PET_GUIDE_CATEGORY_LABELS.ansiedad },
+  { value: 'conducta', label: PET_GUIDE_CATEGORY_LABELS.conducta },
+  { value: 'salud', label: PET_GUIDE_CATEGORY_LABELS.salud },
+];
+
+const PET_TYPE_FILTERS: Array<{ value: PetGuidePetType | 'todas'; label: string }> = [
+  { value: 'todas', label: 'Todas' },
+  { value: 'perro', label: PET_GUIDE_TYPE_LABELS.perro },
+  { value: 'gato', label: PET_GUIDE_TYPE_LABELS.gato },
+];
 
 const SITE_DESCRIPTION_DEFAULT =
   'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
@@ -34,12 +52,20 @@ function setPageMeta(title: string, description: string) {
 }
 
 function GuidesList() {
+  const [category, setCategory] = useState<PetGuideCategory | 'todas'>('todas');
+  const [petType, setPetType] = useState<PetGuidePetType | 'todas'>('todas');
+
   useEffect(() => {
     setPageMeta(
       'Guías y consejos para el cuidado de tu mascota | AiPetFriendly',
       'Guías gratuitas sobre adiestramiento, ansiedad, conducta y salud de perros y gatos, escritas para ayudarte en el día a día con tu mascota.',
     );
   }, []);
+
+  const guides = useMemo(
+    () => filterGuides(getGuidesSortedByDate(), { category, petType }),
+    [category, petType],
+  );
 
   return (
     <section className="space-y-6 pb-6">
@@ -62,31 +88,77 @@ function GuidesList() {
 
       <AdBanner adSenseSlotId="3333333333" forcePublic />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {PET_GUIDES.map((guide) => {
-          const Icon = CATEGORY_ICONS[guide.category];
-          return (
-            <a
-              key={guide.slug}
-              href={`/guias/${guide.slug}`}
-              className="block rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 transition hover:shadow-md"
+      <div className="space-y-2">
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {CATEGORY_FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => setCategory(filter.value)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                category === filter.value
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-white text-slate-600 ring-1 ring-emerald-100 hover:bg-emerald-50'
+              }`}
             >
-              <div className="flex items-start gap-3">
-                <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                  <Icon size={18} />
-                </span>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
-                    {PET_GUIDE_CATEGORY_LABELS[guide.category]} · {guide.readingTime}
-                  </p>
-                  <h2 className="mt-1 font-bold text-slate-900">{guide.title}</h2>
-                  <p className="mt-1 text-sm text-slate-600">{guide.summary}</p>
-                </div>
-              </div>
-            </a>
-          );
-        })}
+              {filter.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {PET_TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => setPetType(filter.value)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                petType === filter.value
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {guides.length === 0 ? (
+        <p className="text-center text-sm text-slate-500">
+          No hay guías todavía para este filtro. Probá con otra combinación.
+        </p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {guides.map((guide) => {
+            const Icon = CATEGORY_ICONS[guide.category];
+            return (
+              <a
+                key={guide.slug}
+                href={`/guias/${guide.slug}`}
+                className="block rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 transition hover:shadow-md"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <Icon size={18} />
+                  </span>
+                  <div>
+                    <p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                      {PET_GUIDE_CATEGORY_LABELS[guide.category]} · {guide.readingTime}
+                      {isRecentlyPublished(guide.publishedAt) && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          Nuevo
+                        </span>
+                      )}
+                    </p>
+                    <h2 className="mt-1 font-bold text-slate-900">{guide.title}</h2>
+                    <p className="mt-1 text-sm text-slate-600">{guide.summary}</p>
+                  </div>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -125,9 +197,22 @@ function GuideDetail({ slug }: { slug: string }) {
       </a>
 
       <header>
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">
           <Icon size={16} />
           {PET_GUIDE_CATEGORY_LABELS[guide.category]} · {guide.readingTime} de lectura
+          {isRecentlyPublished(guide.publishedAt) && (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+              Nuevo
+            </span>
+          )}
+          {guide.petTypes.map((petType) => (
+            <span
+              key={petType}
+              className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal text-slate-600"
+            >
+              {PET_GUIDE_TYPE_LABELS[petType]}
+            </span>
+          ))}
         </div>
         <h1 className="mt-2 text-2xl font-extrabold text-slate-900 md:text-3xl">{guide.title}</h1>
         <p className="mt-2 text-sm text-slate-600 md:text-base">{guide.summary}</p>

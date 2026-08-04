@@ -1,4 +1,5 @@
 export type PetGuideCategory = 'adiestramiento' | 'ansiedad' | 'conducta' | 'salud';
+export type PetGuidePetType = 'perro' | 'gato';
 
 export interface PetGuideSection {
   heading: string;
@@ -9,6 +10,11 @@ export interface PetGuide {
   slug: string;
   title: string;
   category: PetGuideCategory;
+  petTypes: PetGuidePetType[];
+  // Fecha ISO (YYYY-MM-DD) de publicacion. Se usa para ordenar por novedad y
+  // para mostrar la etiqueta "Nuevo". Al sumar guias nuevas cada semana, basta
+  // con agregarlas al array con la fecha del dia.
+  publishedAt: string;
   summary: string;
   readingTime: string;
   sections: PetGuideSection[];
@@ -26,6 +32,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'ansiedad-por-separacion-en-perros',
     title: 'Ansiedad por separación en perros: cómo identificarla y tratarla',
     category: 'ansiedad',
+    petTypes: ['perro'],
+    publishedAt: '2026-06-16',
     summary:
       'Ladridos, destrozos y accidentes cuando el perro se queda solo pueden ser señales de ansiedad por separación. Te contamos cómo reconocerla y un plan de trabajo gradual para mejorarla.',
     readingTime: '6 min',
@@ -64,6 +72,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'como-socializar-un-cachorro',
     title: 'Cómo socializar a un cachorro correctamente',
     category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-06-23',
     summary:
       'Las primeras 16 semanas de vida son claves para formar un perro adulto seguro y equilibrado. Guía práctica de socialización, paso a paso y sin sobreexponer al cachorro.',
     readingTime: '5 min',
@@ -103,6 +113,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'adiestramiento-en-positivo-comandos-basicos',
     title: 'Adiestramiento en positivo: los comandos básicos para empezar',
     category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-06-30',
     summary:
       'Sentado, quieto, ven y junto: cómo enseñar los comandos fundamentales usando refuerzo positivo, sin gritos ni castigos.',
     readingTime: '7 min',
@@ -146,6 +158,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'ansiedad-en-gatos-senales-y-soluciones',
     title: 'Ansiedad en gatos: señales que pasan desapercibidas',
     category: 'ansiedad',
+    petTypes: ['gato'],
+    publishedAt: '2026-07-07',
     summary:
       'Los gatos expresan el estrés de forma mucho más sutil que los perros. Aprendé a reconocer las señales tempranas y cómo mejorar su entorno.',
     readingTime: '5 min',
@@ -182,6 +196,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'como-prevenir-el-estres-en-viajes-y-mudanzas',
     title: 'Cómo prevenir el estrés en viajes y mudanzas',
     category: 'ansiedad',
+    petTypes: ['perro', 'gato'],
+    publishedAt: '2026-07-14',
     summary:
       'Viajar en auto, mudarse de casa o cambiar de rutina puede ser muy estresante para una mascota. Tips prácticos para que la transición sea más tranquila.',
     readingTime: '4 min',
@@ -213,6 +229,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'destructividad-y-ladridos-excesivos',
     title: 'Destructividad y ladridos excesivos: por qué pasan y cómo abordarlos',
     category: 'conducta',
+    petTypes: ['perro'],
+    publishedAt: '2026-07-21',
     summary:
       'Antes de pensar en "corregir" estos comportamientos, hay que entender qué necesidad está cubriendo el perro. Guía para identificar la causa y trabajarla.',
     readingTime: '6 min',
@@ -249,6 +267,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'primeros-auxilios-basicos-para-mascotas',
     title: 'Primeros auxilios básicos para mascotas: qué hacer mientras llegás al veterinario',
     category: 'salud',
+    petTypes: ['perro', 'gato'],
+    publishedAt: '2026-07-28',
     summary:
       'Ante una urgencia, los primeros minutos importan. Estas son pautas generales de primeros auxilios, que nunca reemplazan la atención veterinaria.',
     readingTime: '5 min',
@@ -289,6 +309,8 @@ export const PET_GUIDES: PetGuide[] = [
     slug: 'vacunas-y-desparasitacion-guia-para-no-perderse',
     title: 'Vacunas y desparasitación: guía para no perderte ninguna dosis',
     category: 'salud',
+    petTypes: ['perro', 'gato'],
+    publishedAt: '2026-08-04',
     summary:
       'Cumplir el calendario de vacunas y desparasitaciones es una de las formas más simples y efectivas de prevenir enfermedades graves. Cómo organizarlo sin olvidos.',
     readingTime: '4 min',
@@ -316,6 +338,38 @@ export const PET_GUIDES: PetGuide[] = [
   },
 ];
 
+export const PET_GUIDE_TYPE_LABELS: Record<PetGuidePetType, string> = {
+  perro: 'Perros',
+  gato: 'Gatos',
+};
+
 export function getPetGuideBySlug(slug: string): PetGuide | undefined {
   return PET_GUIDES.find((guide) => guide.slug === slug);
+}
+
+export function getGuidesSortedByDate(): PetGuide[] {
+  return [...PET_GUIDES].sort(
+    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+  );
+}
+
+export function getRecentGuides(count = 5): PetGuide[] {
+  return getGuidesSortedByDate().slice(0, count);
+}
+
+export function isRecentlyPublished(publishedAt: string, days = 7): boolean {
+  const publishedTime = new Date(publishedAt).getTime();
+  const diffDays = (Date.now() - publishedTime) / (1000 * 60 * 60 * 24);
+  return diffDays >= 0 && diffDays <= days;
+}
+
+export function filterGuides(
+  guides: PetGuide[],
+  filters: { category?: PetGuideCategory | 'todas'; petType?: PetGuidePetType | 'todas' },
+): PetGuide[] {
+  return guides.filter((guide) => {
+    const matchesCategory = !filters.category || filters.category === 'todas' || guide.category === filters.category;
+    const matchesPetType = !filters.petType || filters.petType === 'todas' || guide.petTypes.includes(filters.petType);
+    return matchesCategory && matchesPetType;
+  });
 }
