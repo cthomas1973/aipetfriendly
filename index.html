@@ -20,10 +20,16 @@
     <meta name="apple-mobile-web-app-title" content="AiPetFriendly" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
-    <!-- Verificacion de sitio para AdSense sin ejecutar el script en cada pantalla. -->
-    <!-- El script completo (y los anuncios automaticos) solo se cargan desde AdBanner.tsx, -->
-    <!-- unicamente en pantallas con contenido real y para usuarios logueados no premium. -->
+    <!-- Verificacion/vinculacion de sitio para AdSense. IMPORTANTE: si Anuncios -->
+    <!-- automaticos (Auto ads) esta activado en el panel de AdSense para este -->
+    <!-- sitio, este script puede insertar anuncios en cualquier pantalla, -->
+    <!-- incluidas las que no tienen contenido (login, admin, estados vacios). -->
+    <!-- Por eso Auto ads debe estar DESACTIVADO en AdSense; los anuncios reales -->
+    <!-- se sirven de forma controlada desde AdBanner.tsx solo en pantallas con -->
+    <!-- contenido (Mapa, Ofertas, Guias). -->
     <meta name="google-adsense-account" content="ca-pub-6832982895640680" />
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6832982895640680"
+     crossorigin="anonymous"></script>
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="AiPetFriendly" />
