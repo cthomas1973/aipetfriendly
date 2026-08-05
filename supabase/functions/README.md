@@ -8,6 +8,7 @@ Deploy con Supabase CLI:
 supabase functions deploy send-clinical-pdf --no-verify-jwt
 supabase functions deploy pet-ai-chat
 supabase functions deploy send-veterinary-consent-whatsapp
+supabase functions deploy send-feedback
 ```
 
 ## Variables de entorno
@@ -24,6 +25,7 @@ Configurar en Supabase Dashboard:
 - `TWILIO_WHATSAPP_CONTENT_SID`: Content SID `HX...` de la plantilla aprobada de WhatsApp. Si está presente, `send-preventive-reminders` la usa para enviar recordatorios.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`: credenciales para envios WhatsApp desde Twilio.
 - `SUPABASE_ANON_KEY`: requerido por `send-veterinary-consent-whatsapp` para validar JWT de quien dispara el envio automatico.
+- `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_NOTIFICATION_EMAIL`: requeridos por `send-feedback` para enviar las sugerencias/reclamos por email (mismo servicio que usan `send-clinical-pdf` y `send-preventive-reminders`).
 
 ## Storage Bucket
 
@@ -65,3 +67,22 @@ const { data, error } = await supabase.functions.invoke('pet-ai-chat', {
 if (error) throw error;
 console.log(data.answer);
 ```
+
+### Sugerencias y reclamos (Mi Cuenta)
+
+```typescript
+const { data, error } = await supabase.functions.invoke('send-feedback', {
+  body: {
+    userId: user?.id ?? null,
+    name: 'Juan Perez',
+    email: 'juan@example.com',
+    type: 'sugerencia', // 'sugerencia' | 'reclamo' | 'otro'
+    message: 'Estaria bueno poder...',
+    page: 'mi-cuenta',
+  },
+});
+
+if (error) throw error;
+```
+
+Guarda el mensaje en la tabla `feedback_messages` (visible solo para admins via RLS) y envia un email a `ADMIN_NOTIFICATION_EMAIL` con `reply-to` al email del usuario, para poder responderle directamente desde el mismo hilo de correo.

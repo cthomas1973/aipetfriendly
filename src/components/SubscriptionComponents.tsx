@@ -10,6 +10,7 @@ import {
   createMercadoPagoRecurringSubscription,
   fetchBillingPricingSettings,
   fetchBeneficiosProductos,
+  sendFeedbackMessage,
 } from '../lib/supabase';
 import type { BillingPricingSettings, Species } from '../types';
 
@@ -148,6 +149,12 @@ export function PaywallCard() {
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
   const [whatsAppConsent, setWhatsAppConsent] = useState(false);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'sugerencia' | 'reclamo' | 'otro'>('sugerencia');
+  const [feedbackName, setFeedbackName] = useState(user?.fullName ?? '');
+  const [feedbackEmail, setFeedbackEmail] = useState(user?.email ?? '');
+  const [feedbackMessageText, setFeedbackMessageText] = useState('');
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackResult, setFeedbackResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [checkoutLoadingMode, setCheckoutLoadingMode] = useState<'monthly' | 'annual' | 'monthly_manual' | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
@@ -748,6 +755,112 @@ export function PaywallCard() {
           </p>
         </div>
       )}
+
+      <div className="rounded-3xl bg-white p-5 shadow-sm space-y-3">
+        <div>
+          <h3 className="font-bold text-slate-900">Sugerencias y reclamos</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Contanos que mejorarias o si tuviste un problema. Te leemos y te respondemos por email.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {([
+            { value: 'sugerencia', label: 'Sugerencia' },
+            { value: 'reclamo', label: 'Reclamo' },
+            { value: 'otro', label: 'Otra consulta' },
+          ] as const).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setFeedbackType(option.value)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                feedbackType === option.value
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Nombre (opcional)</label>
+            <input
+              value={feedbackName}
+              onChange={(e) => setFeedbackName(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              placeholder="Tu nombre"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Tu email</label>
+            <input
+              type="email"
+              value={feedbackEmail}
+              onChange={(e) => setFeedbackEmail(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              placeholder="tu@email.com"
+              required
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Mensaje</label>
+          <textarea
+            value={feedbackMessageText}
+            onChange={(e) => setFeedbackMessageText(e.target.value)}
+            className="min-h-28 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            placeholder="Contanos con el mayor detalle posible..."
+          />
+        </div>
+
+        <button
+          type="button"
+          disabled={feedbackSending}
+          onClick={async () => {
+            setFeedbackResult(null);
+
+            if (!feedbackEmail.trim() || !feedbackMessageText.trim()) {
+              setFeedbackResult({ ok: false, text: 'Completa tu email y el mensaje antes de enviar.' });
+              return;
+            }
+
+            setFeedbackSending(true);
+            try {
+              await sendFeedbackMessage({
+                userId: user && !user.isGuest ? user.id : null,
+                name: feedbackName.trim() || undefined,
+                email: feedbackEmail.trim(),
+                type: feedbackType,
+                message: feedbackMessageText.trim(),
+                page: 'mi-cuenta',
+              });
+              setFeedbackMessageText('');
+              setFeedbackResult({ ok: true, text: 'Gracias! Recibimos tu mensaje y te vamos a responder por email.' });
+            } catch (error) {
+              setFeedbackResult({
+                ok: false,
+                text: error instanceof Error ? error.message : 'No se pudo enviar el mensaje. Intenta nuevamente.',
+              });
+            } finally {
+              setFeedbackSending(false);
+            }
+          }}
+          className="w-full rounded-full bg-slate-800 py-3.5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {feedbackSending ? 'Enviando...' : 'Enviar mensaje'}
+        </button>
+
+        {feedbackResult && (
+          <p className={`rounded-xl px-3 py-2 text-sm ${feedbackResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+            {feedbackResult.text}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

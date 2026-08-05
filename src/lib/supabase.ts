@@ -1002,6 +1002,27 @@ export async function askPetAssistant(payload: PetAssistantRequest): Promise<Pet
   return data as PetAssistantResponse;
 }
 
+export async function sendFeedbackMessage(args: {
+  userId?: string | null;
+  name?: string;
+  email: string;
+  type: 'sugerencia' | 'reclamo' | 'otro';
+  message: string;
+  page?: string;
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('send-feedback', {
+    body: args,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo enviar el mensaje.');
+  }
+
+  if (!data?.success) {
+    throw new Error('No se pudo enviar el mensaje.');
+  }
+}
+
 export async function fetchAiUsageSettings(): Promise<AiUsageSettings> {
   const { data, error } = await supabase.rpc('get_ai_usage_settings');
 
