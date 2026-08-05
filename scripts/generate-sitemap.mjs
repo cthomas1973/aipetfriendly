@@ -29,6 +29,22 @@ if (guides.length === 0) {
   process.exit(1);
 }
 
+// Validaciones basicas para que un error al cargar una guia nueva se note en el build
+// automatico (Vercel) en vez de generar un sitemap.xml roto o incompleto en silencio.
+const seenSlugs = new Set();
+for (const guide of guides) {
+  if (seenSlugs.has(guide.slug)) {
+    console.error(`Slug duplicado en petGuides.ts: "${guide.slug}". Cada guia debe tener un slug unico.`);
+    process.exit(1);
+  }
+  seenSlugs.add(guide.slug);
+
+  if (Number.isNaN(new Date(guide.publishedAt).getTime())) {
+    console.error(`Fecha invalida en la guia "${guide.slug}": publishedAt="${guide.publishedAt}" (usar formato YYYY-MM-DD).`);
+    process.exit(1);
+  }
+}
+
 guides.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
 const staticUrls = [
