@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/generate-sitemap.mjs && tsc -b && vite build",
+    "generate-sitemap": "node scripts/generate-sitemap.mjs",
     "preview": "vite preview",
     "cap:sync": "npx cap sync",
     "android:sync": "npm run build && node scripts/fix-capacitor-windows.mjs && npx cap sync android",
