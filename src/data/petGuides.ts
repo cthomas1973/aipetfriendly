@@ -427,6 +427,94 @@ export const PET_GUIDES: PetGuide[] = [
       },
     ],
   },
+  {
+    slug: 'como-ensenar-a-tu-perro-a-dar-la-pata',
+    title: 'Cómo enseñar a tu perro a dar la pata: el saludo clásico',
+    category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-08-07',
+    summary:
+      'Dar la pata es uno de los trucos más simpáticos y también ayuda a que el perro use sus patas delanteras con delicadeza. Cómo enseñarlo paso a paso partiendo de "sentado".',
+    readingTime: '5 min',
+    coverImage: {
+      src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/portada.jpg',
+      alt: 'Perro sentado apoyando su pata delantera sobre la mano abierta de su entrenadora en el parque',
+    },
+    sections: [
+      {
+        heading: 'Por qué enseñar a dar la pata',
+        paragraphs: [
+          'Dar la pata es uno de los trucos más simpáticos y universales, pero además de ser un lindo saludo, ayuda a que el perro aprenda a usar sus patas delanteras con delicadeza y mejora su motricidad fina. Es un ejercicio ideal para practicar después de "sentado", ya que parte de esa misma base.',
+          'Como con cualquier truco, conviene practicarlo con calma y refuerzo positivo, sin apurar los tiempos del perro.',
+        ],
+      },
+      {
+        heading: 'Preparar el entorno',
+        paragraphs: [
+          'Conviene usar premios húmedos o de olor intenso (queso, hígado cocido), porque mantienen al perro concentrado y motivado durante el ejercicio.',
+          'Entrenar sobre una superficie blanda (pasto, alfombra) cuida las articulaciones del perro al apoyarse en tres patas. También ayuda que haya gastado algo de energía antes (una caminata corta), pero sin llegar a estar agotado: el objetivo es que esté atento, no cansado.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/preparacion.jpg',
+          alt: 'Entrenadora acariciando el hombro delantero del perro sentado sobre el pasto antes de empezar el ejercicio',
+        },
+      },
+      {
+        heading: 'Paso 1: el puño cerrado',
+        paragraphs: [
+          'Con el perro sentado, se cierra la mano con un premio adentro y se la acerca a unos 10 centímetros de su hocico, dejando que la huela sin decir nada.',
+          'Al principio es normal que intente lamer o mordisquear la mano para sacar la comida. Hay que mantener el puño cerrado y esperar con paciencia: por instinto, la mayoría de los perros termina levantando una pata y "raspando" la mano para intentar abrirla.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/paso-1-puno-cerrado.jpg',
+          alt: 'Perro levantando una pata delantera para tocar el puño cerrado de la entrenadora',
+        },
+      },
+      {
+        heading: 'Paso 2: capturar el toque y sumar la palabra',
+        paragraphs: [
+          'En el instante en que la pata roza el puño cerrado, hay que marcarlo con una palabra clara ("¡bien!") y abrir la mano para darle el premio de inmediato.',
+          'Repetir la secuencia 5 a 7 veces suele bastar para que el perro asocie tocar la mano con recibir el premio. Cuando ya levante la pata sin dudar, se agrega la palabra "¡pata!" justo antes de que la apoye.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/paso-2-capturar-toque.jpg',
+          alt: 'Entrenadora abriendo la mano para darle el premio al perro apenas toca su pata',
+        },
+      },
+      {
+        heading: 'Paso 3: pasar a la mano abierta',
+        paragraphs: [
+          'Para que el gesto se parezca a un saludo y no a un rascado, se cambia el puño cerrado por la palma abierta hacia arriba, sin premio a la vista. Al decir "¡pata!" y apoyar la pata sobre la palma, se marca y se entrega el premio con la otra mano.',
+          'De a poco se puede ir pidiendo el saludo a distintas alturas (cerca del piso, a la altura de la rodilla), para que el perro generalice el gesto en distintas posiciones.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/paso-3-mano-abierta.jpg',
+          alt: 'Perro apoyando la pata sobre la palma abierta de la entrenadora de pie',
+        },
+      },
+      {
+        heading: 'Resolución de problemas frecuentes',
+        paragraphs: [
+          'Si el perro muerde la mano en lugar de tocarla con la pata, suele ser por ansiedad: conviene esconder la mano un momento, esperar a que se calme y volver a ofrecer el puño más cerca de su pata.',
+          'Si da las dos patas a la vez o se tira encima, no conviene premiarlo: se pide "sentado" de nuevo y se retoma pidiendo una sola pata. Si levanta la pata pero no llega a tocar la mano, puede ayudar acercar un poco más la mano a su cuerpo.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/resolucion-problemas.jpg',
+          alt: 'Entrenadora retirando con calma la mano mientras el perro intenta lamerla en lugar de tocarla',
+        },
+      },
+      {
+        heading: 'Después de lograrlo',
+        paragraphs: [
+          'Practicar este saludo antes de la comida o antes de salir a pasear es una buena forma de pedirle "por favor" al perro, además de reforzar el vínculo. Cerrar siempre la sesión con caricias y elogios ayuda a que la asocie con una experiencia positiva.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-dar-la-pata/cierre.jpg',
+          alt: 'Entrenadora y perro sentados juntos en el pasto chocando la mano con la pata',
+        },
+      },
+    ],
+  },
 ];
 
 export const PET_GUIDE_TYPE_LABELS: Record<PetGuidePetType, string> = {
