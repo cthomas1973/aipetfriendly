@@ -136,9 +136,17 @@ function GuidesList() {
               <a
                 key={guide.slug}
                 href={`/guias/${guide.slug}`}
-                className="block rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 transition hover:shadow-md"
+                className="block overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100 transition hover:shadow-md"
               >
-                <div className="flex items-start gap-3">
+                {guide.coverImage && (
+                  <img
+                    src={guide.coverImage.src}
+                    alt={guide.coverImage.alt}
+                    loading="lazy"
+                    className="h-36 w-full object-cover"
+                  />
+                )}
+                <div className="flex items-start gap-3 p-5">
                   <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                     <Icon size={18} />
                   </span>
@@ -221,6 +229,15 @@ function GuideDetail({ slug }: { slug: string }) {
         <p className="mt-2 text-sm text-slate-600 md:text-base">{guide.summary}</p>
       </header>
 
+      {guide.coverImage && (
+        <img
+          src={guide.coverImage.src}
+          alt={guide.coverImage.alt}
+          loading="lazy"
+          className="max-h-80 w-full rounded-2xl object-cover"
+        />
+      )}
+
       <AdBanner adSenseSlotId="3333333333" forcePublic />
 
       <article className="space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
@@ -232,6 +249,14 @@ function GuideDetail({ slug }: { slug: string }) {
                 {paragraph}
               </p>
             ))}
+            {section.image && (
+              <img
+                src={section.image.src}
+                alt={section.image.alt}
+                loading="lazy"
+                className="mt-3 max-h-72 w-full rounded-xl object-cover"
+              />
+            )}
           </div>
         ))}
       </article>

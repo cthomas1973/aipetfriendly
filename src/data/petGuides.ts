@@ -1,9 +1,15 @@
 export type PetGuideCategory = 'adiestramiento' | 'ansiedad' | 'conducta' | 'salud';
 export type PetGuidePetType = 'perro' | 'gato';
 
+export interface PetGuideImage {
+  src: string;
+  alt: string;
+}
+
 export interface PetGuideSection {
   heading: string;
   paragraphs: string[];
+  image?: PetGuideImage;
 }
 
 export interface PetGuide {
@@ -17,6 +23,7 @@ export interface PetGuide {
   publishedAt: string;
   summary: string;
   readingTime: string;
+  coverImage?: PetGuideImage;
   sections: PetGuideSection[];
 }
 
@@ -345,6 +352,10 @@ export const PET_GUIDES: PetGuide[] = [
     summary:
       'Enseñar "sentado" no es solo un truco vistoso: es la base de toda la educación del perro y una forma clara de comunicarse con él. Cómo enseñarlo paso a paso con refuerzo positivo.',
     readingTime: '5 min',
+    coverImage: {
+      src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-1.jpg',
+      alt: 'Mujer abrazando a su perro Border Collie sentado en el pasto de un parque',
+    },
     sections: [
       {
         heading: 'Por qué empezar por "sentado"',
@@ -359,6 +370,10 @@ export const PET_GUIDES: PetGuide[] = [
           'Conviene tener a mano premios de alto valor (trocitos de salchicha, queso o pollo), del tamaño de una arveja para que el perro los coma rápido y no se distraiga masticando.',
           'Elegir un lugar tranquilo, sin otros perros, pelotas ni ruidos fuertes cerca, ayuda mucho en las primeras sesiones. Si la persona está cansada o de mal humor, mejor practicar otro día: el perro nota el estado de ánimo de quien lo entrena.',
         ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-3.jpg',
+          alt: 'Riñonera con premios de entrenamiento mientras el perro espera atento',
+        },
       },
       {
         heading: 'Paso 1: guiar con la comida (luring)',
@@ -366,6 +381,10 @@ export const PET_GUIDES: PetGuide[] = [
           'Con el perro parado frente a la persona, se toma un premio entre los dedos y se lo acerca a la punta de su nariz, dejando que lo huela sin que lo coma todavía.',
           'Despacio, se mueve la mano hacia atrás por encima de su cabeza, en dirección a la cola. Al seguir el premio con la mirada, la mayoría de los perros levanta la cabeza y, de forma natural, va bajando la cola hasta sentarse.',
         ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-4.jpg',
+          alt: 'Persona acercando un premio a la nariz del perro para guiarlo a sentarse',
+        },
       },
       {
         heading: 'Paso 2: marcar el momento y sumar la palabra',
@@ -373,6 +392,10 @@ export const PET_GUIDES: PetGuide[] = [
           'En el instante exacto en que se sienta, hay que marcarlo con una palabra entusiasta ("¡muy bien!") y entregar el premio enseguida. Repetir esta secuencia 5 a 10 veces seguidas ayuda a que el perro empiece a anticipar el movimiento.',
           'Una vez que se sienta con fluidez siguiendo la mano, se suma la palabra "sentado" justo antes del gesto, para que empiece a asociar la orden con la acción.',
         ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-2.jpg',
+          alt: 'Perro sentado mirando atentamente a su entrenadora',
+        },
       },
       {
         heading: 'Paso 3: soltar la mano y generalizar',
@@ -380,6 +403,10 @@ export const PET_GUIDES: PetGuide[] = [
           'El objetivo final es que el perro responda a la palabra y no solo a la mano con comida. Para lograrlo, se repite el mismo gesto pero con la mano vacía: cuando el perro se sienta igual, se lo marca y se le da el premio desde el otro bolsillo.',
           'Practicar la orden en distintos lugares (el living, el patio, la vereda) ayuda a que el comando se fije en cualquier situación, no solo en el rincón donde se entrenó al principio.',
         ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-6.jpg',
+          alt: 'Persona dando la señal de mano para pedir "sentado" sin premio a la vista',
+        },
       },
       {
         heading: 'Resolución de problemas frecuentes',
@@ -387,6 +414,16 @@ export const PET_GUIDES: PetGuide[] = [
           'Si el perro se para en dos patas en lugar de sentarse, probablemente la mano con el premio está demasiado alta: conviene mantenerla más cerca de su cabeza, casi rozando el hocico.',
           'Si camina hacia atrás en vez de sentarse, la mano se está moviendo demasiado rápido; hay que hacerlo más lento para darle tiempo a acomodar el cuerpo. Y si se distrae con facilidad, lo mejor es acortar las sesiones a 3-5 minutos y practicar varias veces al día.',
         ],
+      },
+      {
+        heading: 'Después de lograrlo',
+        paragraphs: [
+          'Una vez que el perro responde bien, conviene mantener el ejercicio practicado durante la semana: es la base sobre la que se apoyan los próximos comandos. Festejar cada logro con juego y caricias ayuda a cerrar la sesión con una sensación de éxito para los dos.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-7.jpg',
+          alt: 'Persona chocando la mano con la pata de su perro como festejo',
+        },
       },
     ],
   },
