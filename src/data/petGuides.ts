@@ -353,7 +353,7 @@ export const PET_GUIDES: PetGuide[] = [
       'Enseñar "sentado" no es solo un truco vistoso: es la base de toda la educación del perro y una forma clara de comunicarse con él. Cómo enseñarlo paso a paso con refuerzo positivo.',
     readingTime: '5 min',
     coverImage: {
-      src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-1.jpg',
+      src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-2.jpg',
       alt: 'Mujer abrazando a su perro Border Collie sentado en el pasto de un parque',
     },
     sections: [
@@ -393,7 +393,7 @@ export const PET_GUIDES: PetGuide[] = [
           'Una vez que se sienta con fluidez siguiendo la mano, se suma la palabra "sentado" justo antes del gesto, para que empiece a asociar la orden con la acción.',
         ],
         image: {
-          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-2.jpg',
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-7.jpg',
           alt: 'Perro sentado mirando atentamente a su entrenadora',
         },
       },
@@ -421,7 +421,7 @@ export const PET_GUIDES: PetGuide[] = [
           'Una vez que el perro responde bien, conviene mantener el ejercicio practicado durante la semana: es la base sobre la que se apoyan los próximos comandos. Festejar cada logro con juego y caricias ayuda a cerrar la sesión con una sensación de éxito para los dos.',
         ],
         image: {
-          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-7.jpg',
+          src: '/guides/como-ensenar-a-tu-perro-a-sentarse/paso-1.jpg',
           alt: 'Persona chocando la mano con la pata de su perro como festejo',
         },
       },
