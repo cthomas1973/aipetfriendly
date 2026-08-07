@@ -18,6 +18,7 @@ import {
   type PetGuideCategory,
   type PetGuidePetType,
 } from '../data/petGuides';
+import { PublicFooter } from './PublicLegalPages';
 
 const CATEGORY_ICONS: Record<PetGuideCategory, typeof PawPrint> = {
   adiestramiento: Target,
@@ -159,6 +160,8 @@ function GuidesList() {
           })}
         </div>
       )}
+
+      <PublicFooter />
     </section>
   );
 }
@@ -240,6 +243,8 @@ function GuideDetail({ slug }: { slug: string }) {
       </div>
 
       <AdBanner adSenseSlotId="4444444444" forcePublic />
+
+      <PublicFooter />
     </section>
   );
 }

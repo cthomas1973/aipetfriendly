@@ -16,6 +16,7 @@ import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetsSection } from './components/PetsSection';
+import { PublicLegalPage, isPublicLegalRoute } from './components/PublicLegalPages';
 import {
   OffersSection,
   PaywallCard,
@@ -190,10 +191,12 @@ function AppContent() {
   const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
   const { toggleTask, postponeTask, discardTaskReminder } = usePreventive();
   const currentPath = window.location.pathname;
+  const normalizedPath = currentPath.length > 1 ? currentPath.replace(/\/+$/, '') : currentPath;
   const urlParams = new URLSearchParams(window.location.search);
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
-  const isGuidesRoute = currentPath === '/guias' || currentPath.startsWith('/guias/');
-  const guideSlug = isGuidesRoute ? currentPath.replace(/^\/guias\/?/, '') || undefined : undefined;
+  const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
+  const guideSlug = isGuidesRoute ? normalizedPath.replace(/^\/guias\/?/, '') || undefined : undefined;
+  const isLegalRoute = isPublicLegalRoute(normalizedPath);
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
@@ -319,6 +322,10 @@ function AppContent() {
 
     if (isGuidesRoute) {
       return <PetGuidesSection slug={guideSlug} />;
+    }
+
+    if (isLegalRoute) {
+      return <PublicLegalPage route={normalizedPath} />;
     }
 
     if (isLandingRoute) {

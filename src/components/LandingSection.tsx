@@ -8,6 +8,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
+import { PublicFooter } from './PublicLegalPages';
 
 interface LandingSectionProps {
   onEnterApp: () => void;
@@ -106,6 +107,8 @@ export function LandingSection({ onEnterApp }: LandingSectionProps) {
           Comenzar ahora
         </button>
       </div>
+
+      <PublicFooter />
     </section>
   );
 }

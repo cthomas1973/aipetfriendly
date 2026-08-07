@@ -50,6 +50,9 @@ guides.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt
 const staticUrls = [
   { loc: `${SITE_URL}/`, changefreq: 'weekly', priority: '1.0' },
   { loc: `${SITE_URL}/guias`, changefreq: 'weekly', priority: '0.8' },
+  { loc: `${SITE_URL}/privacidad`, changefreq: 'monthly', priority: '0.6' },
+  { loc: `${SITE_URL}/terminos`, changefreq: 'monthly', priority: '0.6' },
+  { loc: `${SITE_URL}/contacto`, changefreq: 'monthly', priority: '0.6' },
 ];
 
 const guideUrls = guides.map((guide) => ({
