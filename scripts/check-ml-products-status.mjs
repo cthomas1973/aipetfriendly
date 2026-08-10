@@ -3,9 +3,9 @@
  * check-ml-products-status.mjs
  * Cron diario: revisa cada producto activo en beneficios_productos visitando
  * su URL real (permalink) en Mercado Libre y desactiva los que ya no existen
- * o estan pausados/cerrados. Tambien extrae el precio actual de la ficha
- * (JSON-LD/meta tags) y lo actualiza en Supabase si cambio, para que la app
- * (que lee beneficios_productos.price) muestre siempre el precio vigente.
+ * o estan pausados/cerrados. Solo verifica si la publicacion sigue existiendo,
+ * no toca precios (Mercado Libre bloquea el scraping de precio desde IPs de
+ * datacenter/cloud, asi que esa verificacion no era confiable y se elimino).
  *
  * IMPORTANTE: no se usa el endpoint /items/{id} de la API porque los productos
  * cargados desde URLs tipo /p/MLAxxxx (ficha de catalogo con varios vendedores)
@@ -14,20 +14,15 @@
  * la URL real que ve el usuario y se buscan frases que ML muestra cuando una
  * publicacion ya no existe o fue pausada.
  *
- * IMPORTANTE (bloqueo anti-bot de ML): Mercado Libre bloquea el trafico de
- * IPs de datacenter/cloud (Vercel, GitHub Actions) tanto en su API oficial
- * como al visitar la ficha del producto (muestra un muro de login en vez del
- * HTML real). Por eso la extraccion de precio solo funciona de forma
- * confiable ejecutando este script MANUALMENTE desde una PC con conexion
- * residencial normal (no desde el cron de GitHub Actions).
- *
  * Requiere: SUPABASE_URL, SUPABASE_SERVICE_KEY
  * Opcional (para el email de resumen): RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL
  * Si faltan las variables de email, el script sigue funcionando igual pero no envia el aviso.
  *
- * Uso local (PC, no GitHub Actions): completa .env.local con las variables
- * de arriba (ver .env.local.example) y ejecuta:
- *   npm run check-ml-prices
+ * Corre automaticamente todos los dias a las 07:00 UTC (4am Argentina) via
+ * GitHub Actions (.github/workflows/check-ml-products-status.yml), y tambien
+ * se puede disparar a mano desde la pestana Actions ("workflow_dispatch") o
+ * localmente con: npm run check-ml-prices (completando .env.local, ver
+ * .env.local.example).
  *
  * Medida de seguridad: si la mayoria de las consultas a ML devuelven bloqueo
  * (403/error de red/timeout), el script NO desactiva nada (para evitar apagar
@@ -99,15 +94,6 @@ const NOT_FOUND_PATTERNS = [
   /el producto que buscas no est[aá] disponible/i,
 ];
 
-// Muro anti-bot / login que ML muestra en vez de la ficha real cuando detecta
-// trafico automatizado. La pagina responde 200 OK pero no trae datos del
-// producto (ni precio), asi que hay que distinguirla de un "activo real".
-const BOT_WALL_PATTERNS = [
-  /registrationType=negative_traffic/i,
-  /para continuar,?\s*ingresa\s*a\s*tu\s*cuenta/i,
-  /loginType=negative_traffic/i,
-];
-
 function escapeHtml(input) {
   return String(input ?? '')
     .replaceAll('&', '&amp;')
@@ -117,7 +103,7 @@ function escapeHtml(input) {
     .replaceAll("'", '&#39;');
 }
 
-async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCount, priceUpdatedCount, wallCount, inactiveProducts, aborted }) {
+async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCount, inactiveProducts, aborted }) {
   const { RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL } = process.env;
 
   if (!RESEND_API_KEY || !ADMIN_NOTIFICATION_EMAIL) {
@@ -148,8 +134,6 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
     <p><strong>Activos:</strong> ${activeCount}</p>
     <p><strong>Inactivos (desactivados):</strong> ${inactiveCount}</p>
     <p><strong>Sin verificar (bloqueados/error):</strong> ${blockedCount}</p>
-    <p><strong>Precios actualizados:</strong> ${priceUpdatedCount ?? 0}</p>
-    <p><strong>Con muro anti-bot de ML (no se pudo leer precio):</strong> ${wallCount ?? 0}</p>
     <h3>Productos marcados como inactivos</h3>
     ${inactiveListHtml}
     <p style="margin-top:20px;font-size:12px;color:#64748b;">Este email se envia automaticamente en cada ejecucion del workflow "Check ML Products Status".</p>
@@ -185,7 +169,7 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
 
 async function fetchAllActiveProducts(supabaseUrl, supabaseKey) {
   const params = new URLSearchParams({
-    select: 'id,mla_id,title,permalink,price',
+    select: 'id,mla_id,title,permalink',
     active: 'eq.true',
     order: 'updated_at.asc',
   });
@@ -210,69 +194,9 @@ async function deactivateProduct(supabaseUrl, supabaseKey, id) {
   if (!res.ok) throw new Error(`Error desactivando ${id}: ${res.status} ${await res.text()}`);
 }
 
-async function updateProductPrice(supabaseUrl, supabaseKey, id, price) {
-  const res = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: {
-      apikey: supabaseKey,
-      Authorization: `Bearer ${supabaseKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
-    },
-    body: JSON.stringify({ price, updated_at: new Date().toISOString() }),
-  });
-  if (!res.ok) throw new Error(`Error actualizando precio ${id}: ${res.status} ${await res.text()}`);
-}
-
-// Busca el precio actual del producto en el HTML de la ficha (JSON-LD o meta tags).
-// Devuelve null si no lo encuentra o no se puede parsear con confianza.
-function extractPriceFromHtml(html) {
-  const ldJsonBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
-
-  for (const block of ldJsonBlocks) {
-    const jsonText = block.replace(/^<script[^>]*>/i, '').replace(/<\/script>$/i, '');
-    try {
-      const parsed = JSON.parse(jsonText);
-      const candidates = Array.isArray(parsed) ? parsed : [parsed];
-
-      for (const candidate of candidates) {
-        const offers = candidate?.offers;
-        const offerList = Array.isArray(offers) ? offers : offers ? [offers] : [];
-
-        for (const offer of offerList) {
-          const price = Number(offer?.price);
-          if (Number.isFinite(price) && price > 0) {
-            return price;
-          }
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  const metaItemprop = html.match(/itemprop=["']price["']\s+content=["']([\d.,]+)["']/i);
-  if (metaItemprop) {
-    const parsed = Number(metaItemprop[1].replace(/\./g, '').replace(',', '.'));
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  const metaProductPrice = html.match(/property=["']product:price:amount["']\s+content=["']([\d.,]+)["']/i);
-  if (metaProductPrice) {
-    const parsed = Number(metaProductPrice[1].replace(/\./g, '').replace(',', '.'));
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  return null;
-}
-
 // Resultado posible por producto: 'active' | 'inactive' | 'blocked' (no se pudo verificar)
 async function checkPermalinkStatus(permalink) {
-  if (!permalink) return { status: 'blocked', price: null, wall: false };
+  if (!permalink) return { status: 'blocked' };
 
   try {
     const res = await fetch(permalink, {
@@ -284,88 +208,19 @@ async function checkPermalinkStatus(permalink) {
       signal: AbortSignal.timeout(15000),
     });
 
-    if (res.status === 404) return { status: 'inactive', price: null, wall: false };
-    if (res.status === 403 || res.status === 429) return { status: 'blocked', price: null, wall: false };
-    if (!res.ok) return { status: 'blocked', price: null, wall: false };
+    if (res.status === 404) return { status: 'inactive' };
+    if (res.status === 403 || res.status === 429) return { status: 'blocked' };
+    if (!res.ok) return { status: 'blocked' };
 
     const html = await res.text();
     const isNotFound = NOT_FOUND_PATTERNS.some(pattern => pattern.test(html));
     if (isNotFound) {
-      return { status: 'inactive', price: null, wall: false };
+      return { status: 'inactive' };
     }
 
-    const isBotWall = BOT_WALL_PATTERNS.some(pattern => pattern.test(html));
-    if (isBotWall) {
-      // Se mantiene como 'active' (no desactivar por esto), pero se marca
-      // wall:true para que el resumen explique por que no se leyo el precio.
-      return { status: 'active', price: null, wall: true };
-    }
-
-    return { status: 'active', price: extractPriceFromHtml(html), wall: false };
+    return { status: 'active' };
   } catch {
-    return { status: 'blocked', price: null, wall: false };
-  }
-}
-
-// Fallback de precio via API oficial de ML (autenticada con OAuth). Solo se usa
-// cuando el scraping de la ficha no pudo leer el precio (muro anti-bot). Es un
-// mecanismo distinto al scraping: request autenticado con credenciales propias,
-// no un intento de evadir deteccion anti-bot.
-async function getMlAccessToken() {
-  const { ML_REFRESH_TOKEN, ML_APP_ID, ML_APP_SECRET } = process.env;
-  if (!ML_REFRESH_TOKEN || !ML_APP_ID || !ML_APP_SECRET) {
-    return null;
-  }
-
-  try {
-    const res = await fetch('https://api.mercadolibre.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: ML_APP_ID,
-        client_secret: ML_APP_SECRET,
-        refresh_token: ML_REFRESH_TOKEN,
-      }).toString(),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.access_token) {
-      console.error(`[ml-api] No se pudo obtener token: ${JSON.stringify(data)}`);
-      return null;
-    }
-
-    return data.access_token;
-  } catch (err) {
-    console.error(`[ml-api] Error obteniendo token: ${err.message}`);
-    return null;
-  }
-}
-
-async function fetchMlItemPrice(mlaId, accessToken) {
-  const itemId = String(mlaId || '').replace(/-/g, '');
-  if (!itemId || !accessToken) return null;
-
-  try {
-    const res = await fetch(`https://api.mercadolibre.com/items/${encodeURIComponent(itemId)}?attributes=price`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!res.ok) {
-      if (process.env.ML_API_DEBUG) {
-        const body = await res.text().catch(() => '');
-        console.error(`[ml-api-debug] ${itemId} -> ${res.status}: ${body.slice(0, 200)}`);
-      }
-      return null;
-    }
-
-    const data = await res.json().catch(() => ({}));
-    const price = Number(data?.price);
-    return Number.isFinite(price) && price > 0 ? price : null;
-  } catch {
-    return null;
+    return { status: 'blocked' };
   }
 }
 
@@ -380,11 +235,6 @@ async function main() {
 
   const products = await fetchAllActiveProducts(supabaseUrl, SUPABASE_SERVICE_KEY);
   console.log(`[supabase] Productos activos a verificar: ${products.length}\n`);
-
-  const mlAccessToken = await getMlAccessToken();
-  console.log(mlAccessToken
-    ? '[ml-api] Token obtenido, se usara como respaldo de precio cuando el scraping falle.\n'
-    : '[ml-api] Sin credenciales ML_REFRESH_TOKEN/ML_APP_ID/ML_APP_SECRET, no hay respaldo de API para precio.\n');
 
   if (products.length === 0) {
     console.log('No hay productos activos para verificar.');
@@ -402,12 +252,10 @@ async function main() {
   let blockedCount = 0;
   let inactiveCount = 0;
   let activeCount = 0;
-  let priceUpdatedCount = 0;
-  let wallCount = 0;
   const toDeactivate = [];
 
   for (const product of products) {
-    const { status, price, wall } = await checkPermalinkStatus(product.permalink);
+    const { status } = await checkPermalinkStatus(product.permalink);
 
     if (status === 'blocked') {
       blockedCount++;
@@ -418,34 +266,14 @@ async function main() {
       console.log(`[X] ${product.mla_id} — INACTIVO en ML: "${String(product.title || '').slice(0, 50)}"`);
     } else {
       activeCount++;
-
-      let resolvedPrice = price;
-      let priceSource = 'html';
-
-      if (resolvedPrice === null && mlAccessToken) {
-        resolvedPrice = await fetchMlItemPrice(product.mla_id, mlAccessToken);
-        priceSource = 'api';
-      }
-
-      if (resolvedPrice !== null && Number(product.price) !== resolvedPrice) {
-        try {
-          await updateProductPrice(supabaseUrl, SUPABASE_SERVICE_KEY, product.id, resolvedPrice);
-          priceUpdatedCount++;
-          console.log(`[$ ${priceSource}] ${product.mla_id} — precio actualizado: ${product.price ?? 'sin dato'} -> ${resolvedPrice}`);
-        } catch (err) {
-          console.error(`[$] ${product.mla_id} — error actualizando precio: ${err.message}`);
-        }
-      } else if (wall && resolvedPrice === null) {
-        wallCount++;
-        console.log(`[!] ${product.mla_id} — ML mostro el muro anti-bot/login y la API tampoco devolvio precio`);
-      }
+      console.log(`[OK] ${product.mla_id} — sigue publicado`);
     }
 
     // Pausa breve entre requests para no saturar
     await new Promise(r => setTimeout(r, 500));
   }
 
-  console.log(`\n=== RESUMEN: ${activeCount} activos, ${inactiveCount} inactivos, ${blockedCount} sin verificar, ${priceUpdatedCount} precios actualizados, ${wallCount} con muro anti-bot ===`);
+  console.log(`\n=== RESUMEN: ${activeCount} activos, ${inactiveCount} inactivos, ${blockedCount} sin verificar ===`);
 
   // Medida de seguridad: si mas de la mitad de las consultas fueron bloqueadas,
   // no confiamos en los resultados y no desactivamos nada.
@@ -458,8 +286,6 @@ async function main() {
       activeCount,
       inactiveCount,
       blockedCount,
-      priceUpdatedCount,
-      wallCount,
       inactiveProducts: toDeactivate,
       aborted: true,
     });
@@ -473,8 +299,6 @@ async function main() {
       activeCount,
       inactiveCount,
       blockedCount,
-      priceUpdatedCount,
-      wallCount,
       inactiveProducts: toDeactivate,
       aborted: false,
     });
@@ -496,8 +320,6 @@ async function main() {
     activeCount,
     inactiveCount,
     blockedCount,
-    priceUpdatedCount,
-    wallCount,
     inactiveProducts: toDeactivate,
     aborted: false,
   });
