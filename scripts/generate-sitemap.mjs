@@ -10,7 +10,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const guidesFile = path.join(__dirname, '..', 'src', 'data', 'petGuides.ts');
 const sitemapFile = path.join(__dirname, '..', 'public', 'sitemap.xml');
-const SITE_URL = 'https://aipetfriendly.ar';
+const SITE_URL = 'https://www.aipetfriendly.ar';
 
 const source = readFileSync(guidesFile, 'utf8');
 
