@@ -5,6 +5,38 @@ import { askPetAssistant, createChatMessage, fetchAiUsageSettings, fetchUserPetA
 
 const GUEST_USAGE_KEY = 'aipetfriendly.guest-ai-usage';
 
+interface GuestUsageStorage {
+  period: string;
+  usage: Record<string, number>;
+}
+
+function currentUsagePeriodKey(): string {
+  // Formato 'YYYY-MM', el consumo se reinicia al cambiar de mes.
+  return new Date().toISOString().slice(0, 7);
+}
+
+function readGuestUsage(): Record<string, number> {
+  const raw = window.localStorage.getItem(GUEST_USAGE_KEY);
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<GuestUsageStorage>;
+    if (parsed && parsed.period === currentUsagePeriodKey() && parsed.usage) {
+      return parsed.usage;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function writeGuestUsage(usage: Record<string, number>): void {
+  const payload: GuestUsageStorage = { period: currentUsagePeriodKey(), usage };
+  window.localStorage.setItem(GUEST_USAGE_KEY, JSON.stringify(payload));
+}
+
 export interface SuggestedProduct {
   title: string;
   thumbnail: string | null;
@@ -82,18 +114,7 @@ export function useChat() {
       }
 
       if (user.isGuest) {
-        const raw = window.localStorage.getItem(GUEST_USAGE_KEY);
-        if (!raw) {
-          setUsageByPet({});
-          return;
-        }
-
-        try {
-          const parsed = JSON.parse(raw) as Record<string, number>;
-          setUsageByPet(parsed || {});
-        } catch {
-          setUsageByPet({});
-        }
+        setUsageByPet(readGuestUsage());
         return;
       }
 
@@ -266,7 +287,7 @@ export function useChat() {
               ...current,
               [petId]: (current[petId] || 0) + 1,
             };
-            window.localStorage.setItem(GUEST_USAGE_KEY, JSON.stringify(next));
+            writeGuestUsage(next);
             return next;
           });
         }

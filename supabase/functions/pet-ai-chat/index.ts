@@ -85,7 +85,13 @@ type PreventiveRow = {
 
 type UsageRow = {
   usage_count: number;
+  period_key: string;
 };
+
+function currentUsagePeriodKey(): string {
+  // Formato 'YYYY-MM' en UTC, alineado con to_char(now(), 'YYYY-MM') en Postgres.
+  return new Date().toISOString().slice(0, 7);
+}
 
 function estimateTokensFromText(text: string): number {
   if (!text || text.trim().length === 0) {
@@ -629,12 +635,13 @@ serve(async (req) => {
 
     const { data: usageRow } = await admin
       .from("ai_pet_usage")
-      .select("usage_count")
+      .select("usage_count,period_key")
       .eq("user_id", user.id)
       .eq("pet_id", petId)
       .maybeSingle<UsageRow>();
 
-    const usedBefore = Number(usageRow?.usage_count || 0);
+    const currentPeriod = currentUsagePeriodKey();
+    const usedBefore = usageRow?.period_key === currentPeriod ? Number(usageRow?.usage_count || 0) : 0;
     if (usedBefore >= limit) {
       return new Response(JSON.stringify({
         error: "AI limit reached for this pet",
@@ -721,6 +728,7 @@ serve(async (req) => {
           user_id: user.id,
           pet_id: pet.id,
           usage_count: usedAfter,
+          period_key: currentPeriod,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id,pet_id" },
