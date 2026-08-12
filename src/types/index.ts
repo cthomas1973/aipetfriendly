@@ -139,6 +139,7 @@ export interface VeterinaryProfile {
   zoneLabel: string;
   address: string;
   phoneWhatsapp?: string;
+  phoneSecondary?: string;
   latitude?: number;
   longitude?: number;
   status: VeterinaryStatus;
@@ -185,6 +186,7 @@ export interface VeterinaryClaimPreview {
 }
 
 export interface VeterinaryClaimLanding extends VeterinaryClaimPreview {
+  phoneSecondary?: string;
   contactEmail?: string;
   consentGranted: boolean;
   basicDataConfirmed: boolean;

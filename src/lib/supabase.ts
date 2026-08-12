@@ -576,6 +576,7 @@ function mapVeterinaryProfileRow(row: any): VeterinaryProfile {
     zoneLabel: row.zone_label,
     address: row.address,
     phoneWhatsapp: row.phone_whatsapp || undefined,
+    phoneSecondary: row.phone_secondary || undefined,
     latitude: typeof row.latitude === 'number' ? row.latitude : undefined,
     longitude: typeof row.longitude === 'number' ? row.longitude : undefined,
     status: row.status,
@@ -626,6 +627,7 @@ function mapVeterinaryClaimPreviewRow(row: any): VeterinaryClaimPreview {
 function mapVeterinaryClaimLandingRow(row: any): VeterinaryClaimLanding {
   return {
     ...mapVeterinaryClaimPreviewRow(row),
+    phoneSecondary: row.phone_secondary || undefined,
     contactEmail: row.contact_email || undefined,
     consentGranted: Boolean(row.consent_granted),
     basicDataConfirmed: Boolean(row.basic_data_confirmed),
@@ -692,7 +694,7 @@ export async function fetchVeterinaryIncubatorByZone(args: {
 
   const { data, error } = await supabase
     .from('veterinary_profiles')
-    .select('id,name,zone_label,address,phone_whatsapp,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at')
+    .select('id,name,zone_label,address,phone_whatsapp,phone_secondary,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at')
     .in('status', ['IN_INCUBATOR', 'CLAIMABLE_PROFILE'])
     .ilike('zone_label', zoneFilter)
     .order('upvotes_count', { ascending: false })
@@ -742,7 +744,7 @@ export async function fetchActiveVeterinaryProfilesByZone(args: {
 
   const { data, error } = await supabase
     .from('veterinary_profiles')
-    .select('id,name,zone_label,address,phone_whatsapp,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at,contact_email,consent_granted,basic_data_confirmed,subscription_plan,subscription_billing_mode,business_days,business_hours,services,website_url,instagram_url,facebook_url,highlight_priority')
+    .select('id,name,zone_label,address,phone_whatsapp,phone_secondary,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at,contact_email,consent_granted,basic_data_confirmed,subscription_plan,subscription_billing_mode,business_days,business_hours,services,website_url,instagram_url,facebook_url,highlight_priority')
     .in('status', ['ACTIVE_FREE', 'ACTIVE_PREMIUM'])
     .ilike('zone_label', zoneFilter)
     .order('highlight_priority', { ascending: false })
@@ -818,6 +820,7 @@ export async function submitVeterinaryClaimDecision(args: {
   zoneLabel?: string;
   address?: string;
   phoneWhatsapp?: string;
+  phoneSecondary?: string;
   contactEmail?: string;
   consentGranted?: boolean;
   basicDataConfirmed?: boolean;
@@ -843,6 +846,7 @@ export async function submitVeterinaryClaimDecision(args: {
     p_zone_label: args.zoneLabel ?? null,
     p_address: args.address ?? null,
     p_phone_whatsapp: args.phoneWhatsapp ?? null,
+    p_phone_secondary: args.phoneSecondary ?? null,
     p_contact_email: args.contactEmail ?? null,
     p_consent_granted: args.consentGranted ?? null,
     p_basic_data_confirmed: args.basicDataConfirmed ?? null,

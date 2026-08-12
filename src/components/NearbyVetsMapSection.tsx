@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { LocateFixed, MapPin, MessageCircleHeart, Navigation, Search, Star, X } from 'lucide-react';
+import { LocateFixed, MapPin, MessageCircleHeart, Navigation, Phone, Search, Star, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
@@ -449,6 +449,7 @@ export function NearbyVetsMapSection() {
   const [claimFormZone, setClaimFormZone] = useState('');
   const [claimFormAddress, setClaimFormAddress] = useState('');
   const [claimFormPhone, setClaimFormPhone] = useState('');
+  const [claimFormPhoneSecondary, setClaimFormPhoneSecondary] = useState('');
   const [claimFormEmail, setClaimFormEmail] = useState('');
   const [claimFormBusinessDays, setClaimFormBusinessDays] = useState('');
   const [claimFormBusinessHours, setClaimFormBusinessHours] = useState('');
@@ -460,10 +461,14 @@ export function NearbyVetsMapSection() {
   const [claimBasicDataConfirmed, setClaimBasicDataConfirmed] = useState(false);
   const [claimBillingMode, setClaimBillingMode] = useState<'monthly_auto' | 'annual'>('monthly_auto');
   const [resendingConsentVetId, setResendingConsentVetId] = useState<string | null>(null);
+  const [callMenuVetId, setCallMenuVetId] = useState<string | null>(null);
 
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  const isMobileDevice =
+    Capacitor.isNativePlatform() ||
+    (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent));
 
   const suggestedItems = useMemo(
     () => incubatorItems.filter((item) => item.status === 'CLAIMABLE_PROFILE'),
@@ -743,6 +748,7 @@ export function NearbyVetsMapSection() {
         zoneLabel: claimFormZone,
         address: claimFormAddress,
         phoneWhatsapp: claimFormPhone,
+        phoneSecondary: claimFormPhoneSecondary,
         contactEmail: claimFormEmail,
         consentGranted: action === 'reject' ? false : claimConsentGranted,
         basicDataConfirmed: claimBasicDataConfirmed,
@@ -789,7 +795,7 @@ export function NearbyVetsMapSection() {
     } finally {
       setClaimActionLoading(null);
     }
-  }, [claimBasicDataConfirmed, claimBillingMode, claimConsentGranted, claimFormAddress, claimFormBusinessDays, claimFormBusinessHours, claimFormEmail, claimFormFacebook, claimFormInstagram, claimFormName, claimFormPhone, claimFormServices, claimFormWebsite, claimFormZone, claimToken, incubatorZone, loadActiveProfiles, loadIncubator, user]);
+  }, [claimBasicDataConfirmed, claimBillingMode, claimConsentGranted, claimFormAddress, claimFormBusinessDays, claimFormBusinessHours, claimFormEmail, claimFormFacebook, claimFormInstagram, claimFormName, claimFormPhone, claimFormPhoneSecondary, claimFormServices, claimFormWebsite, claimFormZone, claimToken, incubatorZone, loadActiveProfiles, loadIncubator, user]);
 
   const openInMapsUrl = useMemo(
     () => buildExternalMapsUrl({ lat: location?.lat, lng: location?.lng, address: manualAddress }),
@@ -827,6 +833,7 @@ export function NearbyVetsMapSection() {
       setClaimFormZone(preview.zoneLabel || '');
       setClaimFormAddress(preview.address || '');
       setClaimFormPhone(preview.phoneWhatsapp || '');
+      setClaimFormPhoneSecondary(preview.phoneSecondary || '');
       setClaimFormEmail(preview.contactEmail || '');
       setClaimFormBusinessDays(preview.businessDays || '');
       setClaimFormBusinessHours(preview.businessHours || '');
@@ -1323,6 +1330,49 @@ export function NearbyVetsMapSection() {
                       WhatsApp
                     </a>
                   )}
+
+                  {isMobileDevice && (profile.phoneWhatsapp || profile.phoneSecondary) && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const phones = [profile.phoneWhatsapp, profile.phoneSecondary].filter(
+                            (phone): phone is string => Boolean(phone),
+                          );
+                          if (phones.length <= 1) {
+                            window.location.href = `tel:${phones[0]}`;
+                            return;
+                          }
+                          setCallMenuVetId((current) => (current === profile.id ? null : profile.id));
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-700"
+                      >
+                        <Phone size={12} />
+                        Llamar
+                      </button>
+
+                      {callMenuVetId === profile.id && (
+                        <div className="absolute left-0 z-10 mt-1 min-w-[170px] rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
+                          {[profile.phoneWhatsapp, profile.phoneSecondary]
+                            .filter((phone): phone is string => Boolean(phone))
+                            .map((phone) => (
+                              <a
+                                key={phone}
+                                href={`tel:${phone}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setCallMenuVetId(null);
+                                }}
+                                className="block rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50"
+                              >
+                                {phone}
+                              </a>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
@@ -1584,6 +1634,15 @@ export function NearbyVetsMapSection() {
                   <input
                     value={claimFormPhone}
                     onChange={(event) => setClaimFormPhone(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Telefono adicional (opcional)
+                  <input
+                    value={claimFormPhoneSecondary}
+                    onChange={(event) => setClaimFormPhoneSecondary(event.target.value)}
+                    placeholder="Otra linea para llamadas"
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   />
                 </label>

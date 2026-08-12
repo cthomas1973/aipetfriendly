@@ -2,6 +2,9 @@
 
 Guia rapida para agentes de codigo en AiPetFriendly.
 
+## Idioma
+- Responder siempre en espanol, tanto en el chat como en comentarios/mensajes generados (commits, PRs, docs), salvo que el usuario pida explicitamente otro idioma.
+
 ## Alcance
 - App web React + TypeScript + Vite para gestion de mascotas.
 - Backend en Supabase (Postgres + RLS + Edge Functions Deno).

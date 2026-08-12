@@ -310,7 +310,7 @@ end;
 $$;
 
 drop function if exists public.get_billing_pricing_settings();
-create function public.get_billing_pricing_settings()
+create or replace function public.get_billing_pricing_settings()
 returns table (
   premium_monthly_auto_ars numeric,
   premium_monthly_auto_usd numeric,
@@ -340,7 +340,7 @@ as $$
 $$;
 
 drop function if exists public.admin_get_billing_pricing_settings();
-create function public.admin_get_billing_pricing_settings()
+create or replace function public.admin_get_billing_pricing_settings()
 returns table (
   premium_monthly_auto_ars numeric,
   premium_monthly_auto_usd numeric,
@@ -379,7 +379,7 @@ end;
 $$;
 
 drop function if exists public.admin_update_billing_pricing_settings(numeric, numeric, numeric, numeric, numeric, numeric);
-create function public.admin_update_billing_pricing_settings(
+create or replace function public.admin_update_billing_pricing_settings(
   p_premium_monthly_auto_ars numeric,
   p_premium_monthly_auto_usd numeric,
   p_premium_annual_auto_ars numeric,
