@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { LocateFixed, MapPin, MessageCircleHeart, Navigation, Phone, Search, Star, X } from 'lucide-react';
+import { Heart, LocateFixed, MapPin, MessageCircleHeart, Navigation, PawPrint, Phone, Search, Star, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
@@ -10,8 +10,12 @@ import { AdBanner } from './AdBanner';
 import { useAppState } from '../context/AppStateContext';
 import {
   fetchActiveVeterinaryProfilesByZone,
+  fetchVeterinaryFavoriteId,
   fetchVeterinaryIncubatorByZone,
+  fetchVeterinaryProfileById,
   getVeterinaryClaimLanding,
+  clearVeterinaryFavorite,
+  setVeterinaryFavorite,
   submitVeterinaryClaimDecision,
   suggestVeterinary,
   triggerVeterinaryConsentWhatsApp,
@@ -462,6 +466,9 @@ export function NearbyVetsMapSection() {
   const [claimBillingMode, setClaimBillingMode] = useState<'monthly_auto' | 'annual'>('monthly_auto');
   const [resendingConsentVetId, setResendingConsentVetId] = useState<string | null>(null);
   const [callMenuVetId, setCallMenuVetId] = useState<string | null>(null);
+  const [favoriteVetId, setFavoriteVetId] = useState<string | null>(null);
+  const [favoriteVetProfile, setFavoriteVetProfile] = useState<VeterinaryProfile | null>(null);
+  const [togglingFavoriteVetId, setTogglingFavoriteVetId] = useState<string | null>(null);
 
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
@@ -566,6 +573,56 @@ export function NearbyVetsMapSection() {
     }
   }, []);
 
+  const loadFavoriteVet = useCallback(async (userId: string) => {
+    const favoriteId = await fetchVeterinaryFavoriteId(userId);
+    if (!favoriteId) {
+      setFavoriteVetId(null);
+      setFavoriteVetProfile(null);
+      return;
+    }
+
+    const profile = await fetchVeterinaryProfileById(favoriteId);
+    if (!profile) {
+      setFavoriteVetId(null);
+      setFavoriteVetProfile(null);
+      return;
+    }
+
+    setFavoriteVetId(favoriteId);
+    setFavoriteVetProfile(profile);
+  }, []);
+
+  const toggleFavoriteVet = useCallback(async (veterinaryId: string) => {
+    if (!user || user.isGuest) {
+      setSectionMessage('Debes iniciar sesion para elegir una veterinaria favorita.');
+      return;
+    }
+
+    setTogglingFavoriteVetId(veterinaryId);
+
+    try {
+      if (favoriteVetId === veterinaryId) {
+        const cleared = await clearVeterinaryFavorite(user.id);
+        if (cleared) {
+          setFavoriteVetId(null);
+          setFavoriteVetProfile(null);
+        } else {
+          setSectionMessage('No se pudo quitar la veterinaria favorita.');
+        }
+        return;
+      }
+
+      const saved = await setVeterinaryFavorite(user.id, veterinaryId);
+      if (saved) {
+        await loadFavoriteVet(user.id);
+      } else {
+        setSectionMessage('No se pudo guardar la veterinaria favorita.');
+      }
+    } finally {
+      setTogglingFavoriteVetId(null);
+    }
+  }, [favoriteVetId, loadFavoriteVet, user]);
+
   const sortedActiveProfiles = useMemo(() => {
     const scored = activeProfiles.map((profile) => {
       const hasCoords = typeof profile.latitude === 'number' && typeof profile.longitude === 'number' && !!location;
@@ -592,6 +649,28 @@ export function NearbyVetsMapSection() {
 
     return scored;
   }, [activeProfiles, location]);
+
+  const restActiveProfiles = useMemo(
+    () => sortedActiveProfiles.filter(({ profile }) => profile.id !== favoriteVetId),
+    [sortedActiveProfiles, favoriteVetId],
+  );
+
+  const favoriteVetDisplay = useMemo(() => {
+    if (!favoriteVetProfile) {
+      return null;
+    }
+
+    const hasCoords = typeof favoriteVetProfile.latitude === 'number' && typeof favoriteVetProfile.longitude === 'number' && !!location;
+    const distanceMeters = hasCoords
+      ? haversineDistanceMeters(location!.lat, location!.lng, favoriteVetProfile.latitude!, favoriteVetProfile.longitude!)
+      : Number.MAX_SAFE_INTEGER;
+
+    return {
+      profile: favoriteVetProfile,
+      isPremium: favoriteVetProfile.subscriptionPlan === 'premium' || favoriteVetProfile.status === 'ACTIVE_PREMIUM',
+      distanceMeters,
+    };
+  }, [favoriteVetProfile, location]);
 
   const openInviteOnWhatsApp = useCallback((item: { name: string; claimToken?: string }) => {
     if (!item.claimToken) {
@@ -880,6 +959,15 @@ export function NearbyVetsMapSection() {
   }, [incubatorZone, loadIncubator, user]);
 
   useEffect(() => {
+    if (!user || user.isGuest) {
+      setFavoriteVetId(null);
+      setFavoriteVetProfile(null);
+      return;
+    }
+    void loadFavoriteVet(user.id);
+  }, [loadFavoriteVet, user]);
+
+  useEffect(() => {
     if (!incubatorZone.trim()) {
       setActiveProfiles([]);
       return;
@@ -1090,6 +1178,132 @@ export function NearbyVetsMapSection() {
     }
   };
 
+  const renderVetCard = (
+    { profile, isPremium, distanceMeters }: { profile: VeterinaryProfile; isPremium: boolean; distanceMeters: number },
+    variant: 'favorite' | 'list' = 'list',
+  ) => {
+    const isFavorite = favoriteVetId === profile.id;
+
+    return (
+      <li
+        key={profile.id}
+        className={`rounded-xl border p-3 ${
+          variant === 'favorite'
+            ? 'border-rose-300 bg-rose-50/60'
+            : isPremium
+              ? 'border-amber-300 bg-amber-50/50'
+              : 'border-slate-200 bg-slate-50'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            {variant === 'favorite' && (
+              <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                Tu veterinaria favorita
+              </span>
+            )}
+            <p className="text-sm font-semibold text-slate-900">{profile.name}</p>
+            <p className="text-xs text-slate-600">{profile.address}</p>
+            <p className="mt-1 text-xs text-slate-500">Zona: {profile.zoneLabel}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void toggleFavoriteVet(profile.id);
+              }}
+              disabled={togglingFavoriteVetId === profile.id}
+              title={isFavorite ? 'Quitar de veterinaria favorita' : 'Marcar como veterinaria favorita'}
+              className="relative inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-rose-50 disabled:opacity-50"
+            >
+              <span className="relative inline-flex">
+                <PawPrint size={18} className={isFavorite ? 'text-rose-500' : 'text-slate-400'} />
+                {isFavorite && (
+                  <Heart
+                    size={8}
+                    className="absolute left-1/2 top-[9px] -translate-x-1/2 fill-rose-500 text-rose-500"
+                  />
+                )}
+              </span>
+            </button>
+            {isPremium ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                <Star size={12} /> Premium
+              </span>
+            ) : (
+              <span className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700">Free</span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          {distanceMeters < Number.MAX_SAFE_INTEGER ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">
+              A {Math.round(distanceMeters)} m
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-200 px-2 py-1 font-semibold text-slate-700">Distancia no disponible</span>
+          )}
+
+          {profile.phoneWhatsapp && (
+            <a
+              href={`https://wa.me/${profile.phoneWhatsapp.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-700"
+            >
+              WhatsApp
+            </a>
+          )}
+
+          {isMobileDevice && (profile.phoneWhatsapp || profile.phoneSecondary) && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const phones = [profile.phoneWhatsapp, profile.phoneSecondary].filter(
+                    (phone): phone is string => Boolean(phone),
+                  );
+                  if (phones.length <= 1) {
+                    window.location.href = `tel:${phones[0]}`;
+                    return;
+                  }
+                  setCallMenuVetId((current) => (current === profile.id ? null : profile.id));
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-700"
+              >
+                <Phone size={12} />
+                Llamar
+              </button>
+
+              {callMenuVetId === profile.id && (
+                <div className="absolute left-0 z-10 mt-1 min-w-[170px] rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
+                  {[profile.phoneWhatsapp, profile.phoneSecondary]
+                    .filter((phone): phone is string => Boolean(phone))
+                    .map((phone) => (
+                      <a
+                        key={phone}
+                        href={`tel:${phone}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCallMenuVetId(null);
+                        }}
+                        className="block rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50"
+                      >
+                        {phone}
+                      </a>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  };
+
   return (
     <section className="space-y-4 pb-2">
       <div className="rounded-3xl bg-white p-4 shadow-sm">
@@ -1273,11 +1487,25 @@ export function NearbyVetsMapSection() {
         )}
       </div>
 
+      {favoriteVetDisplay && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Tu veterinaria favorita</p>
+              <p className="text-xs text-slate-500">Siempre aparece primero, antes del listado de cercanas.</p>
+            </div>
+            <Heart size={16} className="fill-rose-500 text-rose-500" />
+          </div>
+
+          <ul className="mt-3 space-y-2">{renderVetCard(favoriteVetDisplay, 'favorite')}</ul>
+        </div>
+      )}
+
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
         <div className="flex items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-slate-900">Veterinarias activas en AiPetFriendly</p>
-            <p className="text-xs text-slate-500">Ordenadas por plan premium y luego cercania a tu ubicacion.</p>
+            <p className="text-xs text-slate-500">Ordenadas por plan premium y luego cercania a tu ubicacion. Toca la huellita para marcar tu favorita.</p>
           </div>
           <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">Premium primero</span>
         </div>
@@ -1285,97 +1513,17 @@ export function NearbyVetsMapSection() {
         {loadingActiveProfiles && <p className="mt-3 text-sm text-slate-500">Cargando veterinarias activas...</p>}
         {activeProfilesError && <p className="mt-3 text-sm text-amber-700">{activeProfilesError}</p>}
 
-        {!loadingActiveProfiles && !activeProfilesError && sortedActiveProfiles.length === 0 && (
-          <p className="mt-3 text-sm text-slate-500">Aun no hay veterinarias activas en esta zona.</p>
+        {!loadingActiveProfiles && !activeProfilesError && restActiveProfiles.length === 0 && (
+          <p className="mt-3 text-sm text-slate-500">
+            {favoriteVetDisplay
+              ? 'No hay otras veterinarias activas en esta zona.'
+              : 'Aun no hay veterinarias activas en esta zona.'}
+          </p>
         )}
 
-        {!loadingActiveProfiles && !activeProfilesError && sortedActiveProfiles.length > 0 && (
+        {!loadingActiveProfiles && !activeProfilesError && restActiveProfiles.length > 0 && (
           <ul className="mt-3 space-y-2">
-            {sortedActiveProfiles.map(({ profile, isPremium, distanceMeters }) => (
-              <li
-                key={profile.id}
-                className={`rounded-xl border p-3 ${isPremium ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50'}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{profile.name}</p>
-                    <p className="text-xs text-slate-600">{profile.address}</p>
-                    <p className="mt-1 text-xs text-slate-500">Zona: {profile.zoneLabel}</p>
-                  </div>
-                  {isPremium ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">
-                      <Star size={12} /> Premium
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700">Free</span>
-                  )}
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  {distanceMeters < Number.MAX_SAFE_INTEGER ? (
-                    <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-700">
-                      A {Math.round(distanceMeters)} m
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-slate-200 px-2 py-1 font-semibold text-slate-700">Distancia no disponible</span>
-                  )}
-
-                  {profile.phoneWhatsapp && (
-                    <a
-                      href={`https://wa.me/${profile.phoneWhatsapp.replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-700"
-                    >
-                      WhatsApp
-                    </a>
-                  )}
-
-                  {isMobileDevice && (profile.phoneWhatsapp || profile.phoneSecondary) && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          const phones = [profile.phoneWhatsapp, profile.phoneSecondary].filter(
-                            (phone): phone is string => Boolean(phone),
-                          );
-                          if (phones.length <= 1) {
-                            window.location.href = `tel:${phones[0]}`;
-                            return;
-                          }
-                          setCallMenuVetId((current) => (current === profile.id ? null : profile.id));
-                        }}
-                        className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-700"
-                      >
-                        <Phone size={12} />
-                        Llamar
-                      </button>
-
-                      {callMenuVetId === profile.id && (
-                        <div className="absolute left-0 z-10 mt-1 min-w-[170px] rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
-                          {[profile.phoneWhatsapp, profile.phoneSecondary]
-                            .filter((phone): phone is string => Boolean(phone))
-                            .map((phone) => (
-                              <a
-                                key={phone}
-                                href={`tel:${phone}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setCallMenuVetId(null);
-                                }}
-                                className="block rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50"
-                              >
-                                {phone}
-                              </a>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
+            {restActiveProfiles.map((entry) => renderVetCard(entry, 'list'))}
           </ul>
         )}
       </div>

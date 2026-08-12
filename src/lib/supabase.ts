@@ -759,6 +759,81 @@ export async function fetchActiveVeterinaryProfilesByZone(args: {
   return (data || []).map((row: any) => mapVeterinaryProfileRow(row));
 }
 
+export async function fetchVeterinaryProfileById(veterinaryId: string): Promise<VeterinaryProfile | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('veterinary_profiles')
+    .select('id,name,zone_label,address,phone_whatsapp,phone_secondary,latitude,longitude,status,suggested_by_user_id,upvotes_count,validations_goal,claimed_by_owner_id,claim_source_ref_user_id,is_verified,activated_at,last_validation_at,created_at,updated_at,contact_email,consent_granted,basic_data_confirmed,subscription_plan,subscription_billing_mode,business_days,business_hours,services,website_url,instagram_url,facebook_url,highlight_priority')
+    .eq('id', veterinaryId)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) {
+      console.error('Error fetching veterinary profile by id:', error);
+    }
+    return null;
+  }
+
+  return mapVeterinaryProfileRow(data);
+}
+
+export async function fetchVeterinaryFavoriteId(userId: string): Promise<string | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('veterinary_favorites')
+    .select('veterinary_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching veterinary favorite:', error);
+    return null;
+  }
+
+  return data?.veterinary_id || null;
+}
+
+export async function setVeterinaryFavorite(userId: string, veterinaryId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('veterinary_favorites')
+    .upsert({ user_id: userId, veterinary_id: veterinaryId }, { onConflict: 'user_id' });
+
+  if (error) {
+    console.error('Error setting veterinary favorite:', error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function clearVeterinaryFavorite(userId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('veterinary_favorites')
+    .delete()
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error clearing veterinary favorite:', error);
+    return false;
+  }
+
+  return true;
+}
+
 export async function validateVeterinary(veterinaryId: string): Promise<VeterinaryProfile | null> {
   if (!isSupabaseConfigured) {
     return null;
