@@ -78,6 +78,14 @@ export interface PetFormData {
   notes?: string;
 }
 
+export interface PetWeightLog {
+  id: string;
+  petId: string;
+  weightKg: number;
+  recordedAt: string;
+  createdAt: string;
+}
+
 export interface MedicationFormData {
   petId: string;
   medicationName: string;

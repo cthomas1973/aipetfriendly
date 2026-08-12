@@ -7,6 +7,7 @@ import type {
   BillingPricingSettings,
   Pet,
   PetAiUsageRow,
+  PetWeightLog,
   ClinicalTimelineEntry,
   PreventiveTask,
   ChatMessage,
@@ -322,6 +323,52 @@ export async function updatePetRecord(petId: string, petData: any): Promise<Pet 
 export async function deletePet(petId: string): Promise<boolean> {
   const { error } = await supabase.from('pets').delete().eq('id', petId);
   return !error;
+}
+
+export async function fetchPetWeightLogs(petId: string): Promise<PetWeightLog[]> {
+  const { data, error } = await supabase
+    .from('pet_weight_logs')
+    .select('*')
+    .eq('pet_id', petId)
+    .order('recorded_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching pet weight logs:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    petId: row.pet_id,
+    weightKg: Number(row.weight_kg),
+    recordedAt: row.recorded_at,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function createPetWeightLog(
+  petId: string,
+  weightKg: number,
+  recordedAt: string,
+): Promise<PetWeightLog | null> {
+  const { data, error } = await supabase
+    .from('pet_weight_logs')
+    .insert([{ pet_id: petId, weight_kg: weightKg, recorded_at: recordedAt }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating pet weight log:', error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    petId: data.pet_id,
+    weightKg: Number(data.weight_kg),
+    recordedAt: data.recorded_at,
+    createdAt: data.created_at,
+  };
 }
 
 export async function fetchClinicalEntries(petId: string): Promise<ClinicalTimelineEntry[]> {

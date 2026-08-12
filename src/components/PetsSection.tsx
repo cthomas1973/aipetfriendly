@@ -2,12 +2,13 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
   Circle, ClipboardList, Download, Heart, Mail,
-  PawPrint, Plus, Shield, Trash2, X,
+  PawPrint, Plus, Shield, Trash2, Utensils, X,
 } from 'lucide-react';
 import { useClinical } from '../hooks/useClinical';
 import { usePets } from '../hooks/usePets';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
+import { PetFoodSection } from './PetFoodSection';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import {
@@ -64,7 +65,7 @@ function calcAge(birthDate: string) {
   return { ageYears: Math.floor(months / 12), ageMonths: months % 12 };
 }
 
-type View = 'list' | 'wizard' | 'detail' | 'edit' | 'historial' | 'preventivos';
+type View = 'list' | 'wizard' | 'detail' | 'edit' | 'historial' | 'preventivos' | 'comida';
 
 const INIT: PetFormData = {
   name: '', breed: '', species: 'dog', sex: 'unknown',
@@ -991,12 +992,18 @@ export function PetsSection() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <button type="button" onClick={() => setView('preventivos')}
             className="flex flex-col items-center gap-2 rounded-3xl bg-white p-4 shadow-sm transition hover:bg-emerald-50">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Shield size={22} /></span>
             <span className="font-semibold text-slate-800">Cuidados</span>
             <span className="text-xs text-slate-500">Vacunas y mas</span>
+          </button>
+          <button type="button" onClick={() => setView('comida')}
+            className="flex flex-col items-center gap-2 rounded-3xl bg-white p-4 shadow-sm transition hover:bg-emerald-50">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Utensils size={22} /></span>
+            <span className="font-semibold text-slate-800">Comida</span>
+            <span className="text-xs text-slate-500">Consumo y peso</span>
           </button>
           <button type="button" onClick={() => setView('historial')}
             className="flex flex-col items-center gap-2 rounded-3xl bg-white p-4 shadow-sm transition hover:bg-emerald-50">
@@ -1376,6 +1383,11 @@ export function PetsSection() {
       )}
     </section>
   );
+
+  /* ─── COMIDA ─────────────────────────────────────────── */
+  if (view === 'comida' && pet) {
+    return <PetFoodSection pet={pet} onBack={() => setView('detail')} />;
+  }
 
   /* ─── HISTORIAL ─────────────────────────────────────── */
   if (view === 'historial') return (
