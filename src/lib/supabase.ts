@@ -780,33 +780,93 @@ export async function fetchVeterinaryProfileById(veterinaryId: string): Promise<
   return mapVeterinaryProfileRow(data);
 }
 
-export async function fetchVeterinaryFavoriteId(userId: string): Promise<string | null> {
+export type VeterinaryFavorite = {
+  source: 'platform' | 'osm';
+  veterinaryId?: string;
+  osmPlaceId?: string;
+  name?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+export async function fetchVeterinaryFavorite(userId: string): Promise<VeterinaryFavorite | null> {
   if (!isSupabaseConfigured) {
     return null;
   }
 
   const { data, error } = await supabase
     .from('veterinary_favorites')
-    .select('veterinary_id')
+    .select('source,veterinary_id,osm_place_id,name,address,latitude,longitude')
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (error) {
-    console.error('Error fetching veterinary favorite:', error);
+  if (error || !data) {
+    if (error) {
+      console.error('Error fetching veterinary favorite:', error);
+    }
     return null;
   }
 
-  return data?.veterinary_id || null;
+  return {
+    source: data.source === 'osm' ? 'osm' : 'platform',
+    veterinaryId: data.veterinary_id || undefined,
+    osmPlaceId: data.osm_place_id || undefined,
+    name: data.name || undefined,
+    address: data.address || undefined,
+    latitude: typeof data.latitude === 'number' ? data.latitude : undefined,
+    longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
+  };
 }
 
-export async function setVeterinaryFavorite(userId: string, veterinaryId: string): Promise<boolean> {
+export async function setPlatformVeterinaryFavorite(userId: string, veterinaryId: string): Promise<boolean> {
   if (!isSupabaseConfigured) {
     return false;
   }
 
-  const { error } = await supabase
-    .from('veterinary_favorites')
-    .upsert({ user_id: userId, veterinary_id: veterinaryId }, { onConflict: 'user_id' });
+  const { error } = await supabase.from('veterinary_favorites').upsert(
+    {
+      user_id: userId,
+      source: 'platform',
+      veterinary_id: veterinaryId,
+      osm_place_id: null,
+      name: null,
+      address: null,
+      latitude: null,
+      longitude: null,
+    },
+    { onConflict: 'user_id' },
+  );
+
+  if (error) {
+    console.error('Error setting veterinary favorite:', error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function setOsmVeterinaryFavorite(
+  userId: string,
+  place: { osmPlaceId: string; name: string; address: string; latitude?: number; longitude?: number },
+): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+
+  const { error } = await supabase.from('veterinary_favorites').upsert(
+    {
+      user_id: userId,
+      source: 'osm',
+      veterinary_id: null,
+      osm_place_id: place.osmPlaceId,
+      name: place.name,
+      address: place.address,
+      latitude: place.latitude ?? null,
+      longitude: place.longitude ?? null,
+    },
+    { onConflict: 'user_id' },
+  );
 
   if (error) {
     console.error('Error setting veterinary favorite:', error);

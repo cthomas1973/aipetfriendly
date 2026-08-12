@@ -10,12 +10,13 @@ import { AdBanner } from './AdBanner';
 import { useAppState } from '../context/AppStateContext';
 import {
   fetchActiveVeterinaryProfilesByZone,
-  fetchVeterinaryFavoriteId,
+  fetchVeterinaryFavorite,
   fetchVeterinaryIncubatorByZone,
   fetchVeterinaryProfileById,
   getVeterinaryClaimLanding,
   clearVeterinaryFavorite,
-  setVeterinaryFavorite,
+  setOsmVeterinaryFavorite,
+  setPlatformVeterinaryFavorite,
   submitVeterinaryClaimDecision,
   suggestVeterinary,
   triggerVeterinaryConsentWhatsApp,
@@ -468,6 +469,13 @@ export function NearbyVetsMapSection() {
   const [callMenuVetId, setCallMenuVetId] = useState<string | null>(null);
   const [favoriteVetId, setFavoriteVetId] = useState<string | null>(null);
   const [favoriteVetProfile, setFavoriteVetProfile] = useState<VeterinaryProfile | null>(null);
+  const [favoriteOsmPlace, setFavoriteOsmPlace] = useState<{
+    id: string;
+    name: string;
+    address: string;
+    lat?: number;
+    lng?: number;
+  } | null>(null);
   const [togglingFavoriteVetId, setTogglingFavoriteVetId] = useState<string | null>(null);
 
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
@@ -574,22 +582,41 @@ export function NearbyVetsMapSection() {
   }, []);
 
   const loadFavoriteVet = useCallback(async (userId: string) => {
-    const favoriteId = await fetchVeterinaryFavoriteId(userId);
-    if (!favoriteId) {
+    const favorite = await fetchVeterinaryFavorite(userId);
+
+    if (!favorite) {
       setFavoriteVetId(null);
       setFavoriteVetProfile(null);
+      setFavoriteOsmPlace(null);
       return;
     }
 
-    const profile = await fetchVeterinaryProfileById(favoriteId);
-    if (!profile) {
+    if (favorite.source === 'osm' && favorite.osmPlaceId) {
       setFavoriteVetId(null);
       setFavoriteVetProfile(null);
+      setFavoriteOsmPlace({
+        id: favorite.osmPlaceId,
+        name: favorite.name || 'Veterinaria',
+        address: favorite.address || 'Direccion no informada',
+        lat: favorite.latitude,
+        lng: favorite.longitude,
+      });
       return;
     }
 
-    setFavoriteVetId(favoriteId);
-    setFavoriteVetProfile(profile);
+    if (favorite.veterinaryId) {
+      const profile = await fetchVeterinaryProfileById(favorite.veterinaryId);
+      if (profile) {
+        setFavoriteVetId(favorite.veterinaryId);
+        setFavoriteVetProfile(profile);
+        setFavoriteOsmPlace(null);
+        return;
+      }
+    }
+
+    setFavoriteVetId(null);
+    setFavoriteVetProfile(null);
+    setFavoriteOsmPlace(null);
   }, []);
 
   const toggleFavoriteVet = useCallback(async (veterinaryId: string) => {
@@ -612,8 +639,9 @@ export function NearbyVetsMapSection() {
         return;
       }
 
-      const saved = await setVeterinaryFavorite(user.id, veterinaryId);
+      const saved = await setPlatformVeterinaryFavorite(user.id, veterinaryId);
       if (saved) {
+        setFavoriteOsmPlace(null);
         await loadFavoriteVet(user.id);
       } else {
         setSectionMessage('No se pudo guardar la veterinaria favorita.');
@@ -622,6 +650,45 @@ export function NearbyVetsMapSection() {
       setTogglingFavoriteVetId(null);
     }
   }, [favoriteVetId, loadFavoriteVet, user]);
+
+  const toggleOsmFavoriteVet = useCallback(async (vet: NearbyVet) => {
+    if (!user || user.isGuest) {
+      setSectionMessage('Debes iniciar sesion para elegir una veterinaria favorita.');
+      return;
+    }
+
+    setTogglingFavoriteVetId(vet.id);
+
+    try {
+      if (favoriteOsmPlace?.id === vet.id) {
+        const cleared = await clearVeterinaryFavorite(user.id);
+        if (cleared) {
+          setFavoriteOsmPlace(null);
+        } else {
+          setSectionMessage('No se pudo quitar la veterinaria favorita.');
+        }
+        return;
+      }
+
+      const saved = await setOsmVeterinaryFavorite(user.id, {
+        osmPlaceId: vet.id,
+        name: vet.name,
+        address: vet.address,
+        latitude: vet.lat,
+        longitude: vet.lng,
+      });
+
+      if (saved) {
+        setFavoriteVetId(null);
+        setFavoriteVetProfile(null);
+        setFavoriteOsmPlace({ id: vet.id, name: vet.name, address: vet.address, lat: vet.lat, lng: vet.lng });
+      } else {
+        setSectionMessage('No se pudo guardar la veterinaria favorita.');
+      }
+    } finally {
+      setTogglingFavoriteVetId(null);
+    }
+  }, [favoriteOsmPlace, user]);
 
   const sortedActiveProfiles = useMemo(() => {
     const scored = activeProfiles.map((profile) => {
@@ -655,6 +722,11 @@ export function NearbyVetsMapSection() {
     [sortedActiveProfiles, favoriteVetId],
   );
 
+  const restNearbyVets = useMemo(
+    () => nearbyVets.filter((vet) => vet.id !== favoriteOsmPlace?.id),
+    [nearbyVets, favoriteOsmPlace],
+  );
+
   const favoriteVetDisplay = useMemo(() => {
     if (!favoriteVetProfile) {
       return null;
@@ -671,6 +743,19 @@ export function NearbyVetsMapSection() {
       distanceMeters,
     };
   }, [favoriteVetProfile, location]);
+
+  const favoriteOsmDisplay = useMemo(() => {
+    if (!favoriteOsmPlace) {
+      return null;
+    }
+
+    const hasCoords = typeof favoriteOsmPlace.lat === 'number' && typeof favoriteOsmPlace.lng === 'number' && !!location;
+    const distanceMeters = hasCoords
+      ? haversineDistanceMeters(location!.lat, location!.lng, favoriteOsmPlace.lat!, favoriteOsmPlace.lng!)
+      : Number.MAX_SAFE_INTEGER;
+
+    return { place: favoriteOsmPlace, distanceMeters };
+  }, [favoriteOsmPlace, location]);
 
   const openInviteOnWhatsApp = useCallback((item: { name: string; claimToken?: string }) => {
     if (!item.claimToken) {
@@ -962,6 +1047,7 @@ export function NearbyVetsMapSection() {
     if (!user || user.isGuest) {
       setFavoriteVetId(null);
       setFavoriteVetProfile(null);
+      setFavoriteOsmPlace(null);
       return;
     }
     void loadFavoriteVet(user.id);
@@ -1304,6 +1390,98 @@ export function NearbyVetsMapSection() {
     );
   };
 
+  const renderOsmVetCard = (
+    { place, distanceMeters }: { place: { id: string; name: string; address: string; lat?: number; lng?: number }; distanceMeters: number },
+    variant: 'favorite' | 'list' = 'list',
+  ) => {
+    const isFavorite = favoriteOsmPlace?.id === place.id;
+    const isSelected = selectedVetId === place.id;
+    const vetMapLink =
+      typeof place.lat === 'number' && typeof place.lng === 'number'
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.lat},${place.lng}`)}`
+        : undefined;
+
+    return (
+      <li
+        key={place.id}
+        className={`rounded-xl p-3 ring-1 transition ${
+          variant === 'favorite'
+            ? 'bg-rose-50/60 ring-rose-200'
+            : isSelected
+              ? 'bg-emerald-50 ring-emerald-300'
+              : 'bg-slate-50 ring-slate-100'
+        }`}
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedVetId(place.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setSelectedVetId(place.id);
+          }
+        }}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            {variant === 'favorite' && (
+              <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                Tu veterinaria favorita
+              </span>
+            )}
+            <p className="font-semibold text-slate-900">{place.name}</p>
+            <p className="text-xs text-slate-600">{place.address}</p>
+          </div>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void toggleOsmFavoriteVet({
+                id: place.id,
+                name: place.name,
+                address: place.address,
+                lat: place.lat ?? 0,
+                lng: place.lng ?? 0,
+                distanceMeters,
+              });
+            }}
+            disabled={togglingFavoriteVetId === place.id}
+            title={isFavorite ? 'Quitar de veterinaria favorita' : 'Marcar como veterinaria favorita'}
+            className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition hover:bg-rose-50 disabled:opacity-50"
+          >
+            <span className="relative inline-flex">
+              <PawPrint size={18} className={isFavorite ? 'text-rose-500' : 'text-slate-400'} />
+              {isFavorite && (
+                <Heart
+                  size={8}
+                  className="absolute left-1/2 top-[9px] -translate-x-1/2 fill-rose-500 text-rose-500"
+                />
+              )}
+            </span>
+          </button>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {distanceMeters < Number.MAX_SAFE_INTEGER ? (
+            <span className="text-xs font-semibold text-emerald-700">{Math.round(distanceMeters)} m</span>
+          ) : (
+            <span className="text-xs font-semibold text-slate-500">Distancia no disponible</span>
+          )}
+          {vetMapLink && (
+            <a
+              href={vetMapLink}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => event.stopPropagation()}
+              className="text-xs font-semibold text-emerald-700 underline"
+            >
+              Ver en Google Maps
+            </a>
+          )}
+        </div>
+      </li>
+    );
+  };
+
   return (
     <section className="space-y-4 pb-2">
       <div className="rounded-3xl bg-white p-4 shadow-sm">
@@ -1426,6 +1604,24 @@ export function NearbyVetsMapSection() {
         </a>
       </div>
 
+      {(favoriteVetDisplay || favoriteOsmDisplay) && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Tu veterinaria favorita</p>
+              <p className="text-xs text-slate-500">Siempre aparece primero, debajo del mapa.</p>
+            </div>
+            <Heart size={16} className="fill-rose-500 text-rose-500" />
+          </div>
+
+          <ul className="mt-3 space-y-2">
+            {favoriteVetDisplay
+              ? renderVetCard(favoriteVetDisplay, 'favorite')
+              : favoriteOsmDisplay && renderOsmVetCard(favoriteOsmDisplay, 'favorite')}
+          </ul>
+        </div>
+      )}
+
       <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
         <p className="text-sm font-semibold text-slate-900">Veterinarias cercanas</p>
         {loadingVets && <p className="mt-2 text-sm text-slate-500">Buscando veterinarias en tu zona...</p>}
@@ -1447,59 +1643,13 @@ export function NearbyVetsMapSection() {
         )}
         {!loadingVets && !vetsError && nearbyVets.length > 0 && (
           <ul className="mt-3 space-y-2 text-sm text-slate-700">
-            {nearbyVets.map((vet) => {
-              const vetMapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${vet.lat},${vet.lng}`)}`;
-              const isSelected = selectedVetId === vet.id;
-              return (
-                <li
-                  key={vet.id}
-                  className={`rounded-xl p-3 ring-1 transition ${isSelected ? 'bg-emerald-50 ring-emerald-300' : 'bg-slate-50 ring-slate-100'}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    setSelectedVetId(vet.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedVetId(vet.id);
-                    }
-                  }}
-                >
-                  <p className="font-semibold text-slate-900">{vet.name}</p>
-                  <p className="text-xs text-slate-600">{vet.address}</p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-emerald-700">{Math.round(vet.distanceMeters)} m</span>
-                    <a
-                      href={vetMapLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(event) => event.stopPropagation()}
-                      className="text-xs font-semibold text-emerald-700 underline"
-                    >
-                      Ver en Google Maps
-                    </a>
-                  </div>
-                </li>
-              );
-            })}
+            {restNearbyVets.map((vet) => renderOsmVetCard({ place: vet, distanceMeters: vet.distanceMeters }, 'list'))}
+            {restNearbyVets.length === 0 && (
+              <p className="text-xs text-slate-500">Tu favorita es la unica veterinaria encontrada en este radio.</p>
+            )}
           </ul>
         )}
       </div>
-
-      {favoriteVetDisplay && (
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Tu veterinaria favorita</p>
-              <p className="text-xs text-slate-500">Siempre aparece primero, antes del listado de cercanas.</p>
-            </div>
-            <Heart size={16} className="fill-rose-500 text-rose-500" />
-          </div>
-
-          <ul className="mt-3 space-y-2">{renderVetCard(favoriteVetDisplay, 'favorite')}</ul>
-        </div>
-      )}
 
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
         <div className="flex items-center justify-between gap-2">
