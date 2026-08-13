@@ -31,7 +31,7 @@ const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? '';
 const TWILIO_WHATSAPP_CONTENT_SID = Deno.env.get('TWILIO_WHATSAPP_CONTENT_SID') ?? '';
 const TWILIO_STATUS_CALLBACK_URL = `${SUPABASE_URL}/functions/v1/twilio-whatsapp-status`;
-const WEB_APP_URL = (Deno.env.get('APP_BASE_URL') ?? 'https://aipetfriendly.vercel.app').replace(/\/$/, '');
+const WEB_APP_URL = (Deno.env.get('APP_BASE_URL') ?? 'https://www.aipetfriendly.ar').replace(/\/$/, '');
 const EMAIL_LOGO_URL = Deno.env.get('EMAIL_LOGO_URL') ?? `${WEB_APP_URL}/logo-aipetfriendly.png`;
 
 const corsHeaders = {
@@ -149,24 +149,68 @@ function maybeEmail(metadata: Record<string, unknown> | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-async function alreadySent(taskId: string, channel: 'email' | 'whatsapp', date: string) {
-  const { data, error } = await supabase
-    .from('notification_logs')
-    .select('id')
-    .eq('task_id', taskId)
-    .eq('channel', channel)
-    .eq('scheduled_date', date)
-    .in('status', channel === 'whatsapp'
-      ? ['accepted', 'queued', 'sending', 'sent', 'delivered', 'read']
-      : ['sent'])
-    .limit(1);
+// Deriva un nombre "amigable" a partir de la parte local del email (lo que esta
+// antes de la arroba), para usar como nombre del tutor cuando no cargo full_name.
+function deriveNameFromEmail(email: string): string {
+  const localPart = email.split('@')[0]?.trim() ?? '';
+  if (!localPart) {
+    return 'tutor';
+  }
 
-  if (error) {
-    console.error('alreadySent error', error);
+  const cleaned = localPart.replace(/[._+\-0-9]+/g, ' ').trim();
+  if (!cleaned) {
+    return 'tutor';
+  }
+
+  return cleaned
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+// Reserva de forma atomica el envio de una tarea/canal/fecha para evitar duplicados
+// cuando el cron dispara la funcion mas de una vez casi al mismo tiempo (condicion de
+// carrera). Se apoya en el indice unique(task_id, channel, scheduled_date):
+// - Si no existe fila, la inserta en estado 'sending' y devuelve true (reservado).
+// - Si ya existe una fila en estado 'failed' (intento anterior fallido), intenta
+//   volver a reclamarla con un UPDATE condicional (atomico a nivel de fila).
+// - Si ya existe en cualquier otro estado (accepted/queued/sending/sent/delivered/read),
+//   significa que ya se envio o se esta enviando en otra invocacion -> no reintentar.
+async function claimSlot(taskId: string, channel: 'email' | 'whatsapp', target: string, scheduledDate: string): Promise<boolean> {
+  const { error: insertError } = await supabase.from('notification_logs').insert({
+    task_id: taskId,
+    channel,
+    target,
+    scheduled_date: scheduledDate,
+    status: 'sending',
+    last_status_at: new Date().toISOString(),
+  });
+
+  if (!insertError) {
+    return true;
+  }
+
+  if (insertError.code !== '23505') {
+    console.error('claimSlot insert error', insertError);
     return false;
   }
 
-  return (data?.length ?? 0) > 0;
+  const { data: updated, error: updateError } = await supabase
+    .from('notification_logs')
+    .update({ status: 'sending', last_status_at: new Date().toISOString() })
+    .eq('task_id', taskId)
+    .eq('channel', channel)
+    .eq('scheduled_date', scheduledDate)
+    .eq('status', 'failed')
+    .select('id');
+
+  if (updateError) {
+    console.error('claimSlot update error', updateError);
+    return false;
+  }
+
+  return (updated?.length ?? 0) > 0;
 }
 
 async function saveLog(args: {
@@ -344,7 +388,7 @@ Deno.serve(async (req) => {
       const petName = (pet as PetRow).name;
       const petPhotoUrl = (pet as PetRow).photo_url;
       const ownerEmail = (user as UserRow).email;
-      const ownerName = (user as UserRow).full_name?.trim() || 'tutor';
+      const ownerName = (user as UserRow).full_name?.trim() || deriveNameFromEmail(ownerEmail);
       const eventEmail = maybeEmail(metadata);
       const targetEmail = eventEmail ?? ownerEmail;
       const scheduledDate = task.due_date;
@@ -353,8 +397,8 @@ Deno.serve(async (req) => {
       const messageText = `Recordatorio de ${petName}: ${task.title}. Vence el ${scheduledDate}.${task.notes ? ` Nota: ${task.notes}` : ''}`;
 
       if (wantsEmail) {
-        const skip = await alreadySent(task.id, 'email', scheduledDate);
-        if (!skip) {
+        const claimed = await claimSlot(task.id, 'email', targetEmail, scheduledDate);
+        if (claimed) {
           try {
             const response = await sendEmail(
               targetEmail,
@@ -401,8 +445,8 @@ Deno.serve(async (req) => {
           failed += 1;
           failedDetails.push({ taskId: task.id, channel: 'whatsapp', reason: 'Missing notificationPhone in task metadata' });
         } else {
-          const skip = await alreadySent(task.id, 'whatsapp', scheduledDate);
-          if (!skip) {
+          const claimed = await claimSlot(task.id, 'whatsapp', phone, scheduledDate);
+          if (claimed) {
             try {
               const hasApprovedTemplate = TWILIO_WHATSAPP_CONTENT_SID.trim().length > 0;
               const response = await sendWhatsApp(phone, {
