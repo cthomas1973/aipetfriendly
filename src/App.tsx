@@ -69,6 +69,25 @@ interface ReminderPopupItem {
   title: string;
   dueDate: string;
   petName: string;
+  doseTime?: string;
+}
+
+// Devuelve el horario especifico (HH:MM) de una tarea preventiva, priorizando el
+// horario de turno y luego el primer horario de dosis configurado. Se usa para que
+// los recordatorios (push, email, whatsapp) avisen de la PROXIMA dosis puntual y no
+// de todas las dosis del dia juntas.
+function getTaskTimeString(task: PreventiveTask): string | null {
+  if (typeof task.appointmentTime === 'string' && /^\d{2}:\d{2}$/.test(task.appointmentTime)) {
+    return task.appointmentTime;
+  }
+  if (
+    Array.isArray(task.scheduleTimes)
+    && task.scheduleTimes.length > 0
+    && /^\d{2}:\d{2}$/.test(task.scheduleTimes[0])
+  ) {
+    return task.scheduleTimes[0];
+  }
+  return null;
 }
 
 function BottomNav({
@@ -256,7 +275,13 @@ function AppContent() {
         if (!hasPushChannel) return false;
         if (task.remindersEnabled === false) return false;
 
-        const dueDate = new Date(`${task.dueDate}T23:59:59`);
+        // Si la tarea tiene un horario puntual (turno o dosis de medicacion),
+        // solo se considera "vencida" a partir de ese horario del dia (para poder
+        // avisar de la proxima dosis puntual y no de todas las del dia a la vez).
+        // Si no tiene horario especifico, se mantiene el comportamiento anterior
+        // (vence al final del dia indicado).
+        const taskTime = getTaskTimeString(task);
+        const dueDate = new Date(`${task.dueDate}T${taskTime ?? '23:59'}:00`);
         return dueDate.getTime() <= today.getTime();
       })
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
@@ -267,6 +292,7 @@ function AppContent() {
         title: task.title,
         dueDate: task.dueDate,
         petName: pets.find((pet) => pet.id === task.petId)?.name ?? 'Mascota',
+        doseTime: getTaskTimeString(task) ?? undefined,
       }));
 
     if (dueItems.length > 0) {
@@ -460,7 +486,10 @@ function AppContent() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Recordatorio</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">{item.title}</p>
-                  <p className="mt-0.5 text-xs text-slate-600">{item.petName} · vence {new Date(item.dueDate).toLocaleDateString()}</p>
+                  <p className="mt-0.5 text-xs text-slate-600">
+                    {item.petName} · vence {new Date(item.dueDate).toLocaleDateString()}
+                    {item.doseTime ? ` a las ${item.doseTime}` : ''}
+                  </p>
                 </div>
                 <button
                   type="button"

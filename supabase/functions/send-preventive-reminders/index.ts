@@ -49,6 +49,45 @@ function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+// Argentina no usa horario de verano: offset fijo UTC-3.
+const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+// Devuelve un Date "desplazado" cuyos componentes UTC representan la hora de pared
+// vigente en Argentina en este momento. Se usa junto con computeTaskDueAt (que arma
+// las fechas de las tareas con la misma convencion) para poder comparar instantes
+// sin tener que reconvertir zonas horarias en cada chequeo.
+function nowInArgentina(): Date {
+  return new Date(Date.now() - AR_OFFSET_MS);
+}
+
+// Extrae el horario puntual (HH:MM) de una tarea preventiva: primero el horario de
+// turno y luego el primer horario de dosis configurado. Permite avisar de la PROXIMA
+// dosis puntual en vez de todas las dosis del dia juntas.
+function getTaskTimeString(metadata: Record<string, unknown> | null): string | null {
+  const appointmentTime = metadata?.appointmentTime;
+  if (typeof appointmentTime === 'string' && /^\d{2}:\d{2}$/.test(appointmentTime)) {
+    return appointmentTime;
+  }
+  const scheduleTimes = metadata?.scheduleTimes;
+  if (Array.isArray(scheduleTimes) && scheduleTimes.length > 0 && typeof scheduleTimes[0] === 'string' && /^\d{2}:\d{2}$/.test(scheduleTimes[0])) {
+    return scheduleTimes[0];
+  }
+  return null;
+}
+
+// Arma el instante (en la misma escala "desplazada" que nowInArgentina()) en que una
+// tarea puntual pasa a estar vencida. Si no tiene horario especifico, se mantiene el
+// comportamiento historico: vence apenas comienza su due_date (00:00).
+function computeTaskDueAt(dueDateStr: string, timeStr: string | null): Date {
+  const [year, month, day] = dueDateStr.split('-').map(Number);
+  let hours = 0;
+  let minutes = 0;
+  if (timeStr) {
+    [hours, minutes] = timeStr.split(':').map(Number);
+  }
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1, hours, minutes, 0, 0));
+}
+
 function escapeHtml(input: string): string {
   return input
     .replaceAll('&', '&amp;')
@@ -329,7 +368,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const now = new Date();
+    const now = nowInArgentina();
     const today = toIsoDate(now);
 
     const { data: dueTasks, error: dueError } = await supabase
@@ -363,6 +402,15 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Si la tarea tiene horario puntual (turno o dosis de medicacion), todavia no
+      // avisamos si esa dosis/turno especifico no llego a su horario (para no mandar
+      // de una todas las dosis del dia: se espera a la proxima dosis puntual).
+      const taskTime = getTaskTimeString(metadata);
+      const taskDueAt = computeTaskDueAt(task.due_date, taskTime);
+      if (taskDueAt.getTime() > now.getTime()) {
+        continue;
+      }
+
       const { data: pet, error: petError } = await supabase
         .from('pets')
         .select('id, name, user_id, photo_url')
@@ -393,8 +441,9 @@ Deno.serve(async (req) => {
       const targetEmail = eventEmail ?? ownerEmail;
       const scheduledDate = task.due_date;
       const formattedDate = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${scheduledDate}T12:00:00`));
+      const formattedDateTime = taskTime ? `${formattedDate} ${taskTime}` : formattedDate;
 
-      const messageText = `Recordatorio de ${petName}: ${task.title}. Vence el ${scheduledDate}.${task.notes ? ` Nota: ${task.notes}` : ''}`;
+      const messageText = `Recordatorio de ${petName}: ${task.title}. Vence el ${formattedDateTime}.${task.notes ? ` Nota: ${task.notes}` : ''}`;
 
       if (wantsEmail) {
         const claimed = await claimSlot(task.id, 'email', targetEmail, scheduledDate);
@@ -407,7 +456,7 @@ Deno.serve(async (req) => {
                 ownerName,
                 petName,
                 taskTitle: task.title,
-                scheduledDate,
+                scheduledDate: formattedDateTime,
                 notes: task.notes,
                 petPhotoUrl,
               }),
@@ -457,7 +506,7 @@ Deno.serve(async (req) => {
                       '1': ownerName,
                       '2': petName,
                       '3': task.title,
-                      '4': formattedDate,
+                      '4': formattedDateTime,
                     }
                   : undefined,
               });
