@@ -605,18 +605,91 @@ export const PET_GUIDE_TYPE_LABELS: Record<PetGuidePetType, string> = {
   gato: 'Gatos',
 };
 
-export function getPetGuideBySlug(slug: string): PetGuide | undefined {
-  return PET_GUIDES.find((guide) => guide.slug === slug);
+const GUIDE_RELEASE_INTERVAL_DAYS = 7;
+const GUIDE_RELEASE_INTERVAL_MS = GUIDE_RELEASE_INTERVAL_DAYS * 24 * 60 * 60 * 1000;
+
+// Fecha efectiva de publicacion de cada guia (epoch ms).
+// Fase 1: las guias cuya propia fecha (publishedAt) ya llego (<= ahora) se consideran
+// publicadas tal cual figuran, sin importar el orden entre ellas. Esto evita retrasar
+// retroactivamente guias que ya estaban visibles en el sitio (por ejemplo, dos guias
+// cargadas originalmente el mismo dia).
+// Fase 2: las guias con fecha propia futura ("en espera", recien cargadas) se liberan
+// en orden respetando un minimo de 7 dias desde la ultima liberacion (de fase 1 o de
+// otra pendiente anterior). Asi alcanza con cargar el contenido nuevo sin calcular a
+// mano la fecha exacta en la que se va a volver visible para el resto de los usuarios.
+const EFFECTIVE_RELEASE_TIMES: Record<string, number> = (() => {
+  const now = Date.now();
+  const releaseTimes: Record<string, number> = {};
+
+  const alreadyDue: PetGuide[] = [];
+  const pending: PetGuide[] = [];
+  for (const guide of PET_GUIDES) {
+    const ownTime = new Date(guide.publishedAt).getTime();
+    if (ownTime <= now) {
+      releaseTimes[guide.slug] = ownTime;
+      alreadyDue.push(guide);
+    } else {
+      pending.push(guide);
+    }
+  }
+
+  pending.sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+  let lastReleaseTime = alreadyDue.length > 0
+    ? Math.max(...alreadyDue.map((guide) => new Date(guide.publishedAt).getTime()))
+    : null;
+  for (const guide of pending) {
+    const ownTime = new Date(guide.publishedAt).getTime();
+    const minAllowedTime = lastReleaseTime === null ? ownTime : lastReleaseTime + GUIDE_RELEASE_INTERVAL_MS;
+    const effectiveTime = Math.max(ownTime, minAllowedTime);
+    releaseTimes[guide.slug] = effectiveTime;
+    lastReleaseTime = effectiveTime;
+  }
+
+  return releaseTimes;
+})();
+
+export function getEffectiveReleaseTime(slug: string): number {
+  return EFFECTIVE_RELEASE_TIMES[slug] ?? Date.now();
 }
 
-export function getGuidesSortedByDate(): PetGuide[] {
-  return [...PET_GUIDES].sort(
+// Fecha efectiva en formato ISO (YYYY-MM-DD), util para reutilizar isRecentlyPublished.
+export function getEffectiveReleaseDateIso(slug: string): string {
+  return new Date(getEffectiveReleaseTime(slug)).toISOString().slice(0, 10);
+}
+
+// Fecha efectiva en formato local (DD/MM/AAAA), para mostrarle al admin cuando se
+// publicara una guia que todavia esta "en espera".
+export function getEffectiveReleaseDateLabel(slug: string): string {
+  return new Date(getEffectiveReleaseTime(slug)).toLocaleDateString('es-AR');
+}
+
+export function isGuidePublished(slug: string, now: number = Date.now()): boolean {
+  return now >= getEffectiveReleaseTime(slug);
+}
+
+// Guias visibles segun el rol: el admin ve todas (incluidas las "en espera") para
+// poder previsualizarlas; el resto de los usuarios y visitantes solo ven las que ya
+// llegaron a su fecha efectiva de publicacion (minimo 7 dias desde la ultima guia).
+export function getVisiblePetGuides(isAdmin: boolean): PetGuide[] {
+  if (isAdmin) return PET_GUIDES;
+  return PET_GUIDES.filter((guide) => isGuidePublished(guide.slug));
+}
+
+export function getPetGuideBySlug(slug: string, isAdmin = false): PetGuide | undefined {
+  const guide = PET_GUIDES.find((item) => item.slug === slug);
+  if (!guide) return undefined;
+  if (!isAdmin && !isGuidePublished(guide.slug)) return undefined;
+  return guide;
+}
+
+export function getGuidesSortedByDate(isAdmin = false): PetGuide[] {
+  return [...getVisiblePetGuides(isAdmin)].sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
   );
 }
 
-export function getRecentGuides(count = 5): PetGuide[] {
-  return getGuidesSortedByDate().slice(0, count);
+export function getRecentGuides(count = 5, isAdmin = false): PetGuide[] {
+  return getGuidesSortedByDate(isAdmin).slice(0, count);
 }
 
 export function isRecentlyPublished(publishedAt: string, days = 7): boolean {

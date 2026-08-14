@@ -47,6 +47,40 @@ for (const guide of guides) {
 
 guides.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
+// Calcula la fecha efectiva de publicacion de cada guia (misma logica que
+// EFFECTIVE_RELEASE_TIMES en src/data/petGuides.ts):
+// Fase 1: las guias cuya propia fecha ya llego (<= ahora) se consideran publicadas tal
+// cual figuran, sin importar el orden entre ellas (no se retrasan retroactivamente
+// guias que ya estaban visibles, por ejemplo dos cargadas el mismo dia).
+// Fase 2: las guias con fecha futura ("en espera") se liberan en orden, respetando un
+// minimo de 7 dias desde la ultima liberacion. Las que siguen en espera no se agregan
+// al sitemap, para no indexarlas antes de que sean visibles al publico.
+const GUIDE_RELEASE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+const now = Date.now();
+
+const alreadyDue = guides.filter((guide) => new Date(guide.publishedAt).getTime() <= now);
+const pending = guides
+  .filter((guide) => new Date(guide.publishedAt).getTime() > now)
+  .sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+
+const effectiveReleaseTimes = new Map();
+for (const guide of alreadyDue) {
+  effectiveReleaseTimes.set(guide.slug, new Date(guide.publishedAt).getTime());
+}
+
+let lastReleaseTime = alreadyDue.length > 0
+  ? Math.max(...alreadyDue.map((guide) => new Date(guide.publishedAt).getTime()))
+  : null;
+for (const guide of pending) {
+  const ownTime = new Date(guide.publishedAt).getTime();
+  const minAllowedTime = lastReleaseTime === null ? ownTime : lastReleaseTime + GUIDE_RELEASE_INTERVAL_MS;
+  const effectiveTime = Math.max(ownTime, minAllowedTime);
+  effectiveReleaseTimes.set(guide.slug, effectiveTime);
+  lastReleaseTime = effectiveTime;
+}
+
+const publishedGuides = guides.filter((guide) => effectiveReleaseTimes.get(guide.slug) <= now);
+
 const staticUrls = [
   { loc: `${SITE_URL}/`, changefreq: 'weekly', priority: '1.0' },
   { loc: `${SITE_URL}/guias`, changefreq: 'weekly', priority: '0.8' },
@@ -55,7 +89,7 @@ const staticUrls = [
   { loc: `${SITE_URL}/contacto`, changefreq: 'monthly', priority: '0.6' },
 ];
 
-const guideUrls = guides.map((guide) => ({
+const guideUrls = publishedGuides.map((guide) => ({
   loc: `${SITE_URL}/guias/${guide.slug}`,
   changefreq: 'monthly',
   priority: '0.7',
@@ -72,4 +106,4 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.s
   .join('\n')}\n</urlset>\n`;
 
 writeFileSync(sitemapFile, xml, 'utf8');
-console.log(`sitemap.xml generado con ${allUrls.length} URLs (${guides.length} guias).`);
+console.log(`sitemap.xml generado con ${allUrls.length} URLs (${publishedGuides.length} de ${guides.length} guias publicadas).`);

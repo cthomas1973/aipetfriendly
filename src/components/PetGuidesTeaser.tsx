@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
-import { getRecentGuides, isRecentlyPublished } from '../data/petGuides';
+import { useAppState } from '../context/AppStateContext';
+import { getEffectiveReleaseDateIso, getRecentGuides, isRecentlyPublished } from '../data/petGuides';
 
 interface PetGuidesTeaserProps {
   title?: string;
@@ -12,7 +13,9 @@ export function PetGuidesTeaser({
   count = 5,
   className = '',
 }: PetGuidesTeaserProps) {
-  const guides = getRecentGuides(count);
+  const { user } = useAppState();
+  const isAdmin = Boolean(user?.isAdmin);
+  const guides = getRecentGuides(count, isAdmin);
 
   if (guides.length === 0) {
     return null;
@@ -32,7 +35,7 @@ export function PetGuidesTeaser({
               className="flex items-start gap-2 text-sm font-semibold text-emerald-700 hover:underline"
             >
               <span>{guide.title}</span>
-              {isRecentlyPublished(guide.publishedAt) && (
+              {isRecentlyPublished(getEffectiveReleaseDateIso(guide.slug)) && (
                 <span className="mt-0.5 flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
                   Nuevo
                 </span>

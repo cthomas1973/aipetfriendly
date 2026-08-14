@@ -8,12 +8,16 @@ import {
   Target,
 } from 'lucide-react';
 import { AdBanner } from './AdBanner';
+import { useAppState } from '../context/AppStateContext';
 import {
   PET_GUIDE_CATEGORY_LABELS,
   PET_GUIDE_TYPE_LABELS,
   filterGuides,
+  getEffectiveReleaseDateIso,
+  getEffectiveReleaseDateLabel,
   getGuidesSortedByDate,
   getPetGuideBySlug,
+  isGuidePublished,
   isRecentlyPublished,
   type PetGuideCategory,
   type PetGuidePetType,
@@ -53,6 +57,8 @@ function setPageMeta(title: string, description: string) {
 }
 
 function GuidesList() {
+  const { user } = useAppState();
+  const isAdmin = Boolean(user?.isAdmin);
   const [category, setCategory] = useState<PetGuideCategory | 'todas'>('todas');
   const [petType, setPetType] = useState<PetGuidePetType | 'todas'>('todas');
 
@@ -64,8 +70,8 @@ function GuidesList() {
   }, []);
 
   const guides = useMemo(
-    () => filterGuides(getGuidesSortedByDate(), { category, petType }),
-    [category, petType],
+    () => filterGuides(getGuidesSortedByDate(isAdmin), { category, petType }),
+    [category, petType, isAdmin],
   );
 
   return (
@@ -153,9 +159,14 @@ function GuidesList() {
                   <div>
                     <p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-600">
                       {PET_GUIDE_CATEGORY_LABELS[guide.category]} · {guide.readingTime}
-                      {isRecentlyPublished(guide.publishedAt) && (
+                      {isRecentlyPublished(getEffectiveReleaseDateIso(guide.slug)) && (
                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                           Nuevo
+                        </span>
+                      )}
+                      {isAdmin && !isGuidePublished(guide.slug) && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                          En espera · se publica el {getEffectiveReleaseDateLabel(guide.slug)}
                         </span>
                       )}
                     </p>
@@ -175,7 +186,9 @@ function GuidesList() {
 }
 
 function GuideDetail({ slug }: { slug: string }) {
-  const guide = useMemo(() => getPetGuideBySlug(slug), [slug]);
+  const { user } = useAppState();
+  const isAdmin = Boolean(user?.isAdmin);
+  const guide = useMemo(() => getPetGuideBySlug(slug, isAdmin), [slug, isAdmin]);
 
   useEffect(() => {
     if (guide) {
@@ -197,6 +210,7 @@ function GuideDetail({ slug }: { slug: string }) {
   }
 
   const Icon = CATEGORY_ICONS[guide.category];
+  const isPublished = isGuidePublished(guide.slug);
 
   return (
     <section className="space-y-6 pb-6">
@@ -207,11 +221,18 @@ function GuideDetail({ slug }: { slug: string }) {
         <ChevronLeft size={16} /> Todas las guías
       </a>
 
+      {isAdmin && !isPublished && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Vista previa de administrador: esta guía todavía está en espera y se publicará
+          automáticamente para el resto de los usuarios el {getEffectiveReleaseDateLabel(guide.slug)}.
+        </div>
+      )}
+
       <header>
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">
           <Icon size={16} />
           {PET_GUIDE_CATEGORY_LABELS[guide.category]} · {guide.readingTime} de lectura
-          {isRecentlyPublished(guide.publishedAt) && (
+          {isRecentlyPublished(getEffectiveReleaseDateIso(guide.slug)) && (
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
               Nuevo
             </span>
