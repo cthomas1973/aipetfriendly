@@ -378,7 +378,8 @@ Deno.serve(async (req) => {
       .eq('completed', false);
 
     if (dueError) {
-      throw dueError;
+      console.error('dueTasks query error', dueError);
+      throw new Error(`dueTasks query failed: ${dueError.message ?? JSON.stringify(dueError)}`);
     }
 
     const tasks = (dueTasks ?? []) as ReminderTaskRow[];
@@ -556,7 +557,16 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error(error);
-    return new Response(JSON.stringify({ error: String(error) }), {
+    const message = error instanceof Error
+      ? error.message
+      : (() => {
+          try {
+            return JSON.stringify(error);
+          } catch {
+            return String(error);
+          }
+        })();
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
