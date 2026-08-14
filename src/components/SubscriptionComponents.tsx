@@ -1210,7 +1210,7 @@ export function OffersSection() {
         )}
       </div>
 
-      <AdBanner adSenseSlotId="2222222222" />
+      <AdBanner adSenseSlotId="9835684451" />
     </section>
   );
 }

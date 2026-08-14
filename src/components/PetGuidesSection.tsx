@@ -87,7 +87,7 @@ function GuidesList() {
         </p>
       </div>
 
-      <AdBanner adSenseSlotId="3333333333" forcePublic />
+      <AdBanner adSenseSlotId="5896439448" forcePublic />
 
       <div className="space-y-2">
         <div className="flex flex-wrap justify-center gap-1.5">
@@ -238,7 +238,7 @@ function GuideDetail({ slug }: { slug: string }) {
         />
       )}
 
-      <AdBanner adSenseSlotId="3333333333" forcePublic />
+      <AdBanner adSenseSlotId="5896439448" forcePublic />
 
       <article className="space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
         {guide.sections.map((section) => (
@@ -267,7 +267,7 @@ function GuideDetail({ slug }: { slug: string }) {
         AiPetFriendly como primera orientación.
       </div>
 
-      <AdBanner adSenseSlotId="4444444444" forcePublic />
+      <AdBanner adSenseSlotId="8331031096" forcePublic />
 
       <PublicFooter />
     </section>
