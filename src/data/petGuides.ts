@@ -515,6 +515,89 @@ export const PET_GUIDES: PetGuide[] = [
       },
     ],
   },
+  {
+    slug: 'paseo-con-correa-sin-tirones',
+    title: 'Paseo con correa sin tirones: guía para caminatas relajadas',
+    category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-08-14',
+    summary:
+      'Disfrutá de paseos relajados y conectados en armonía con tu perro. Guía paso a paso para que aprenda a caminar con la correa floja, sin tirones.',
+    readingTime: '5 min',
+    coverImage: {
+      src: '/guides/paseo-con-correa-sin-tirones/portada.jpg',
+      alt: 'Entrenadora caminando junto a un Border Collie con la correa floja en un sendero arbolado',
+    },
+    sections: [
+      {
+        heading: 'Paso 1: el equipamiento correcto',
+        paragraphs: [
+          'Usá un arnés ergonómico en forma de "Y", que evita la presión sobre el cuello, junto con una correa fija de 2 a 3 metros.',
+          'Antes de salir, asegurate de que tu perro esté calmado y relajado en el momento de colocarle el equipo: si ya está nervioso o saltando de ansiedad, el paseo arranca con esa misma energía.',
+        ],
+        image: {
+          src: '/guides/paseo-con-correa-sin-tirones/paso-1-equipamiento.jpg',
+          alt: 'Arnés ergonómico en forma de Y y correa fija listos para el paseo',
+        },
+      },
+      {
+        heading: 'Paso 2: la "estatua" ante la tensión',
+        paragraphs: [
+          'En cuanto sientas que la correa se tensa, detenete por completo al instante.',
+          'Convertite en una estatua: no tires hacia atrás, simplemente no permitas que el paseo avance mientras el perro tire.',
+          'Esperá a que afloje la tensión o vuelva a mirarte para recién ahí retomar la marcha.',
+        ],
+        image: {
+          src: '/guides/paseo-con-correa-sin-tirones/paso-2-estatua.jpg',
+          alt: 'Entrenadora detenida como una estatua mientras el perro tensa la correa',
+        },
+      },
+      {
+        heading: 'Paso 3: giro de 180° (cambio de sentido)',
+        paragraphs: [
+          'Si el perro insiste en tirar hacia adelante, girá alegremente en dirección opuesta (un giro en U) y llamalo con voz animada para que te siga.',
+          'Con esto aprende que tirar de la correa lo aleja de su objetivo en lugar de acercarlo, y que caminar cerca tuyo es lo que realmente lo lleva a donde quiere ir.',
+        ],
+        image: {
+          src: '/guides/paseo-con-correa-sin-tirones/paso-3-giro-180.jpg',
+          alt: 'Entrenadora girando en dirección opuesta mientras llama al perro con voz animada',
+        },
+      },
+      {
+        heading: 'Paso 4: premiar el caminar a la par',
+        paragraphs: [
+          'Cada vez que camine a tu lado con la correa totalmente holgada, felicitalo verbalmente y entregale un premio a la altura de tu pierna.',
+          'Reforzar el comportamiento deseado hace que el perro prefiera mantenerse cerca tuyo de forma voluntaria, en lugar de por obligación.',
+        ],
+        image: {
+          src: '/guides/paseo-con-correa-sin-tirones/paso-4-premiar.jpg',
+          alt: 'Entrenadora entregando un premio al perro que camina a la par con la correa floja',
+        },
+      },
+      {
+        heading: 'Paso 5: el premio de olfatear',
+        paragraphs: [
+          'Olfatear es una de las necesidades principales del perro durante los paseos, no un capricho ni una pérdida de tiempo.',
+          'Usá el olfateo como recompensa: cuando camine bien durante unos metros, dale la orden de "explorá" para que vaya a olfatear el pasto libremente unos instantes.',
+        ],
+        image: {
+          src: '/guides/paseo-con-correa-sin-tirones/paso-5-olfatear.jpg',
+          alt: 'Perro olfateando libremente el pasto durante una pausa del paseo',
+        },
+      },
+      {
+        heading: 'Cierre: paseos de calidad y conexión',
+        paragraphs: [
+          'La paciencia y la consistencia son la clave: la caminata no es una carrera, sino un momento de vínculo con tu perro.',
+          'Celebrá cada pequeño avance en cada paseo, aunque parezca poco: son esos avances los que, sumados, logran el cambio.',
+        ],
+        image: {
+          src: '/guides/paseo-con-correa-sin-tirones/cierre.jpg',
+          alt: 'Entrenadora y perro caminando juntos y relajados al final del paseo',
+        },
+      },
+    ],
+  },
 ];
 
 export const PET_GUIDE_TYPE_LABELS: Record<PetGuidePetType, string> = {
