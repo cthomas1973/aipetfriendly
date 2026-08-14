@@ -598,6 +598,94 @@ export const PET_GUIDES: PetGuide[] = [
       },
     ],
   },
+  {
+    slug: 'llamado-confiable-en-perros',
+    title: 'El llamado confiable: cómo lograr que tu perro acuda siempre',
+    category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-08-21',
+    summary:
+      'Enseñale a tu perro a acudir alegremente a tu lado en cualquier situación y entorno. Guía paso a paso para construir un llamado confiable, con correa larga y sin regaños.',
+    readingTime: '5 min',
+    coverImage: {
+      src: '/guides/llamado-confiable-en-perros/portada.jpg',
+      alt: 'Perro corriendo alegremente hacia su dueño en un parque',
+    },
+    sections: [
+      {
+        heading: 'La clave de la libertad y la seguridad',
+        paragraphs: [
+          'Un llamado confiable te permite evitar accidentes al instante, alejando a tu perro de situaciones peligrosas como el tráfico o el cruce con otros perros.',
+          'También le da más libertad: un perro que responde bien al llamado puede disfrutar paseos sueltos, sin correa, con mucha más tranquilidad para vos y para él.',
+          'Sobre todo, fortalece el vínculo de confianza: acudir a tu lado se convierte en un momento positivo y lleno de recompensas, en lugar de una obligación.',
+        ],
+        image: {
+          src: '/guides/llamado-confiable-en-perros/libertad-seguridad.jpg',
+          alt: 'Perro suelto y feliz jugando en un espacio abierto junto a su dueño',
+        },
+      },
+      {
+        heading: 'Paso 1: asociación positiva del llamado',
+        paragraphs: [
+          'Agachate a su altura, con una postura abierta y entusiasta, para invitarlo a acercarse con ganas.',
+          'Decí su nombre seguido de la palabra elegida, con un tono alegre y claro (por ejemplo, "¡Max, vení!").',
+          'En cuanto llegue frente a vos, felicitalo con energía y dale un premio de alto valor de inmediato.',
+        ],
+        image: {
+          src: '/guides/llamado-confiable-en-perros/paso-1-asociacion-positiva.jpg',
+          alt: 'Persona agachada llamando a su perro con entusiasmo',
+        },
+      },
+      {
+        heading: 'Paso 2: el "efecto imán" y las recompensas',
+        paragraphs: [
+          'Usá premios de alto valor (trocitos de pollo, queso u otros muy sabrosos) que reserves exclusivamente para el ejercicio del llamado.',
+          'Hacé una pequeña "fiesta de llegada": combiná la comida con caricias entusiastas y un tono de voz alegre.',
+          'Sostené con suavidad su collar o pretal mientras lo premiás, para evitar que salga corriendo de nuevo apenas termina de comer.',
+        ],
+        image: {
+          src: '/guides/llamado-confiable-en-perros/paso-2-efecto-iman.jpg',
+          alt: 'Dueño premiando a su perro con comida al llegar junto a él',
+        },
+      },
+      {
+        heading: 'Paso 3: correa larga y distracciones',
+        paragraphs: [
+          'Usá una correa larga (de 5 a 10 metros) como medida de seguridad, para evitar que tu perro ignore la orden o se escape mientras practicás.',
+          'Empezá llamándolo desde distancias cortas y aumentá el espacio de a poco, a medida que responde con más consistencia.',
+          'Practicá también en movimiento: llamalo mientras camina o explora, asegurándote de tener su atención antes de decir el comando.',
+        ],
+        image: {
+          src: '/guides/llamado-confiable-en-perros/paso-3-correa-larga.jpg',
+          alt: 'Perro con correa larga practicando el llamado en un entorno con distracciones',
+        },
+      },
+      {
+        heading: 'Solución de problemas: errores a evitar',
+        paragraphs: [
+          'Nunca lo regañes al llegar: si tarda en venir, jamás lo retes cuando finalmente acude. Eso rompe la confianza y hace que asocie el regreso con el castigo.',
+          'Evitá repetir la palabra varias veces ("¡ven, ven, ven!") si te ignora. En cambio, llamá su atención con palmas, alejándote alegremente o mostrando un juguete.',
+          'El llamado no debería terminar siempre la diversión: no lo llames solo para ponerle la correa e irte. Llamalo, premialo, y muchas veces volvé a soltarlo ("¡andá, seguí jugando!") para que no lo asocie únicamente con el final del paseo.',
+        ],
+        image: {
+          src: '/guides/llamado-confiable-en-perros/errores-a-evitar.jpg',
+          alt: 'Persona evitando regañar a su perro y en cambio felicitándolo con cariño',
+        },
+      },
+      {
+        heading: 'Cierre: confianza y respuesta incondicional',
+        paragraphs: [
+          'Los juegos de escondite ayudan mucho: escondete dentro de casa o en el jardín y llamalo para que te busque.',
+          'Practicá sesiones cortas, de 3 a 5 llamados por paseo, celebrando siempre el resultado.',
+          'El objetivo es construir un hábito para toda la vida: que tu perro sienta que acudir a vos es siempre la mejor opción posible.',
+        ],
+        image: {
+          src: '/guides/llamado-confiable-en-perros/cierre.jpg',
+          alt: 'Perro y dueño felices y confiados después de practicar el llamado',
+        },
+      },
+    ],
+  },
 ];
 
 export const PET_GUIDE_TYPE_LABELS: Record<PetGuidePetType, string> = {
