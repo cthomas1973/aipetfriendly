@@ -5,6 +5,8 @@ import type {
   AiUsageSettings,
   AdminUserRow,
   BillingPricingSettings,
+  InboundEmailReply,
+  InboundEmailRow,
   Pet,
   PetAiUsageRow,
   PetWeightLog,
@@ -1487,6 +1489,75 @@ export async function updateAdminUserAccess(userId: string, access: UserAccessLe
 
   if (error) {
     console.error('Error updating admin user access:', error);
+    throw error;
+  }
+
+  return true;
+}
+
+// ── Buzon de correos entrantes (Admin) ────────────────────────────────────────
+
+export async function fetchAdminInboundEmails(): Promise<InboundEmailRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_inbound_emails');
+
+  if (error) {
+    console.error('Error fetching inbound emails:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    messageId: row.message_id || undefined,
+    fromAddress: row.from_address,
+    toAddresses: row.to_addresses || [],
+    subject: row.subject || undefined,
+    htmlBody: row.html_body || undefined,
+    textBody: row.text_body || undefined,
+    receivedAt: row.received_at,
+    isRead: Boolean(row.is_read),
+    repliedAt: row.replied_at || undefined,
+    hasAttachments: Boolean(row.has_attachments),
+    attachmentCount: Number(row.attachment_count) || 0,
+  }));
+}
+
+export async function fetchAdminInboundEmailReplies(inboundEmailId: string): Promise<InboundEmailReply[]> {
+  const { data, error } = await supabase.rpc('admin_list_inbound_email_replies', {
+    p_inbound_email_id: inboundEmailId,
+  });
+
+  if (error) {
+    console.error('Error fetching inbound email replies:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    body: row.body,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function markAdminInboundEmailRead(inboundEmailId: string): Promise<boolean> {
+  const { error } = await supabase.rpc('admin_mark_inbound_email_read', {
+    p_inbound_email_id: inboundEmailId,
+  });
+
+  if (error) {
+    console.error('Error marking inbound email as read:', error);
+    throw error;
+  }
+
+  return true;
+}
+
+export async function sendAdminInboundEmailReply(inboundEmailId: string, body: string): Promise<boolean> {
+  const { error } = await supabase.functions.invoke('admin-reply-inbound-email', {
+    body: { inboundEmailId, body },
+  });
+
+  if (error) {
+    console.error('Error sending inbound email reply:', error);
     throw error;
   }
 

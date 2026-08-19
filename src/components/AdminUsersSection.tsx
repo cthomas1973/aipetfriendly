@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Gift, Shield, UserCog } from 'lucide-react';
+import { Gift, Inbox, Shield, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AdminBeneficiosSection } from './AdminBeneficiosSection';
+import { AdminInboxSection } from './AdminInboxSection';
 import {
   fetchAdminAiDashboardMetrics,
   fetchAdminAiQueryAudit,
@@ -30,7 +31,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
-  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios'>('usuarios');
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -188,11 +189,21 @@ export function AdminUsersSection() {
           }`}>
           <Gift size={15} /> Beneficios ML
         </button>
+        <button type="button" onClick={() => setAdminTab('buzon')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'buzon' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <Inbox size={15} /> Buzon
+        </button>
       </div>
 
       {adminTab === 'beneficios' ? (
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminBeneficiosSection />
+        </div>
+      ) : adminTab === 'buzon' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm">
+          <AdminInboxSection />
         </div>
       ) : (<>
         <div className="flex flex-wrap items-center gap-2">

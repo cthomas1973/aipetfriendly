@@ -1408,6 +1408,19 @@ export function PetsSection() {
 
       <div className="mt-4 space-y-3">
         <p className="text-sm text-slate-500">{timeline.length} registro{timeline.length !== 1 ? 's' : ''}</p>
+
+        <div className="flex gap-3">
+          <button type="button" onClick={doPdf}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-emerald-400 py-3 font-semibold text-emerald-700">
+            <Download size={16} /> Descargar PDF
+          </button>
+          <button type="button" onClick={() => setMailModal(true)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 font-bold text-white">
+            <Mail size={16} /> Enviar
+          </button>
+        </div>
+        {msg && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{msg}</p>}
+
         {timeline.length === 0 ? (
           <div className="rounded-3xl bg-white px-5 py-10 text-center shadow-sm">
             <p className="text-slate-400">Sin registros clinicos aun.</p>
@@ -1432,18 +1445,6 @@ export function PetsSection() {
             </article>
           );
         })}
-
-        <div className="flex gap-3 pt-1">
-          <button type="button" onClick={doPdf}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-emerald-400 py-3 font-semibold text-emerald-700">
-            <Download size={16} /> Descargar PDF
-          </button>
-          <button type="button" onClick={() => setMailModal(true)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 font-bold text-white">
-            <Mail size={16} /> Enviar
-          </button>
-        </div>
-        {msg && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{msg}</p>}
       </div>
 
       {mailModal && (

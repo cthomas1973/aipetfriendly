@@ -317,6 +317,27 @@ export interface AdminUserRow {
   createdAt: string;
 }
 
+export interface InboundEmailRow {
+  id: string;
+  messageId?: string;
+  fromAddress: string;
+  toAddresses: string[];
+  subject?: string;
+  htmlBody?: string;
+  textBody?: string;
+  receivedAt: string;
+  isRead: boolean;
+  repliedAt?: string;
+  hasAttachments: boolean;
+  attachmentCount: number;
+}
+
+export interface InboundEmailReply {
+  id: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface SubscriptionState {
   isPremiumUser: boolean;
   isSubscribed: boolean;

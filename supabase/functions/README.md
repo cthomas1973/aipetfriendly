@@ -9,6 +9,8 @@ supabase functions deploy send-clinical-pdf --no-verify-jwt
 supabase functions deploy pet-ai-chat
 supabase functions deploy send-veterinary-consent-whatsapp
 supabase functions deploy send-feedback
+supabase functions deploy inbound-email-webhook --no-verify-jwt
+supabase functions deploy admin-reply-inbound-email
 ```
 
 ## Variables de entorno
@@ -26,6 +28,14 @@ Configurar en Supabase Dashboard:
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`: credenciales para envios WhatsApp desde Twilio.
 - `SUPABASE_ANON_KEY`: requerido por `send-veterinary-consent-whatsapp` para validar JWT de quien dispara el envio automatico.
 - `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_NOTIFICATION_EMAIL`: requeridos por `send-feedback` para enviar las sugerencias/reclamos por email (mismo servicio que usan `send-clinical-pdf` y `send-preventive-reminders`).
+- `RESEND_WEBHOOK_SECRET`: signing secret que entrega Resend al crear el webhook `email.received` (Resend → Webhooks). Usado por `inbound-email-webhook` para verificar la firma svix antes de procesar el evento.
+
+### Buzon de correo entrante (`notificacion@aipetfriendly.ar`)
+
+- `inbound-email-webhook` (publica, `--no-verify-jwt`): recibe el webhook `email.received` de Resend, verifica la firma svix con `RESEND_WEBHOOK_SECRET`, pide el contenido completo a la API de Resend (`GET /emails/receiving/{id}`) y lo guarda en la tabla `inbound_emails`.
+- `admin-reply-inbound-email` (requiere JWT de un usuario en `admin_users`): envia una respuesta via Resend con headers `In-Reply-To`/`References` para mantener el hilo, y guarda la respuesta en `inbound_email_replies`.
+- Panel en la app: pestaña "Buzon" dentro de Admin → `AdminInboxSection.tsx`.
+- Configuracion externa (una sola vez, ya realizada en Resend + DNS del proyecto): dominio con "Habilitar recepcion" activado (registro MX en la raiz del dominio) y un Webhook apuntando a `inbound-email-webhook` con el evento `email.received`.
 
 ## Storage Bucket
 

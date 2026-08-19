@@ -23,6 +23,7 @@ import {
   SubscriptionBanner,
 } from './components/SubscriptionComponents';
 import { PetGuidesSection } from './components/PetGuidesSection';
+import { SocialLandingSection } from './components/SocialLandingSection';
 import { AppStateContext, useAppState } from './context/AppStateContext';
 import { usePreventive } from './hooks/usePreventive';
 import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
@@ -40,6 +41,11 @@ import type {
 
 const FREE_PET_LIMIT = 1;
 const FREE_AI_DAILY_LIMIT = 5;
+// Clave en localStorage para recordar a que pestaña ir apenas el usuario tenga
+// sesion iniciada, cuando viene de un CTA especifico (ej. "Quiero Premium" en /social).
+// Se guarda en localStorage (y no en estado de React) porque el registro puede
+// requerir confirmacion por email, lo que implica un reload/redireccion completa.
+const POST_SIGNUP_TAB_KEY = 'apf_post_signup_tab';
 
 interface GlobalAppState {
   user: AppUser | null;
@@ -206,6 +212,7 @@ function AppContent() {
   const [showLogo, setShowLogo] = useState(true);
   const [switchingUser, setSwitchingUser] = useState(false);
   const [showAuthGate, setShowAuthGate] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
   const [popupQueue, setPopupQueue] = useState<ReminderPopupItem[]>([]);
   const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
   const { toggleTask, postponeTask, discardTaskReminder } = usePreventive();
@@ -215,6 +222,7 @@ function AppContent() {
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
   const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
   const guideSlug = isGuidesRoute ? normalizedPath.replace(/^\/guias\/?/, '') || undefined : undefined;
+  const isSocialLandingRoute = normalizedPath === '/social';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -228,6 +236,21 @@ function AppContent() {
 
   // Sincronizar con Supabase
   useSupabaseSync();
+
+  // Si el usuario llego desde un CTA especifico (ej. "Quiero Premium" en /social)
+  // y recien ahora tiene sesion iniciada (pudo requerir confirmacion por email,
+  // con reload de por medio), lo llevamos directo a la pestaña pedida una sola vez.
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const pendingTab = window.localStorage.getItem(POST_SIGNUP_TAB_KEY);
+    if (pendingTab) {
+      window.localStorage.removeItem(POST_SIGNUP_TAB_KEY);
+      setActiveTab(pendingTab as AppTab);
+    }
+  }, [user, setActiveTab]);
 
   const onSignOutGuest = () => {
     setUser(null);
@@ -354,6 +377,22 @@ function AppContent() {
       return <PublicLegalPage route={normalizedPath} />;
     }
 
+    if (isSocialLandingRoute && !user && !showAuthGate) {
+      return (
+        <SocialLandingSection
+          onSelectFree={() => {
+            setAuthInitialMode('register');
+            setShowAuthGate(true);
+          }}
+          onSelectPremium={() => {
+            setAuthInitialMode('register');
+            window.localStorage.setItem(POST_SIGNUP_TAB_KEY, 'subscription');
+            setShowAuthGate(true);
+          }}
+        />
+      );
+    }
+
     if (isLandingRoute) {
       return <LandingSection onEnterApp={() => setShowAuthGate(true)} />;
     }
@@ -363,7 +402,7 @@ function AppContent() {
     }
 
     if (!user) {
-      return <AuthScreens />;
+      return <AuthScreens initialMode={authInitialMode} />;
     }
 
     if (activeTab === 'pets') {
