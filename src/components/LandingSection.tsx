@@ -14,31 +14,59 @@ interface LandingSectionProps {
   onEnterApp: () => void;
 }
 
-const FEATURES: Array<{ icon: typeof PawPrint; title: string; description: string }> = [
+const FEATURES: Array<{
+  icon: typeof PawPrint;
+  title: string;
+  description: string;
+  backgroundImage: string;
+  imagePanelClass: string;
+  textPanelClass: string;
+  imageSize?: string;
+}> = [
   {
     icon: MessageCircle,
     title: 'Consultorio IA',
     description: 'Resolvé dudas de salud de tu mascota al instante, con orientación y siempre recomendando la consulta veterinaria.',
+    backgroundImage: '/landing/consultorio-ia.jpg',
+    imagePanelClass: 'w-[50%] md:w-[52%]',
+    textPanelClass: 'w-[56%]',
+    imageSize: '118% auto',
   },
   {
     icon: CalendarDays,
     title: 'Agenda de cuidados',
     description: 'Vacunas, desparasitaciones y medicación con recordatorios por push, email y WhatsApp.',
+    backgroundImage: '/landing/agenda-cuidados.jpg',
+    imagePanelClass: 'w-[52%] md:w-[54%]',
+    textPanelClass: 'w-[55%]',
+    imageSize: '122% auto',
   },
   {
     icon: PawPrint,
     title: 'Historial clínico',
     description: 'Toda la información de salud de tu mascota organizada y exportable en PDF.',
+    backgroundImage: '/landing/historial-clinico.jpg',
+    imagePanelClass: 'w-[60%] md:w-[62%]',
+    textPanelClass: 'w-[46%]',
+    imageSize: '120% auto',
   },
   {
     icon: MapPinned,
     title: 'Veterinarias cercanas',
     description: 'Encontrá veterinarias cerca tuyo con un mapa interactivo.',
+    backgroundImage: '/landing/veterinarias-cercanas.jpg',
+    imagePanelClass: 'w-[52%] md:w-[54%]',
+    textPanelClass: 'w-[55%]',
+    imageSize: '120% auto',
   },
   {
     icon: Gift,
     title: 'Beneficios y ofertas',
     description: 'Productos y descuentos pensados para el cuidado de tu mascota.',
+    backgroundImage: '/landing/beneficios-ofertas.jpg',
+    imagePanelClass: 'w-[54%] md:w-[56%]',
+    textPanelClass: 'w-[53%]',
+    imageSize: '120% auto',
   },
 ];
 
@@ -66,15 +94,37 @@ export function LandingSection({ onEnterApp }: LandingSectionProps) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {FEATURES.map((feature) => (
-          <div key={feature.title} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-              <feature.icon size={20} />
-            </span>
-            <h2 className="mt-3 font-bold text-slate-900">{feature.title}</h2>
-            <p className="mt-1 text-sm text-slate-600">{feature.description}</p>
-          </div>
-        ))}
+        {FEATURES.map((feature) => {
+          return (
+            <div
+              key={feature.title}
+              className="group relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100"
+            >
+              <div className={`absolute inset-y-0 right-0 ${feature.imagePanelClass}`}>
+                <div
+                  className="h-full w-full bg-contain bg-right-bottom bg-no-repeat transition duration-500 group-hover:scale-[1.03]"
+                  style={{
+                    backgroundImage: `url(${feature.backgroundImage})`,
+                    backgroundSize: feature.imageSize ?? 'contain',
+                  }}
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-l from-transparent via-white/12 to-white/56" />
+              </div>
+              <div className={`absolute inset-y-0 left-0 ${feature.textPanelClass} bg-white`} />
+              <div className="relative flex min-h-[190px] flex-col justify-start p-5 pt-4 md:min-h-[198px]">
+                <div className="max-w-[18.5rem] rounded-2xl bg-white/98 p-3.5 shadow-sm ring-1 ring-emerald-100">
+                  <div className="flex items-center gap-2.5">
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100/95 text-emerald-600 shadow-sm backdrop-blur-sm">
+                      <feature.icon size={18} />
+                    </span>
+                    <h2 className="text-[1.22rem] leading-tight font-extrabold text-slate-900 tracking-[-0.01em] md:text-[1.3rem]">{feature.title}</h2>
+                  </div>
+                  <p className="mt-2.5 text-[1.01rem] font-semibold leading-relaxed text-slate-700">{feature.description}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">

@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const isWindows = process.platform === 'win32';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -47,6 +49,19 @@ export default defineConfig({
       },
     }),
   ],
+  server: isWindows
+    ? {
+        watch: {
+          usePolling: true,
+          interval: 200,
+          ignorePermissionErrors: true,
+          awaitWriteFinish: {
+            stabilityThreshold: 700,
+            pollInterval: 100,
+          },
+        },
+      }
+    : undefined,
   define: {
     'process.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL),
     'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY),
