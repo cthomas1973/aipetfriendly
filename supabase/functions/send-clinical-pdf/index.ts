@@ -64,7 +64,7 @@ serve(async (req) => {
     }
 
     // Obtener datos del request
-    const { email, fileName, pdfBytes, petName } = await req.json();
+    const { email, fileName, pdfBytes, petName, reportTitle } = await req.json();
 
     if (!email || !fileName || !pdfBytes) {
       return new Response(
@@ -76,6 +76,9 @@ serve(async (req) => {
     const safePetName = typeof petName === "string" && petName.trim().length > 0
       ? petName.trim()
       : "tu mascota";
+    const safeReportTitle = typeof reportTitle === "string" && reportTitle.trim().length > 0
+      ? reportTitle.trim()
+      : "Historial Clinico";
 
     // Obtener cliente Supabase
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -141,8 +144,8 @@ serve(async (req) => {
 
     await sendEmailWithResend(
       email,
-      `AiPetFriendly - Historial Clinico de ${safePetName}`,
-      `<h2>Historial Clinico de ${safePetName}</h2>
+      `AiPetFriendly - ${safeReportTitle} de ${safePetName}`,
+      `<h2>${safeReportTitle} de ${safePetName}</h2>
        <p>Tu informe ya esta disponible para descargar.</p>
        <p><a href="${pdfUrl}" target="_blank" rel="noopener noreferrer">Descargar PDF</a></p>
        <p>Si no solicitaste este envio, puedes ignorar este mensaje.</p>`,

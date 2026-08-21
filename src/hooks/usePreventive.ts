@@ -407,17 +407,18 @@ export function usePreventive() {
       }
 
       const nextCompleted = !current.completed;
+      const nextCompletedAt = nextCompleted ? new Date().toISOString() : undefined;
 
       if (!user || user.isGuest) {
         setPreventiveTasks(
           preventiveTasks.map((task) =>
-            task.id === taskId ? { ...task, completed: nextCompleted } : task,
+            task.id === taskId ? { ...task, completed: nextCompleted, completedAt: nextCompletedAt } : task,
           ),
         );
         return;
       }
 
-      const updated = await togglePreventiveTask(taskId, nextCompleted);
+      const updated = await togglePreventiveTask(taskId, nextCompleted, nextCompletedAt ?? null);
       if (!updated) {
         throw new Error('No se pudo actualizar el preventivo en Supabase.');
       }
@@ -425,6 +426,7 @@ export function usePreventive() {
       const task: PreventiveTask = {
         ...current,
         completed: nextCompleted,
+        completedAt: nextCompletedAt,
       };
       setPreventiveTasks(
         preventiveTasks.map((item) => (item.id === taskId ? task : item)),

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Gift, Inbox, Shield, UserCog } from 'lucide-react';
+import { Gift, Inbox, Megaphone, Shield, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AdminBeneficiosSection } from './AdminBeneficiosSection';
 import { AdminInboxSection } from './AdminInboxSection';
+import { AdminNewsCampaignsSection } from './AdminNewsCampaignsSection';
 import {
   fetchAdminAiDashboardMetrics,
   fetchAdminAiQueryAudit,
@@ -31,7 +32,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
-  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon'>('usuarios');
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -195,6 +196,12 @@ export function AdminUsersSection() {
           }`}>
           <Inbox size={15} /> Buzon
         </button>
+        <button type="button" onClick={() => setAdminTab('novedades')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'novedades' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <Megaphone size={15} /> Novedades
+        </button>
       </div>
 
       {adminTab === 'beneficios' ? (
@@ -204,6 +211,10 @@ export function AdminUsersSection() {
       ) : adminTab === 'buzon' ? (
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminInboxSection />
+        </div>
+      ) : adminTab === 'novedades' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm">
+          <AdminNewsCampaignsSection />
         </div>
       ) : (<>
         <div className="flex flex-wrap items-center gap-2">

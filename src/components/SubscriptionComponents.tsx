@@ -4,7 +4,7 @@ import { useAppState } from '../context/AppStateContext';
 import { AdBanner } from './AdBanner';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
-import { updateUserNotificationProfile } from '../lib/supabase';
+import { updateUserNotificationProfile, updateUserNewsOptIn } from '../lib/supabase';
 import {
   createMercadoPagoOneTimeMonthlyPayment,
   createMercadoPagoRecurringSubscription,
@@ -139,6 +139,7 @@ export function PaywallCard() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [newsOptIn, setNewsOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -148,6 +149,7 @@ export function PaywallCard() {
   const [defaultNotifPhoneLocal, setDefaultNotifPhoneLocal] = useState('');
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['Push']);
   const [whatsAppConsent, setWhatsAppConsent] = useState(false);
+  const [accountNewsOptIn, setAccountNewsOptIn] = useState(false);
   const [saveProfileMessage, setSaveProfileMessage] = useState<string | null>(null);
   const [feedbackType, setFeedbackType] = useState<'sugerencia' | 'reclamo' | 'otro'>('sugerencia');
   const [feedbackName, setFeedbackName] = useState(user?.fullName ?? '');
@@ -242,6 +244,7 @@ export function PaywallCard() {
     setDefaultNotifPhoneLocal(parsedPhone.localNumber);
     setDefaultChannels(profile.channels.length > 0 ? profile.channels : ['Push']);
     setWhatsAppConsent(Boolean(user?.whatsappOptIn));
+    setAccountNewsOptIn(Boolean(user?.newsOptIn));
   }, [user]);
 
   useEffect(() => {
@@ -305,7 +308,7 @@ export function PaywallCard() {
         clinicalEntries,
         preventiveTasks,
         chatMessages,
-      });
+      }, newsOptIn);
 
       setSuccess('Tu cuenta fue creada y la información que cargaste quedó guardada.');
     } catch (err) {
@@ -421,6 +424,18 @@ export function PaywallCard() {
               required
             />
           </div>
+
+          <label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={newsOptIn}
+              onChange={(e) => setNewsOptIn(e.target.checked)}
+              className="mt-1 h-4 w-4"
+            />
+            <span className="text-sm text-emerald-900">
+              Quiero recibir novedades de AiPetFriendly por email (nuevas guías, tips y funcionalidades nuevas).
+            </span>
+          </label>
 
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
           {success && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</p>}
@@ -680,6 +695,18 @@ export function PaywallCard() {
             </span>
           </label>
 
+          <label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={accountNewsOptIn}
+              onChange={(e) => setAccountNewsOptIn(e.target.checked)}
+              className="mt-1 h-4 w-4"
+            />
+            <span className="text-sm text-emerald-900">
+              Quiero recibir novedades de AiPetFriendly por email (nuevas guías, tips y funcionalidades nuevas).
+            </span>
+          </label>
+
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm font-medium text-slate-700">Canales predeterminados para nuevas tareas</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
@@ -733,6 +760,12 @@ export function PaywallCard() {
                     whatsappPhone: normalizedPhone || null,
                     whatsappOptIn: whatsAppConsent,
                     whatsappOptInSource: 'mi_cuenta',
+                  });
+
+                  await updateUserNewsOptIn({
+                    userId: user.id,
+                    newsOptIn: accountNewsOptIn,
+                    newsOptInSource: 'mi_cuenta',
                   });
                 }
 

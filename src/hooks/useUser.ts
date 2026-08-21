@@ -10,12 +10,12 @@ export function useUser() {
   }, [setUser]);
 
   const setMockUser = useCallback(
-    (email: string, fullName?: string, wantsNewsletter?: boolean) => {
+    (email: string, fullName?: string, newsOptIn?: boolean) => {
       const mockUser: AppUser = {
         id: crypto.randomUUID(),
         email,
         fullName: fullName || 'Tutor Responsable',
-        wantsNewsletter,
+        newsOptIn,
         subscription: {
           plan: 'free',
           isActive: false,

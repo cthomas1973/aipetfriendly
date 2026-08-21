@@ -41,6 +41,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
   });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [newsOptIn, setNewsOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
     setSuccess(null);
     setPassword('');
     setConfirmPassword('');
+    setNewsOptIn(false);
     setPasswordUpdated(false);
   }, [initialMode]);
 
@@ -98,7 +100,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
       setSuccess(null);
 
       if (mode === 'register') {
-        await signUpWithEmail(email.trim().toLowerCase(), password);
+        await signUpWithEmail(email.trim().toLowerCase(), password, undefined, newsOptIn);
         setSuccess('Cuenta creada. Si requiere confirmación, revisa tu email.');
       } else {
         await signInWithEmail(email.trim().toLowerCase(), password);
@@ -360,6 +362,20 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
             </label>
           )}
 
+          {mode === 'register' && (
+            <label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={newsOptIn}
+                onChange={(e) => setNewsOptIn(e.target.checked)}
+                className="mt-1 h-4 w-4"
+              />
+              <span className="text-sm text-emerald-900">
+                Quiero recibir novedades de AiPetFriendly por email (nuevas guías, tips y funcionalidades nuevas).
+              </span>
+            </label>
+          )}
+
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
           {success && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</p>}
 
@@ -395,6 +411,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
               setSuccess(null);
               setPassword('');
               setConfirmPassword('');
+              setNewsOptIn(false);
             }}
             className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-700"
           >

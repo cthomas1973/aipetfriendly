@@ -121,6 +121,8 @@ export interface PreventiveFormData {
   notificationEmail?: string;
   notificationPhone?: string;
   createClinicalEntry?: boolean;
+  treatmentGroupId?: string;
+  completedAt?: string;
   foodBrand?: string;
   foodVariety?: string;
   foodBagWeightKg?: number;
@@ -297,11 +299,13 @@ export interface AppUser {
   email: string;
   fullName?: string;
   avatarUrl?: string;
-  wantsNewsletter?: boolean;
   whatsappPhone?: string;
   whatsappOptIn?: boolean;
   whatsappOptInAt?: string | null;
   whatsappOptInSource?: string | null;
+  newsOptIn?: boolean;
+  newsOptInAt?: string | null;
+  newsOptInSource?: string | null;
   subscription: UserSubscription;
   isGuest?: boolean;
   isAdmin?: boolean;
@@ -336,6 +340,23 @@ export interface InboundEmailReply {
   id: string;
   body: string;
   createdAt: string;
+}
+
+export type NewsCampaignStatus = 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
+
+export interface NewsCampaign {
+  id: string;
+  subject: string;
+  bodyText: string;
+  imageUrl: string | null;
+  buttonText: string | null;
+  buttonUrl: string | null;
+  scheduledAt: string;
+  status: NewsCampaignStatus;
+  createdAt: string;
+  sentAt: string | null;
+  usersNotified: number;
+  errorMessage: string | null;
 }
 
 export interface SubscriptionState {

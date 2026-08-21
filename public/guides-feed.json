@@ -1,0 +1,86 @@
+[
+  {
+    "slug": "llamado-confiable-en-perros",
+    "title": "El llamado confiable: cómo lograr que tu perro acuda siempre",
+    "category": "adiestramiento",
+    "summary": "Enseñale a tu perro a acudir alegremente a tu lado en cualquier situación y entorno. Guía paso a paso para construir un llamado confiable, con correa larga y sin regaños.",
+    "effectiveReleaseDate": "2026-08-21"
+  },
+  {
+    "slug": "paseo-con-correa-sin-tirones",
+    "title": "Paseo con correa sin tirones: guía para caminatas relajadas",
+    "category": "adiestramiento",
+    "summary": "Disfrutá de paseos relajados y conectados en armonía con tu perro. Guía paso a paso para que aprenda a caminar con la correa floja, sin tirones.",
+    "effectiveReleaseDate": "2026-08-14"
+  },
+  {
+    "slug": "como-ensenar-a-tu-perro-a-sentarse",
+    "title": "Cómo enseñar a tu perro a sentarse: el truco base",
+    "category": "adiestramiento",
+    "summary": "Enseñar \"sentado\" no es solo un truco vistoso: es la base de toda la educación del perro y una forma clara de comunicarse con él. Cómo enseñarlo paso a paso con refuerzo positivo.",
+    "effectiveReleaseDate": "2026-08-07"
+  },
+  {
+    "slug": "como-ensenar-a-tu-perro-a-dar-la-pata",
+    "title": "Cómo enseñar a tu perro a dar la pata: el saludo clásico",
+    "category": "adiestramiento",
+    "summary": "Dar la pata es uno de los trucos más simpáticos y también ayuda a que el perro use sus patas delanteras con delicadeza. Cómo enseñarlo paso a paso partiendo de \"sentado\".",
+    "effectiveReleaseDate": "2026-08-07"
+  },
+  {
+    "slug": "vacunas-y-desparasitacion-guia-para-no-perderse",
+    "title": "Vacunas y desparasitación: guía para no perderte ninguna dosis",
+    "category": "salud",
+    "summary": "Cumplir el calendario de vacunas y desparasitaciones es una de las formas más simples y efectivas de prevenir enfermedades graves. Cómo organizarlo sin olvidos.",
+    "effectiveReleaseDate": "2026-08-04"
+  },
+  {
+    "slug": "primeros-auxilios-basicos-para-mascotas",
+    "title": "Primeros auxilios básicos para mascotas: qué hacer mientras llegás al veterinario",
+    "category": "salud",
+    "summary": "Ante una urgencia, los primeros minutos importan. Estas son pautas generales de primeros auxilios, que nunca reemplazan la atención veterinaria.",
+    "effectiveReleaseDate": "2026-07-28"
+  },
+  {
+    "slug": "destructividad-y-ladridos-excesivos",
+    "title": "Destructividad y ladridos excesivos: por qué pasan y cómo abordarlos",
+    "category": "conducta",
+    "summary": "Antes de pensar en \"corregir\" estos comportamientos, hay que entender qué necesidad está cubriendo el perro. Guía para identificar la causa y trabajarla.",
+    "effectiveReleaseDate": "2026-07-21"
+  },
+  {
+    "slug": "como-prevenir-el-estres-en-viajes-y-mudanzas",
+    "title": "Cómo prevenir el estrés en viajes y mudanzas",
+    "category": "ansiedad",
+    "summary": "Viajar en auto, mudarse de casa o cambiar de rutina puede ser muy estresante para una mascota. Tips prácticos para que la transición sea más tranquila.",
+    "effectiveReleaseDate": "2026-07-14"
+  },
+  {
+    "slug": "ansiedad-en-gatos-senales-y-soluciones",
+    "title": "Ansiedad en gatos: señales que pasan desapercibidas",
+    "category": "ansiedad",
+    "summary": "Los gatos expresan el estrés de forma mucho más sutil que los perros. Aprendé a reconocer las señales tempranas y cómo mejorar su entorno.",
+    "effectiveReleaseDate": "2026-07-07"
+  },
+  {
+    "slug": "adiestramiento-en-positivo-comandos-basicos",
+    "title": "Adiestramiento en positivo: los comandos básicos para empezar",
+    "category": "adiestramiento",
+    "summary": "Sentado, quieto, ven y junto: cómo enseñar los comandos fundamentales usando refuerzo positivo, sin gritos ni castigos.",
+    "effectiveReleaseDate": "2026-06-30"
+  },
+  {
+    "slug": "como-socializar-un-cachorro",
+    "title": "Cómo socializar a un cachorro correctamente",
+    "category": "adiestramiento",
+    "summary": "Las primeras 16 semanas de vida son claves para formar un perro adulto seguro y equilibrado. Guía práctica de socialización, paso a paso y sin sobreexponer al cachorro.",
+    "effectiveReleaseDate": "2026-06-23"
+  },
+  {
+    "slug": "ansiedad-por-separacion-en-perros",
+    "title": "Ansiedad por separación en perros: cómo identificarla y tratarla",
+    "category": "ansiedad",
+    "summary": "Ladridos, destrozos y accidentes cuando el perro se queda solo pueden ser señales de ansiedad por separación. Te contamos cómo reconocerla y un plan de trabajo gradual para mejorarla.",
+    "effectiveReleaseDate": "2026-06-16"
+  }
+]

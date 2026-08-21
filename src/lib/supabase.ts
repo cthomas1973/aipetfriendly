@@ -7,6 +7,7 @@ import type {
   BillingPricingSettings,
   InboundEmailReply,
   InboundEmailRow,
+  NewsCampaign,
   Pet,
   PetAiUsageRow,
   PetWeightLog,
@@ -172,6 +173,9 @@ export async function fetchUserProfile(userId: string): Promise<AppUser | null> 
     whatsappOptIn: Boolean(user.whatsapp_opt_in),
     whatsappOptInAt: user.whatsapp_opt_in_at || null,
     whatsappOptInSource: user.whatsapp_opt_in_source || null,
+    newsOptIn: Boolean(user.news_opt_in),
+    newsOptInAt: user.news_opt_in_at || null,
+    newsOptInSource: user.news_opt_in_source || null,
     isGuest: accessMode === 'guest',
     isAdmin: Boolean(adminRow?.user_id),
     subscription: resolvedSubscription,
@@ -189,6 +193,28 @@ export async function updateUserNotificationProfile(args: {
     whatsapp_opt_in: args.whatsappOptIn,
     whatsapp_opt_in_at: args.whatsappOptIn ? new Date().toISOString() : null,
     whatsapp_opt_in_source: args.whatsappOptIn ? (args.whatsappOptInSource || 'mi_cuenta') : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('users')
+    .update(payload)
+    .eq('id', args.userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function updateUserNewsOptIn(args: {
+  userId: string;
+  newsOptIn: boolean;
+  newsOptInSource?: string | null;
+}): Promise<void> {
+  const payload = {
+    news_opt_in: args.newsOptIn,
+    news_opt_in_at: args.newsOptIn ? new Date().toISOString() : null,
+    news_opt_in_source: args.newsOptIn ? (args.newsOptInSource || 'mi_cuenta') : null,
     updated_at: new Date().toISOString(),
   };
 
@@ -480,6 +506,8 @@ export async function createPreventiveTask(
           endDate: taskData.endDate ?? null,
           durationDays: taskData.durationDays ?? null,
           remindersEnabled: taskData.remindersEnabled ?? null,
+          treatmentGroupId: taskData.treatmentGroupId ?? null,
+          completedAt: taskData.completedAt ?? null,
           appointmentReason: taskData.appointmentReason ?? null,
           appointmentTime: taskData.appointmentTime ?? null,
           appointmentLocation: taskData.appointmentLocation ?? null,
@@ -525,12 +553,38 @@ export async function createPreventiveTask(
   };
 }
 
-export async function togglePreventiveTask(taskId: string, completed: boolean): Promise<boolean> {
+export async function togglePreventiveTask(
+  taskId: string,
+  completed: boolean,
+  completedAt: string | null = null,
+): Promise<boolean> {
+  const { data: existing, error: readError } = await supabase
+    .from('preventive_tasks')
+    .select('metadata')
+    .eq('id', taskId)
+    .single();
+
+  if (readError) {
+    console.error('Error reading preventive task metadata:', readError);
+    return false;
+  }
+
+  const metadata = {
+    ...(existing?.metadata || {}),
+    completedAt,
+  };
+
   const { error } = await supabase
     .from('preventive_tasks')
-    .update({ completed })
+    .update({ completed, metadata })
     .eq('id', taskId);
-  return !error;
+
+  if (error) {
+    console.error('Error toggling preventive task:', error);
+    return false;
+  }
+
+  return true;
 }
 
 export async function deletePreventiveTask(taskId: string): Promise<boolean> {
@@ -1562,6 +1616,113 @@ export async function sendAdminInboundEmailReply(inboundEmailId: string, body: s
   }
 
   return true;
+}
+
+// ── Campañas de novedades por email (Admin) ───────────────────────────────────
+
+function mapNewsCampaignRow(row: any): NewsCampaign {
+  return {
+    id: row.id,
+    subject: row.subject,
+    bodyText: row.body_text,
+    imageUrl: row.image_url || null,
+    buttonText: row.button_text || null,
+    buttonUrl: row.button_url || null,
+    scheduledAt: row.scheduled_at,
+    status: row.status,
+    createdAt: row.created_at,
+    sentAt: row.sent_at || null,
+    usersNotified: Number(row.users_notified) || 0,
+    errorMessage: row.error_message || null,
+  };
+}
+
+export async function fetchAdminNewsCampaigns(): Promise<NewsCampaign[]> {
+  const { data, error } = await supabase
+    .from('news_campaigns')
+    .select('*')
+    .order('scheduled_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching news campaigns:', error);
+    throw error;
+  }
+
+  return (data || []).map(mapNewsCampaignRow);
+}
+
+export async function createAdminNewsCampaign(payload: {
+  subject: string;
+  bodyText: string;
+  imageUrl: string | null;
+  buttonText: string | null;
+  buttonUrl: string | null;
+  scheduledAt: string;
+  createdBy: string;
+}): Promise<void> {
+  const { error } = await supabase.from('news_campaigns').insert({
+    subject: payload.subject,
+    body_text: payload.bodyText,
+    image_url: payload.imageUrl,
+    button_text: payload.buttonText,
+    button_url: payload.buttonUrl,
+    scheduled_at: payload.scheduledAt,
+    created_by: payload.createdBy,
+  });
+
+  if (error) {
+    console.error('Error creating news campaign:', error);
+    throw error;
+  }
+}
+
+export async function updateAdminNewsCampaign(id: string, payload: {
+  subject: string;
+  bodyText: string;
+  imageUrl: string | null;
+  buttonText: string | null;
+  buttonUrl: string | null;
+  scheduledAt: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('news_campaigns')
+    .update({
+      subject: payload.subject,
+      body_text: payload.bodyText,
+      image_url: payload.imageUrl,
+      button_text: payload.buttonText,
+      button_url: payload.buttonUrl,
+      scheduled_at: payload.scheduledAt,
+    })
+    .eq('id', id)
+    .eq('status', 'scheduled');
+
+  if (error) {
+    console.error('Error updating news campaign:', error);
+    throw error;
+  }
+}
+
+export async function cancelAdminNewsCampaign(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('news_campaigns')
+    .update({ status: 'cancelled' })
+    .eq('id', id)
+    .eq('status', 'scheduled');
+
+  if (error) {
+    console.error('Error cancelling news campaign:', error);
+    throw error;
+  }
+}
+
+export async function deleteAdminNewsCampaign(id: string): Promise<void> {
+  const { error } = await supabase.from('news_campaigns').delete().eq('id', id);
+
+  if (error) {
+    console.error('Error deleting news campaign:', error);
+    throw error;
+  }
 }
 
 // ── Beneficios Productos ──────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ supabase functions deploy send-veterinary-consent-whatsapp
 supabase functions deploy send-feedback
 supabase functions deploy inbound-email-webhook --no-verify-jwt
 supabase functions deploy admin-reply-inbound-email
+supabase functions deploy send-guide-notifications --no-verify-jwt
+supabase functions deploy send-news-campaigns --no-verify-jwt
 ```
 
 ## Variables de entorno
@@ -29,6 +31,24 @@ Configurar en Supabase Dashboard:
 - `SUPABASE_ANON_KEY`: requerido por `send-veterinary-consent-whatsapp` para validar JWT de quien dispara el envio automatico.
 - `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_NOTIFICATION_EMAIL`: requeridos por `send-feedback` para enviar las sugerencias/reclamos por email (mismo servicio que usan `send-clinical-pdf` y `send-preventive-reminders`).
 - `RESEND_WEBHOOK_SECRET`: signing secret que entrega Resend al crear el webhook `email.received` (Resend → Webhooks). Usado por `inbound-email-webhook` para verificar la firma svix antes de procesar el evento.
+- `GUIDE_NOTIFICATIONS_API_KEY`: clave propia (inventada) que valida el header `x-guide-notifications-key` en `send-guide-notifications`, para que solo el workflow de GitHub Actions pueda dispararla.
+- `NEWS_CAMPAIGNS_API_KEY`: clave propia (inventada) que valida el header `x-news-campaigns-key` en `send-news-campaigns`.
+
+### Campañas de novedades a medida (`send-news-campaigns`)
+
+- Panel en la app: Admin → pestaña "Novedades" (`AdminNewsCampaignsSection.tsx`). El admin redacta asunto, texto, imagen y boton opcionales, y programa fecha/hora de envio; el registro se guarda en `public.news_campaigns` (RLS admin-only).
+- `send-news-campaigns` se dispara cada 15 minutos por `.github/workflows/send-news-campaigns.yml` (o manualmente), busca campanias con `status = 'scheduled'` cuyo `scheduled_at` ya llego, envia el email (mismo formato visual que `send-guide-notifications`) a todos los usuarios con `news_opt_in = true`, y marca la campania como `sent`/`failed`.
+- Requiere los mismos secrets de Resend que `send-preventive-reminders` (`RESEND_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, `EMAIL_LOGO_URL`) mas `NEWS_CAMPAIGNS_API_KEY`.
+- Secret de GitHub Actions a crear: `NEWS_CAMPAIGNS_API_KEY` (mismo valor que el secret de Supabase).
+
+### Aviso por email de guias nuevas (`send-guide-notifications`)
+
+- Se dispara por cron (`.github/workflows/send-guide-notifications.yml`, diario) o manualmente desde GitHub Actions.
+- Lee `${APP_BASE_URL}/guides-feed.json` (generado en cada build por `scripts/generate-sitemap.mjs` a partir de `src/data/petGuides.ts`) para saber que guias ya estan publicadas.
+- Compara contra la tabla `public.notified_guides` para detectar guias todavia no avisadas.
+- Para cada guia nueva, envia un email (con boton "Leer la guia") a todos los usuarios con `news_opt_in = true` en `public.users`, y despues registra la guia en `notified_guides` para no repetir el aviso.
+- Requiere los mismos secrets de Resend que `send-preventive-reminders` (`RESEND_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, `EMAIL_LOGO_URL`) mas `GUIDE_NOTIFICATIONS_API_KEY`.
+- Secret de GitHub Actions a crear: `GUIDE_NOTIFICATIONS_API_KEY` (mismo valor que el secret de Supabase).
 
 ### Buzon de correo entrante (`notificacion@aipetfriendly.ar`)
 

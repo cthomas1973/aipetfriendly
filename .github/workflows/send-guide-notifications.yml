@@ -1,0 +1,26 @@
+name: Send Guide Notifications
+
+on:
+  schedule:
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-guide-notifications:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Supabase guide notifications function
+        env:
+          GUIDE_NOTIFICATIONS_API_KEY: ${{ secrets.GUIDE_NOTIFICATIONS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GUIDE_NOTIFICATIONS_API_KEY}" ]; then
+            echo "GUIDE_NOTIFICATIONS_API_KEY is not configured in GitHub Secrets"
+            exit 1
+          fi
+
+          curl -sS -X POST "https://apejkczbthvbxoksmlye.supabase.co/functions/v1/send-guide-notifications" \
+            -H "Content-Type: application/json" \
+            -H "x-guide-notifications-key: ${GUIDE_NOTIFICATIONS_API_KEY}" \
+            --fail-with-body

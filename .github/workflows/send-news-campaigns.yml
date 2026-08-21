@@ -1,0 +1,26 @@
+name: Send News Campaigns
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  send-news-campaigns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Supabase news campaigns function
+        env:
+          NEWS_CAMPAIGNS_API_KEY: ${{ secrets.NEWS_CAMPAIGNS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NEWS_CAMPAIGNS_API_KEY}" ]; then
+            echo "NEWS_CAMPAIGNS_API_KEY is not configured in GitHub Secrets"
+            exit 1
+          fi
+
+          curl -sS -X POST "https://apejkczbthvbxoksmlye.supabase.co/functions/v1/send-news-campaigns" \
+            -H "Content-Type: application/json" \
+            -H "x-news-campaigns-key: ${NEWS_CAMPAIGNS_API_KEY}" \
+            --fail-with-body

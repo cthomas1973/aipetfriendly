@@ -228,7 +228,12 @@ export function useSupabaseSync() {
   }, [contextSetUser, setAdminUsers, setChatMessages, setClinicalEntries, setPreventiveTasks, setPets]);
 }
 
-export async function signUpWithEmail(email: string, password: string, guestSnapshot?: GuestMigrationSnapshot) {
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  guestSnapshot?: GuestMigrationSnapshot,
+  newsOptIn?: boolean,
+) {
   if (guestSnapshot) {
     guestMigrationInProgress = true;
     storeGuestMigration(guestSnapshot);
@@ -246,6 +251,22 @@ export async function signUpWithEmail(email: string, password: string, guestSnap
   // Crear perfil de usuario y suscripcion inicial
   if (data.user) {
     await ensureUserBootstrap(data.user.id, data.user.email ?? null);
+
+    // Consentimiento explicito para recibir novedades por email (opt-in, no se marca solo).
+    if (newsOptIn) {
+      const { error: newsOptInError } = await supabase
+        .from('users')
+        .update({
+          news_opt_in: true,
+          news_opt_in_at: new Date().toISOString(),
+          news_opt_in_source: 'registro',
+        })
+        .eq('id', data.user.id);
+
+      if (newsOptInError) {
+        console.error('Error guardando consentimiento de novedades:', newsOptInError);
+      }
+    }
 
     if (guestSnapshot) {
       await migrateGuestSnapshot(data.user.id, guestSnapshot);

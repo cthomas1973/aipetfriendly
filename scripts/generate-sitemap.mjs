@@ -10,18 +10,22 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const guidesFile = path.join(__dirname, '..', 'src', 'data', 'petGuides.ts');
 const sitemapFile = path.join(__dirname, '..', 'public', 'sitemap.xml');
+const guidesFeedFile = path.join(__dirname, '..', 'public', 'guides-feed.json');
 const SITE_URL = 'https://www.aipetfriendly.ar';
 
 const source = readFileSync(guidesFile, 'utf8');
 
-// Extrae cada objeto de guia buscando pares slug/publishedAt dentro del array PET_GUIDES.
-const guideBlockRegex = /slug:\s*'([^']+)'[\s\S]*?publishedAt:\s*'([^']+)'/g;
+// Extrae cada objeto de guia buscando slug/title/category/publishedAt/summary dentro
+// del array PET_GUIDES (los campos siempre aparecen en ese orden en cada guia). Se
+// usa regex (no import directo) porque este script corre con Node sobre un .ts.
+const guideBlockRegex =
+  /slug:\s*'([^']+)'[\s\S]*?title:\s*'([^']+)'[\s\S]*?category:\s*'([^']+)'[\s\S]*?publishedAt:\s*'([^']+)'[\s\S]*?summary:\s*\n?\s*'([^']+)'/g;
 
 const guides = [];
 let match;
 while ((match = guideBlockRegex.exec(source)) !== null) {
-  const [, slug, publishedAt] = match;
-  guides.push({ slug, publishedAt });
+  const [, slug, title, category, publishedAt, summary] = match;
+  guides.push({ slug, title, category, publishedAt, summary });
 }
 
 if (guides.length === 0) {
@@ -107,3 +111,18 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.s
 
 writeFileSync(sitemapFile, xml, 'utf8');
 console.log(`sitemap.xml generado con ${allUrls.length} URLs (${publishedGuides.length} de ${guides.length} guias publicadas).`);
+
+// Genera public/guides-feed.json: listado de guias ya publicadas (con su fecha
+// efectiva de publicacion) para que la funcion edge "send-guide-notifications"
+// pueda detectar guias nuevas y avisar por email a quienes dieron consentimiento,
+// sin tener que duplicar la logica de liberacion (7 dias entre guias) en Deno.
+const guidesFeed = publishedGuides.map((guide) => ({
+  slug: guide.slug,
+  title: guide.title,
+  category: guide.category,
+  summary: guide.summary,
+  effectiveReleaseDate: new Date(effectiveReleaseTimes.get(guide.slug)).toISOString().slice(0, 10),
+}));
+
+writeFileSync(guidesFeedFile, JSON.stringify(guidesFeed, null, 2), 'utf8');
+console.log(`guides-feed.json generado con ${guidesFeed.length} guias publicadas.`);
