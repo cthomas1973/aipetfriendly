@@ -11,7 +11,9 @@ import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 
 interface LandingSectionProps {
-  onEnterApp: () => void;
+  onRegister: () => void;
+  onLogin: () => void;
+  onGuest: () => void;
 }
 
 const FEATURES: Array<{
@@ -70,7 +72,7 @@ const FEATURES: Array<{
   },
 ];
 
-export function LandingSection({ onEnterApp }: LandingSectionProps) {
+export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionProps) {
   return (
     <section className="space-y-8 pb-6">
       <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-center text-white shadow-md md:p-10">
@@ -84,13 +86,29 @@ export function LandingSection({ onEnterApp }: LandingSectionProps) {
           AiPetFriendly te ayuda a organizar la salud de tu mascota: consultas de IA, agenda de
           cuidados, historial clínico y veterinarias cercanas, todo en un solo lugar.
         </p>
-        <button
-          type="button"
-          onClick={onEnterApp}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-emerald-700 shadow transition hover:bg-emerald-50 md:text-base"
-        >
-          Ingresar / Crear cuenta gratis
-        </button>
+        <div className="mt-6 flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
+          <button
+            type="button"
+            onClick={onRegister}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-emerald-700 shadow transition hover:bg-emerald-50 md:text-base"
+          >
+            Crear cuenta gratis
+          </button>
+          <button
+            type="button"
+            onClick={onLogin}
+            className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-white px-6 py-3 text-sm font-bold text-white shadow transition hover:bg-white/10 md:text-base"
+          >
+            Ya estoy registrado
+          </button>
+          <button
+            type="button"
+            onClick={onGuest}
+            className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-white/70 px-6 py-3 text-sm font-semibold text-white/95 shadow transition hover:bg-white/10 md:text-base"
+          >
+            👁️ Seguir como visitante
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -147,16 +165,6 @@ export function LandingSection({ onEnterApp }: LandingSectionProps) {
       </div>
 
       <PetGuidesTeaser />
-
-      <div className="text-center">
-        <button
-          type="button"
-          onClick={onEnterApp}
-          className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-6 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-600"
-        >
-          Comenzar ahora
-        </button>
-      </div>
 
       <PublicFooter />
     </section>

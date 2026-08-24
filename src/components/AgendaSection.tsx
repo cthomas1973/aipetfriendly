@@ -121,6 +121,22 @@ function formatDateTimeLabel(task: { dueDate: string; appointmentTime?: string; 
   });
 }
 
+function formatCompletedAtLabel(completedAt?: string) {
+  if (!completedAt) {
+    return null;
+  }
+  const date = new Date(completedAt);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toLocaleString('es-AR', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function AgendaSection() {
   const { pets, selectedPetId, user } = useAppState();
   const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask, discardTaskReminder } = usePreventive();
@@ -129,6 +145,12 @@ export function AgendaSection() {
   const [petFilter, setPetFilter] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
   const [postponeSelectorTaskId, setPostponeSelectorTaskId] = useState<string | null>(null);
+  // Cuando se marca una tarea como Realizado, la fila desaparece de "pendientes" y la
+  // siguiente (con titulo/hora identicos si es una dosis de un tratamiento) ocupa su lugar
+  // en pantalla. Para evitar toques accidentales sobre esa fila que "salto" a la misma
+  // posicion, bloqueamos brevemente TODOS los botones de Realizado mientras hay una
+  // actualizacion en curso o recien terminada.
+  const [isToggleLocked, setIsToggleLocked] = useState(false);
 
   const [pTitle, setPTitle] = useState('');
   const [pCat,   setPCat]   = useState<PreventiveCategory>('vaccine');
@@ -478,13 +500,21 @@ export function AgendaSection() {
     }
   };
 
+  const TOGGLE_LOCK_MS = 700;
+
   const onToggleTask = async (taskId: string) => {
+    if (isToggleLocked) {
+      return;
+    }
+    setIsToggleLocked(true);
     try {
       await toggleTask(taskId);
       setPostponeSelectorTaskId((current) => (current === taskId ? null : current));
       setError(null);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo actualizar el preventivo.');
+    } finally {
+      setTimeout(() => setIsToggleLocked(false), TOGGLE_LOCK_MS);
     }
   };
 
@@ -602,10 +632,11 @@ export function AgendaSection() {
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <button
                     type="button"
+                    disabled={isToggleLocked}
                     onClick={() => {
                       void onToggleTask(task.id);
                     }}
-                    className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                    className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Realizado
                   </button>
@@ -645,15 +676,15 @@ export function AgendaSection() {
               </div>
             ))}
             {done.map((task) => (
-              <button key={task.id} type="button" onClick={() => onToggleTask(task.id)}
-                className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 opacity-50 shadow-sm">
+              <button key={task.id} type="button" disabled={isToggleLocked} onClick={() => onToggleTask(task.id)}
+                className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 opacity-50 shadow-sm disabled:cursor-not-allowed">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg shrink-0">{PREV_MAP[task.category]?.emoji}</span>
                 <div className="flex-1 text-left">
                   <p className="font-semibold line-through text-slate-400">{task.title}</p>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">{petName(task.petId)}</span>
                     <span className="text-xs text-slate-400">{PREV_MAP[task.category]?.label}</span>
-                    <span className="text-xs text-slate-400">{formatDateTimeLabel(task)}</span>
+                    <span className="text-xs text-slate-400">Realizado: {formatCompletedAtLabel(task.completedAt) ?? formatDateTimeLabel(task)}</span>
                   </div>
                 </div>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-lg">✓</span>

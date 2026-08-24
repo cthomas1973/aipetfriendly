@@ -3,6 +3,7 @@ import { PawPrint } from 'lucide-react';
 import { signInWithEmail, signUpWithEmail, resetPassword, updatePassword } from '../hooks/useSupabaseSync';
 import { useAppState } from '../context/AppStateContext';
 import { supabase } from '../lib/supabase';
+import { createGuestUser } from '../lib/guestUser';
 
 const inputCls = 'mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200';
 const labelCls = 'block text-sm font-medium text-slate-700';
@@ -134,18 +135,7 @@ export function AuthScreens({ initialMode = 'login' }: { initialMode?: AuthMode 
   };
 
   const onGuestMode = () => {
-    const guestUser = {
-      id: `guest_${Date.now()}`,
-      email: 'guest@aipetfriendly.local',
-      fullName: 'Visitante',
-      subscription: {
-        plan: 'free' as const,
-        isActive: false,
-        expiresAt: null,
-      },
-      isGuest: true,
-    };
-    setUser(guestUser);
+    setUser(createGuestUser());
   };
 
   const onResetPassword = async (event: FormEvent<HTMLFormElement>) => {

@@ -293,6 +293,8 @@ export function usePreventive() {
         endDate: data.endDate,
         durationDays: data.durationDays,
         remindersEnabled: data.remindersEnabled,
+        treatmentGroupId: data.treatmentGroupId,
+        completedAt: data.completedAt,
         appointmentReason: data.appointmentReason,
         appointmentTime: data.appointmentTime,
         appointmentLocation: data.appointmentLocation,

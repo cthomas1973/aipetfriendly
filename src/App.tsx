@@ -28,6 +28,7 @@ import { AppStateContext, useAppState } from './context/AppStateContext';
 import { usePreventive } from './hooks/usePreventive';
 import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
 import { hideBannerAd, isNativeAndroidApp, showBannerForNonPremium } from './lib/mobileAds';
+import { createGuestUser } from './lib/guestUser';
 import type {
   AdminUserRow,
   AppTab,
@@ -46,6 +47,39 @@ const FREE_AI_DAILY_LIMIT = 5;
 // Se guarda en localStorage (y no en estado de React) porque el registro puede
 // requerir confirmacion por email, lo que implica un reload/redireccion completa.
 const POST_SIGNUP_TAB_KEY = 'apf_post_signup_tab';
+
+// Determina si, en la primera carga, el visitante sin sesion debe entrar
+// directamente como invitado (en vez de ver la landing o el login primero).
+// Esto permite que cualquier persona (o el rastreador de Google para AdSense)
+// pueda recorrer toda la app sin loguearse. Se excluyen las rutas publicas que
+// ya tienen su propio contenido/flujo (guias, legales, /social, /login, reset
+// de password, reclamo de veterinaria).
+function shouldAutoStartAsGuest(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const path = window.location.pathname;
+  const normalizedPath = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
+  const isSocialLandingRoute = normalizedPath === '/social';
+  const isLoginRoute = normalizedPath === '/login';
+  const isLegalRoute = isPublicLegalRoute(normalizedPath);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const isRecoveryLink = hashParams.get('type') === 'recovery';
+  const isResetPasswordRoute = path === '/reset-password' || isRecoveryLink;
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
+
+  return (
+    !isGuidesRoute
+    && !isSocialLandingRoute
+    && !isLoginRoute
+    && !isLegalRoute
+    && !isResetPasswordRoute
+    && !hasPublicVetClaimRoute
+  );
+}
 
 interface GlobalAppState {
   user: AppUser | null;
@@ -224,15 +258,16 @@ function AppContent() {
   const guideSlug = isGuidesRoute ? normalizedPath.replace(/^\/guias\/?/, '') || undefined : undefined;
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
+  const isLoginRoute = normalizedPath === '/login';
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isLoginRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app solo tiene sentido si hay un usuario navegando
   // dentro de la app; en /guias sin login se muestra como pagina publica de contenido.
-  const showAppNav = !isResetPasswordRoute && !isLandingRoute && (!isGuidesRoute || Boolean(user));
+  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && (!isGuidesRoute || Boolean(user));
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -393,8 +428,23 @@ function AppContent() {
       );
     }
 
+    if (isLoginRoute && !user) {
+      return <AuthScreens initialMode="login" />;
+    }
+
     if (isLandingRoute) {
-      return <LandingSection onEnterApp={() => setShowAuthGate(true)} />;
+      return (
+        <LandingSection
+          onRegister={() => {
+            setAuthInitialMode('register');
+            setShowAuthGate(true);
+          }}
+          onLogin={() => {
+            window.location.href = '/login';
+          }}
+          onGuest={() => setUser(createGuestUser())}
+        />
+      );
     }
 
     if (!user && hasPublicVetClaimRoute) {
@@ -473,22 +523,35 @@ function AppContent() {
 
         {user?.isGuest && !isResetPasswordRoute && (
           <div className="mb-5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 p-4 shadow-md text-white">
-            <p className="mb-3 text-sm font-semibold">Modo visitante · Los datos no se guardarán</p>
-            <div className="flex gap-2">
+            <p className="mb-3 text-sm font-semibold">
+              Modo visitante · Lo que cargues no se guardará a menos que te registres (gratis, solo con tu email).
+            </p>
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('subscription')}
-                className="flex-1 rounded-full bg-white font-bold text-blue-600 py-2 hover:bg-gray-100 transition"
+                className="w-full rounded-full bg-white font-bold text-blue-600 py-2 hover:bg-gray-100 transition"
               >
-                ✨ Crear cuenta
+                ✨ Crear cuenta gratis
               </button>
-              <button
-                type="button"
-                onClick={onSignOutGuest}
-                className="flex-1 rounded-full border-2 border-white font-semibold py-2 hover:bg-white/20 transition"
-              >
-                Salir
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = '/login';
+                  }}
+                  className="flex-1 rounded-full border-2 border-white font-semibold py-2 hover:bg-white/20 transition"
+                >
+                  Ya estoy registrado
+                </button>
+                <button
+                  type="button"
+                  onClick={onSignOutGuest}
+                  className="flex-1 rounded-full border-2 border-white/60 text-white/90 font-semibold py-2 hover:bg-white/20 transition"
+                >
+                  Salir
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -622,7 +685,7 @@ function MobileAdsGate() {
 }
 
 export default function App() {
-  const [user, setUser] = useState<AppUser | null>(null);
+  const [user, setUser] = useState<AppUser | null>(() => (shouldAutoStartAsGuest() ? createGuestUser() : null));
   const [loading] = useState<boolean>(false);
   const [pets, setPets] = useState<Pet[]>([]);
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
