@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   supabase,
   fetchUserProfile,
@@ -117,6 +117,7 @@ async function migrateGuestSnapshot(userId: string, snapshot: GuestMigrationSnap
 
 export function useSupabaseSync() {
   const {
+    user,
     setPets,
     setClinicalEntries,
     setPreventiveTasks,
@@ -124,6 +125,16 @@ export function useSupabaseSync() {
     setAdminUsers,
     setUser: contextSetUser,
   } = useAppState();
+
+  // Se usa dentro del listener de Supabase (que se suscribe una sola vez al
+  // montar) para saber, en cada evento, si el usuario actual en pantalla es
+  // un invitado (auto-guest). Sin esto, el evento inicial de
+  // onAuthStateChange (sin sesion real) pisaba el usuario invitado con null
+  // apenas cargaba la app, mostrando la landing en vez del modo visitante.
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     const initializeSupabase = async () => {
@@ -188,6 +199,11 @@ export function useSupabaseSync() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
       if (event === 'SIGNED_OUT' || !session) {
+        // Si el usuario actual es un invitado (auto-guest o manual), no hay
+        // sesion real que "cerrar": no lo pisamos con null.
+        if (userRef.current?.isGuest) {
+          return;
+        }
         contextSetUser(null);
         setPets([]);
         setClinicalEntries([]);
