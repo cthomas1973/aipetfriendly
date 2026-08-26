@@ -11,6 +11,8 @@ import type {
   Pet,
   PetAiUsageRow,
   PetWeightLog,
+  PetSightingMessage,
+  PetTagRequest,
   ClinicalTimelineEntry,
   PreventiveTask,
   ChatMessage,
@@ -253,6 +255,8 @@ export async function fetchPets(userId: string): Promise<Pet[]> {
     weightKg: pet.weight_kg,
     photoUrl: pet.photo_url,
     notes: pet.notes,
+    distinguishingMarks: pet.distinguishing_marks || undefined,
+    publicCode: pet.public_code || undefined,
     createdAt: pet.created_at,
     updatedAt: pet.updated_at,
   }));
@@ -274,6 +278,7 @@ export async function createPet(userId: string, petData: any): Promise<Pet | nul
         weight_kg: petData.weightKg,
         photo_url: petData.photoUrl,
         notes: petData.notes,
+        distinguishing_marks: petData.distinguishingMarks || null,
       },
     ])
     .select()
@@ -297,6 +302,8 @@ export async function createPet(userId: string, petData: any): Promise<Pet | nul
     weightKg: data.weight_kg,
     photoUrl: data.photo_url,
     notes: data.notes,
+    distinguishingMarks: data.distinguishing_marks || undefined,
+    publicCode: data.public_code || undefined,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
@@ -317,6 +324,7 @@ export async function updatePetRecord(petId: string, petData: any): Promise<Pet 
   if ('weightKg' in petData) payload.weight_kg = petData.weightKg;
   if ('photoUrl' in petData) payload.photo_url = petData.photoUrl || null;
   if ('notes' in petData) payload.notes = petData.notes;
+  if ('distinguishingMarks' in petData) payload.distinguishing_marks = petData.distinguishingMarks || null;
 
   const { data, error } = await supabase
     .from('pets')
@@ -343,6 +351,8 @@ export async function updatePetRecord(petId: string, petData: any): Promise<Pet 
     weightKg: data.weight_kg,
     photoUrl: data.photo_url,
     notes: data.notes,
+    distinguishingMarks: data.distinguishing_marks || undefined,
+    publicCode: data.public_code || undefined,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
@@ -351,6 +361,97 @@ export async function updatePetRecord(petId: string, petData: any): Promise<Pet 
 export async function deletePet(petId: string): Promise<boolean> {
   const { error } = await supabase.from('pets').delete().eq('id', petId);
   return !error;
+}
+
+export async function fetchPetSightingMessages(petId: string): Promise<PetSightingMessage[]> {
+  const { data, error } = await supabase
+    .from('pet_sighting_messages')
+    .select('*')
+    .eq('pet_id', petId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching pet sighting messages:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    petId: row.pet_id,
+    source: row.source,
+    message: row.message || undefined,
+    contactInfo: row.contact_info || undefined,
+    latitude: row.latitude != null ? Number(row.latitude) : undefined,
+    longitude: row.longitude != null ? Number(row.longitude) : undefined,
+    readAt: row.read_at || undefined,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function markSightingMessageRead(messageId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('pet_sighting_messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', messageId);
+
+  if (error) {
+    console.error('Error marking sighting message as read:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function fetchPetTagRequest(petId: string): Promise<PetTagRequest | null> {
+  const { data, error } = await supabase
+    .from('pet_tag_requests')
+    .select('*')
+    .eq('pet_id', petId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching pet tag request:', error);
+    return null;
+  }
+  if (!data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    petId: data.pet_id,
+    userId: data.user_id,
+    status: data.status,
+    shippingAddress: data.shipping_address || undefined,
+    notes: data.notes || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function createPetTagRequest(petId: string, userId: string): Promise<PetTagRequest | null> {
+  const { data, error } = await supabase
+    .from('pet_tag_requests')
+    .insert([{ pet_id: petId, user_id: userId }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating pet tag request:', error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    petId: data.pet_id,
+    userId: data.user_id,
+    status: data.status,
+    shippingAddress: data.shipping_address || undefined,
+    notes: data.notes || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
 }
 
 export async function fetchPetWeightLogs(petId: string): Promise<PetWeightLog[]> {

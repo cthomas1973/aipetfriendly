@@ -2,9 +2,10 @@ import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
   Circle, ClipboardList, Download, Heart, Mail,
-  PawPrint, Pill, Plus, Shield, Syringe, Trash2, Utensils, X,
+  MapPin, MessageCircle, PawPrint, Pill, Plus, QrCode, Shield, Syringe, Tag, Trash2, Utensils, X,
 } from 'lucide-react';
 import { useClinical } from '../hooks/useClinical';
+import { usePetIdentification } from '../hooks/usePetIdentification';
 import { usePetReports } from '../hooks/usePetReports';
 import type { HealthSummaryCard } from '../hooks/usePetReports';
 import { usePets } from '../hooks/usePets';
@@ -23,7 +24,7 @@ import {
   sanitizePhoneLocalInput,
   splitPhoneByCountryCode,
 } from '../lib/phoneUtils';
-import type { ClinicalEntryCategory, PetFormData, PetSex, PreventiveCategory, PreventiveTask, Species } from '../types';
+import type { ClinicalEntryCategory, PetFormData, PetSex, PetSightingMessage, PetTagRequest, PetTagRequestStatus, PreventiveCategory, PreventiveTask, Species } from '../types';
 
 const MAX_DIM = 1280;
 const QUALITY = 0.82;
@@ -67,11 +68,11 @@ function calcAge(birthDate: string) {
   return { ageYears: Math.floor(months / 12), ageMonths: months % 12 };
 }
 
-type View = 'list' | 'wizard' | 'detail' | 'edit' | 'historial' | 'preventivos' | 'comida' | 'libreta-sanitaria' | 'control-medicacion';
+type View = 'list' | 'wizard' | 'detail' | 'edit' | 'historial' | 'preventivos' | 'comida' | 'libreta-sanitaria' | 'control-medicacion' | 'identificacion';
 
 const INIT: PetFormData = {
   name: '', breed: '', species: 'dog', sex: 'unknown',
-  birthDate: '', ageYears: 0, ageMonths: 0, weightKg: 1,
+  birthDate: '', ageYears: 0, ageMonths: 0, weightKg: 1, distinguishingMarks: '',
 };
 
 const SP_EMOJI: Record<Species, string> = { dog: '🐕', cat: '🐈', other: '🐾' };
@@ -379,6 +380,7 @@ export function PetsSection() {
     sendMedicationLogPdfByEmail,
   } = usePetReports();
   const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask } = usePreventive();
+  const { getMessages, markMessageRead, getTagRequest, requestTag, generatePosterPdf } = usePetIdentification();
 
   const [view, setView]   = useState<View>('list');
   const [step, setStep]   = useState(1);
@@ -393,6 +395,18 @@ export function PetsSection() {
   const [libretaMailModal, setLibretaMailModal] = useState(false);
   const [medicacionMailModal, setMedicacionMailModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  const [sightingMessages, setSightingMessages] = useState<PetSightingMessage[]>([]);
+  const [tagRequest, setTagRequest] = useState<PetTagRequest | null>(null);
+  const [idLoading, setIdLoading] = useState(false);
+  const [posterBusy, setPosterBusy] = useState(false);
+  const [tagRequestBusy, setTagRequestBusy] = useState(false);
+  const [posterModal, setPosterModal] = useState(false);
+  const [posterLostDate, setPosterLostDate] = useState('');
+  const [posterLostPlace, setPosterLostPlace] = useState('');
+  const [posterContactPhone, setPosterContactPhone] = useState('');
+  const [posterDistinguishingMarks, setPosterDistinguishingMarks] = useState('');
+  const [posterExtraMessage, setPosterExtraMessage] = useState('');
 
   const [nTitle, setNTitle] = useState('');
   const [nDesc,  setNDesc]  = useState('');
@@ -853,6 +867,69 @@ export function PetsSection() {
     } catch (ex) { setMsg(ex instanceof Error ? ex.message : 'No se pudo enviar.'); }
   };
 
+  useEffect(() => {
+    if (view !== 'identificacion' || !pet) return;
+    let cancelled = false;
+    setIdLoading(true);
+    Promise.all([getMessages(pet.id), getTagRequest(pet.id)])
+      .then(([messages, tag]) => {
+        if (cancelled) return;
+        setSightingMessages(messages);
+        setTagRequest(tag);
+      })
+      .catch((ex) => { if (!cancelled) setErr(ex instanceof Error ? ex.message : 'No se pudieron cargar los mensajes.'); })
+      .finally(() => { if (!cancelled) setIdLoading(false); });
+    return () => { cancelled = true; };
+  }, [view, pet, getMessages, getTagRequest]);
+
+  const doGeneratePoster = async () => {
+    if (!pet) return;
+    setPosterBusy(true);
+    try {
+      const f = await generatePosterPdf(pet, '/logo-aipetfriendly.png', {
+        lostDate: posterLostDate || undefined,
+        lostPlace: posterLostPlace || undefined,
+        contactPhone: posterContactPhone.trim() || undefined,
+        distinguishingMarks: posterDistinguishingMarks.trim() || undefined,
+        extraMessage: posterExtraMessage.trim() || undefined,
+      });
+      const url = URL.createObjectURL(f.blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.fileName; a.click();
+      URL.revokeObjectURL(url);
+      setErr(null);
+      setPosterModal(false);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo generar el cartel.');
+    } finally {
+      setPosterBusy(false);
+    }
+  };
+
+  const doRequestTag = async () => {
+    if (!pet) return;
+    setTagRequestBusy(true);
+    try {
+      const created = await requestTag(pet.id);
+      setTagRequest(created);
+      setMsg('Solicitud de chapita registrada. Te contactaremos para coordinar la fabricacion.');
+      setErr(null);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo solicitar la chapita.');
+    } finally {
+      setTagRequestBusy(false);
+    }
+  };
+
+  const doMarkMessageRead = async (messageId: string) => {
+    try {
+      await markMessageRead(messageId);
+      setSightingMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, readAt: new Date().toISOString() } : m)));
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo actualizar el mensaje.');
+    }
+  };
+
   /* ─── LIST ─────────────────────────────────────────── */
   if (view === 'list') return (
     <section className="space-y-5 pb-2">
@@ -1019,6 +1096,12 @@ export function PetsSection() {
                 <option value="unknown">No especificado</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Señas particulares (opcional)</label>
+              <textarea value={form.distinguishingMarks ?? ''} onChange={e => setForm(p => ({...p, distinguishingMarks: e.target.value}))}
+                placeholder="Ej: lunar en la lengua, mancha en la oreja, tímido..." rows={2}
+                className={`mt-1.5 ${inp}`} />
+            </div>
           </div>
         )}
 
@@ -1133,6 +1216,14 @@ export function PetsSection() {
               <option value="male">Macho</option>
               <option value="unknown">No especificado</option>
             </select>
+          </div>
+
+          {/* señas particulares */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Señas particulares (opcional)</label>
+            <textarea value={form.distinguishingMarks ?? ''} onChange={e => setForm(p => ({...p, distinguishingMarks: e.target.value}))}
+              placeholder="Ej: lunar en la lengua, mancha en la oreja, tímido..." rows={2}
+              className={`mt-1.5 ${inp}`} />
           </div>
         </div>
 
@@ -1280,6 +1371,12 @@ export function PetsSection() {
             <span className="font-semibold text-slate-800">Medicacion</span>
             <span className="text-xs text-slate-500">Dosis suministradas</span>
           </button>
+          <button type="button" onClick={() => { setErr(null); setView('identificacion'); }}
+            className="flex flex-col items-center gap-2 rounded-3xl bg-white p-4 shadow-sm transition hover:bg-emerald-50">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600"><QrCode size={22} /></span>
+            <span className="font-semibold text-slate-800">Identificacion</span>
+            <span className="text-xs text-slate-500">Cartel, QR y mensajes</span>
+          </button>
         </div>
 
         <button type="button" onClick={() => { setErr(null); setNoteModal(true); }}
@@ -1294,7 +1391,7 @@ export function PetsSection() {
           className="w-full rounded-3xl border-2 border-emerald-300 bg-white py-4 text-center font-semibold text-emerald-700 shadow-sm">
           + Agregar medicacion
         </button>
-        <button type="button" onClick={() => { const editForm: PetFormData = { name: pet.name, breed: pet.breed, species: pet.species, sex: pet.sex, birthDate: pet.birthDate ?? '', ageYears: pet.ageYears, ageMonths: pet.ageMonths, weightKg: pet.weightKg, photoUrl: pet.photoUrl ?? '' }; setForm(editForm); setView('edit'); }}
+        <button type="button" onClick={() => { const editForm: PetFormData = { name: pet.name, breed: pet.breed, species: pet.species, sex: pet.sex, birthDate: pet.birthDate ?? '', ageYears: pet.ageYears, ageMonths: pet.ageMonths, weightKg: pet.weightKg, photoUrl: pet.photoUrl ?? '', distinguishingMarks: pet.distinguishingMarks ?? '' }; setForm(editForm); setView('edit'); }}
           className="w-full rounded-3xl border-2 border-amber-300 bg-white py-3 text-center font-semibold text-amber-700 shadow-sm">
           ✏️ Editar mascota
         </button>
@@ -2012,6 +2109,170 @@ export function PetsSection() {
       )}
     </section>
   );
+  }
+
+  /* ─── IDENTIFICACION (cartel / chapita / mensajes) ────── */
+  if (view === 'identificacion' && pet) {
+    const tagStatusLabel: Record<PetTagRequestStatus, string> = {
+      requested: 'Solicitada',
+      processing: 'En fabricacion',
+      shipped: 'Enviada',
+      delivered: 'Entregada',
+      cancelled: 'Cancelada',
+    };
+    return (
+    <section className="space-y-5 pb-2">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => setView('detail')} className="text-slate-500"><ChevronLeft size={24} /></button>
+        <h2 className="text-xl font-extrabold">Identificacion</h2>
+      </div>
+
+      {err && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-600">{err}</p>}
+      {msg && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-600">{msg}</p>}
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-800">
+          <QrCode size={20} className="text-amber-600" />
+          <h3 className="font-bold">Cartel con QR</h3>
+        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Descarga un cartel en PDF con la foto de {pet.name}, sus datos y un codigo QR que lleva a su perfil publico.
+          Quien lo encuentre podra enviarte un mensaje sin ver tus datos de contacto.
+        </p>
+        <button type="button" onClick={() => {
+          setErr(null);
+          setPosterLostDate('');
+          setPosterLostPlace('');
+          setPosterContactPhone(user?.whatsappPhone ?? '');
+          setPosterDistinguishingMarks(pet.distinguishingMarks ?? '');
+          setPosterExtraMessage('');
+          setPosterModal(true);
+        }}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-amber-500 py-3 font-bold text-white disabled:opacity-60">
+          <Download size={18} /> Descargar cartel PDF
+        </button>
+      </div>
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-800">
+          <Tag size={20} className="text-purple-600" />
+          <h3 className="font-bold">Chapita para el collar</h3>
+        </div>
+        {tagRequest ? (
+          <p className="mt-2 text-sm text-slate-600">
+            Estado de tu solicitud: <span className="font-semibold">{tagStatusLabel[tagRequest.status]}</span>
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-sm text-slate-500">
+              Solicita una chapita fisica con el mismo QR de identificacion para el collar de {pet.name}. Te contactaremos para coordinar la fabricacion y el envio.
+            </p>
+            <button type="button" onClick={doRequestTag} disabled={tagRequestBusy}
+              className="mt-3 w-full rounded-full bg-purple-500 py-3 font-bold text-white disabled:opacity-60">
+              {tagRequestBusy ? 'Enviando…' : 'Solicitar chapita'}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="rounded-3xl bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-800">
+          <MessageCircle size={20} className="text-emerald-600" />
+          <h3 className="font-bold">Mensajes recibidos</h3>
+        </div>
+        {idLoading && <p className="mt-2 text-sm text-slate-400">Cargando…</p>}
+        {!idLoading && sightingMessages.length === 0 && (
+          <p className="mt-2 text-sm text-slate-500">Todavia no recibiste mensajes.</p>
+        )}
+        <div className="mt-3 space-y-3">
+          {sightingMessages.map((m) => (
+            <div key={m.id} className={`rounded-2xl border p-3 ${m.readAt ? 'border-slate-100 bg-slate-50' : 'border-emerald-200 bg-emerald-50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.source === 'chapita' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {m.source === 'chapita' ? 'Chapita' : 'Cartel'}
+                </span>
+                <span className="text-xs text-slate-400">{new Date(m.createdAt).toLocaleString()}</span>
+              </div>
+              {m.message && <p className="mt-2 text-sm text-slate-700">{m.message}</p>}
+              {m.contactInfo && <p className="mt-1 text-xs text-slate-500">Contacto: {m.contactInfo}</p>}
+              {m.latitude != null && m.longitude != null && (
+                <a
+                  href={`https://www.google.com/maps?q=${m.latitude},${m.longitude}`}
+                  target="_blank" rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"
+                >
+                  <MapPin size={14} /> Ver ubicacion en el mapa
+                </a>
+              )}
+              {!m.readAt && (
+                <button type="button" onClick={() => doMarkMessageRead(m.id)}
+                  className="mt-2 block text-xs font-semibold text-slate-500 underline">
+                  Marcar como leido
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {posterModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-900/40 p-4">
+          <div className="my-6 w-full max-w-sm rounded-3xl bg-white p-6">
+            <h3 className="text-lg font-bold text-slate-900">Datos del cartel</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Contanos cuando y donde se perdio {pet.name} para incluirlo en el cartel (opcional).
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Fecha de extravio</label>
+                <input type="date" max={new Date().toISOString().split('T')[0]}
+                  value={posterLostDate} onChange={e => setPosterLostDate(e.target.value)}
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-slate-800" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Lugar de extravio</label>
+                <input value={posterLostPlace} onChange={e => setPosterLostPlace(e.target.value)}
+                  placeholder="Ej: Plaza San Martin, Av. Siempreviva 123..."
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-slate-800" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Telefono de contacto</label>
+                <input value={posterContactPhone} onChange={e => setPosterContactPhone(e.target.value)}
+                  placeholder="Ej: +54 9 11 5555-5555"
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-slate-800" />
+                <p className="mt-1 text-xs text-slate-400">
+                  Si lo dejas o lo completas, va a aparecer en el cartel para que te llamen o escriban por WhatsApp. Borralo si preferis que no se muestre.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Señas particulares</label>
+                <textarea value={posterDistinguishingMarks} onChange={e => setPosterDistinguishingMarks(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: mancha blanca en el pecho, collar rojo, cojea de una pata..."
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-slate-800" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Mensaje o dato adicional (opcional)</label>
+                <textarea value={posterExtraMessage} onChange={e => setPosterExtraMessage(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: es muy miedoso, no lo persigas, ofrecele comida..."
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-slate-800" />
+              </div>
+            </div>
+            {err && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
+            <div className="mt-5 flex gap-3">
+              <button type="button" onClick={() => setPosterModal(false)}
+                className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
+              <button type="button" onClick={doGeneratePoster} disabled={posterBusy}
+                className="w-full rounded-full bg-amber-500 py-3 font-bold text-white disabled:opacity-60">
+                {posterBusy ? 'Generando…' : 'Generar PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+    );
   }
 
   /* ─── PREVENTIVOS ───────────────────────────────────── */

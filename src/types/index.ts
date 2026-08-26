@@ -61,6 +61,8 @@ export interface Pet {
   weightKg: number;
   photoUrl?: string;
   notes?: string;
+  distinguishingMarks?: string;
+  publicCode?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +78,41 @@ export interface PetFormData {
   weightKg: number;
   photoUrl?: string;
   notes?: string;
+  distinguishingMarks?: string;
+}
+
+export type PetSightingSource = 'cartel' | 'chapita';
+
+export interface PetSightingMessage {
+  id: string;
+  petId: string;
+  source: PetSightingSource;
+  message?: string;
+  contactInfo?: string;
+  latitude?: number;
+  longitude?: number;
+  readAt?: string;
+  createdAt: string;
+}
+
+export type PetTagRequestStatus = 'requested' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+
+export interface PetTagRequest {
+  id: string;
+  petId: string;
+  userId: string;
+  status: PetTagRequestStatus;
+  shippingAddress?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PetPublicProfile {
+  name: string;
+  species: Species;
+  breed: string;
+  photoUrl?: string;
 }
 
 export interface PetWeightLog {

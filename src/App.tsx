@@ -16,6 +16,7 @@ import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetsSection } from './components/PetsSection';
+import { PetPublicProfileSection } from './components/PetPublicProfileSection';
 import { PublicLegalPage, isPublicLegalRoute } from './components/PublicLegalPages';
 import {
   OffersSection,
@@ -48,6 +49,13 @@ const FREE_AI_DAILY_LIMIT = 5;
 // requerir confirmacion por email, lo que implica un reload/redireccion completa.
 const POST_SIGNUP_TAB_KEY = 'apf_post_signup_tab';
 
+// Extrae el codigo publico de una ruta /mascota/{codigo} (pagina de identificacion
+// de la mascota, accesible sin login desde el QR del cartel o de la chapita).
+function getPetPublicCodeFromPath(normalizedPath: string): string | null {
+  const match = normalizedPath.match(/^\/mascota\/([A-Za-z0-9]{4,16})$/);
+  return match ? match[1].toUpperCase() : null;
+}
+
 // Determina si, en la primera carga, el visitante sin sesion debe entrar
 // directamente como invitado (en vez de ver la landing o el login primero).
 // Esto permite que cualquier persona (o el rastreador de Google para AdSense)
@@ -65,6 +73,7 @@ function shouldAutoStartAsGuest(): boolean {
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLoginRoute = normalizedPath === '/login';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
+  const isPetPublicRoute = Boolean(getPetPublicCodeFromPath(normalizedPath));
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = path === '/reset-password' || isRecoveryLink;
@@ -76,6 +85,7 @@ function shouldAutoStartAsGuest(): boolean {
     && !isSocialLandingRoute
     && !isLoginRoute
     && !isLegalRoute
+    && !isPetPublicRoute
     && !isResetPasswordRoute
     && !hasPublicVetClaimRoute
   );
@@ -259,15 +269,17 @@ function AppContent() {
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
   const isLoginRoute = normalizedPath === '/login';
+  const petPublicCode = getPetPublicCodeFromPath(normalizedPath);
+  const isPetPublicRoute = Boolean(petPublicCode);
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isLoginRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isLoginRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app solo tiene sentido si hay un usuario navegando
   // dentro de la app; en /guias sin login se muestra como pagina publica de contenido.
-  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && (!isGuidesRoute || Boolean(user));
+  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute && (!isGuidesRoute || Boolean(user));
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -402,6 +414,10 @@ function AppContent() {
   const renderTabContent = () => {
     if (isResetPasswordRoute) {
       return <AuthScreens initialMode="reset-password" />;
+    }
+
+    if (isPetPublicRoute && petPublicCode) {
+      return <PetPublicProfileSection code={petPublicCode} />;
     }
 
     if (isGuidesRoute) {
