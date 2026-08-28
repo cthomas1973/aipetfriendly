@@ -95,12 +95,35 @@ export interface PetSightingMessage {
   createdAt: string;
 }
 
-export type PetTagRequestStatus = 'requested' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+export type PetTagRequestStatus =
+  | 'requested'
+  | 'pending_payment'
+  | 'stl_generated'
+  | 'printed'
+  | 'shipped'
+  | 'linked'
+  | 'cancelled';
 
 export interface PetTagRequest {
   id: string;
   petId: string;
   userId: string;
+  status: PetTagRequestStatus;
+  shippingAddress?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminPetTagRequestRow {
+  id: string;
+  petId: string;
+  petName: string;
+  petPublicCode: string;
+  userId: string;
+  userEmail: string;
+  userFullName?: string;
+  userWhatsappPhone?: string;
   status: PetTagRequestStatus;
   shippingAddress?: string;
   notes?: string;

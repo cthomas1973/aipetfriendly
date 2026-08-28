@@ -48,11 +48,22 @@ const FREE_AI_DAILY_LIMIT = 5;
 // Se guarda en localStorage (y no en estado de React) porque el registro puede
 // requerir confirmacion por email, lo que implica un reload/redireccion completa.
 const POST_SIGNUP_TAB_KEY = 'apf_post_signup_tab';
+// Codigo publico de la mascota (public_code) pendiente de abrir en "Mensajes
+// recibidos", que llega por query param ?pet_messages=<codigo> desde el link
+// del email "¡Alguien encontro a tu mascota!". Se guarda mientras el usuario
+// inicia sesion y/o se terminan de cargar sus mascotas desde Supabase.
+const PENDING_PET_MESSAGES_CODE_KEY = 'apf_pending_pet_messages_code';
+// Id de la mascota que PetsSection debe abrir automaticamente en la vista de
+// Identificacion (mensajes recibidos) apenas se renderice con esa mascota
+// seleccionada. Ver tambien src/components/PetsSection.tsx.
+const OPEN_PET_IDENTIFICATION_KEY = 'apf_open_pet_identificacion';
 
 // Extrae el codigo publico de una ruta /mascota/{codigo} (pagina de identificacion
 // de la mascota, accesible sin login desde el QR del cartel o de la chapita).
+// /m/{codigo} es un alias corto de la misma ruta, pensado para que el QR de la
+// chapita 3D tenga menos caracteres (y por lo tanto menos modulos/detalle).
 function getPetPublicCodeFromPath(normalizedPath: string): string | null {
-  const match = normalizedPath.match(/^\/mascota\/([A-Za-z0-9]{4,16})$/);
+  const match = normalizedPath.match(/^\/(?:mascota|m)\/([A-Za-z0-9]{4,16})$/);
   return match ? match[1].toUpperCase() : null;
 }
 
@@ -251,6 +262,7 @@ function AppContent() {
     preventiveTasks,
     subscription,
     setActiveTab,
+    setSelectedPetId,
     setUser,
   } = useAppState();
   const [showLogo, setShowLogo] = useState(true);
@@ -298,6 +310,50 @@ function AppContent() {
       setActiveTab(pendingTab as AppTab);
     }
   }, [user, setActiveTab]);
+
+  // Si el link trae ?pet_messages=<codigo> (boton "Ver mensajes en AiPetFriendly"
+  // del email de mascota encontrada), guardamos el codigo mientras se carga la
+  // sesion/las mascotas y limpiamos el query param para no repetir el flujo.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const petMessagesCode = params.get('pet_messages');
+    if (!petMessagesCode) {
+      return;
+    }
+
+    window.localStorage.setItem(PENDING_PET_MESSAGES_CODE_KEY, petMessagesCode.trim().toUpperCase());
+    params.delete('pet_messages');
+    const remainingSearch = params.toString();
+    const cleanedUrl = `${window.location.pathname}${remainingSearch ? `?${remainingSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState(null, '', cleanedUrl);
+  }, []);
+
+  // Apenas haya sesion (no invitado) y las mascotas esten cargadas, resolvemos
+  // el codigo pendiente a una mascota propia y le pedimos a PetsSection que
+  // abra directamente la vista de "Mensajes recibidos" de esa mascota.
+  useEffect(() => {
+    if (!user || user.isGuest) {
+      return;
+    }
+
+    const pendingCode = window.localStorage.getItem(PENDING_PET_MESSAGES_CODE_KEY);
+    if (!pendingCode) {
+      return;
+    }
+
+    if (pets.length === 0) {
+      // Todavia no se cargaron las mascotas del usuario; esperamos al proximo render.
+      return;
+    }
+
+    window.localStorage.removeItem(PENDING_PET_MESSAGES_CODE_KEY);
+    const matchedPet = pets.find((p) => p.publicCode?.toUpperCase() === pendingCode);
+    if (matchedPet) {
+      setSelectedPetId(matchedPet.id);
+      setActiveTab('pets');
+      window.localStorage.setItem(OPEN_PET_IDENTIFICATION_KEY, matchedPet.id);
+    }
+  }, [user, pets, setSelectedPetId, setActiveTab]);
 
   const onSignOutGuest = () => {
     setUser(null);

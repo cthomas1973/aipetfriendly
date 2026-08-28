@@ -4,6 +4,7 @@ import type {
   AdminAiDashboardMetrics,
   AiUsageSettings,
   AdminUserRow,
+  AdminPetTagRequestRow,
   BillingPricingSettings,
   InboundEmailReply,
   InboundEmailRow,
@@ -13,6 +14,7 @@ import type {
   PetWeightLog,
   PetSightingMessage,
   PetTagRequest,
+  PetTagRequestStatus,
   ClinicalTimelineEntry,
   PreventiveTask,
   ChatMessage,
@@ -1713,6 +1715,52 @@ export async function sendAdminInboundEmailReply(inboundEmailId: string, body: s
 
   if (error) {
     console.error('Error sending inbound email reply:', error);
+    throw error;
+  }
+
+  return true;
+}
+
+// ── Chapitas (Admin) ───────────────────────────────────────────────────────
+
+export async function fetchAdminPetTagRequests(): Promise<AdminPetTagRequestRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_pet_tag_requests');
+
+  if (error) {
+    console.error('Error fetching admin pet tag requests:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    petId: row.pet_id,
+    petName: row.pet_name,
+    petPublicCode: row.pet_public_code,
+    userId: row.user_id,
+    userEmail: row.user_email,
+    userFullName: row.user_full_name || undefined,
+    userWhatsappPhone: row.user_whatsapp_phone || undefined,
+    status: row.status,
+    shippingAddress: row.shipping_address || undefined,
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function updateAdminPetTagRequest(
+  requestId: string,
+  status: PetTagRequestStatus,
+  notes?: string,
+): Promise<boolean> {
+  const { error } = await supabase.rpc('admin_update_pet_tag_request', {
+    p_id: requestId,
+    p_status: status,
+    p_notes: notes ?? null,
+  });
+
+  if (error) {
+    console.error('Error updating admin pet tag request:', error);
     throw error;
   }
 

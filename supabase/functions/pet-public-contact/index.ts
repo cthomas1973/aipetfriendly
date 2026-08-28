@@ -114,6 +114,7 @@ function buildNotificationEmailHtml(args: {
   message: string | null;
   contactInfo: string | null;
   mapsUrl: string | null;
+  messagesUrl: string;
 }): string {
   const ownerName = escapeHtml(args.ownerName);
   const petName = escapeHtml(args.petName);
@@ -122,7 +123,7 @@ function buildNotificationEmailHtml(args: {
   const contactInfo = args.contactInfo ? escapeHtml(args.contactInfo) : '';
   const petPhotoUrl = args.petPhotoUrl ? escapeHtml(args.petPhotoUrl) : '';
   const logoUrl = escapeHtml(EMAIL_LOGO_URL);
-  const webUrl = escapeHtml(WEB_APP_URL);
+  const messagesUrl = escapeHtml(args.messagesUrl);
 
   return `
 <!doctype html>
@@ -147,7 +148,7 @@ function buildNotificationEmailHtml(args: {
                 ${contactInfo ? `<div style="padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:10px;"><p style="margin:0;font-size:14px;color:#334155;"><strong>Contacto que dejo:</strong> ${contactInfo}</p></div>` : ''}
                 ${args.mapsUrl ? `<div style="margin-top:16px;text-align:center;"><a href="${escapeHtml(args.mapsUrl)}" style="display:inline-block;background:#0ea5e9;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:999px;">Ver ubicacion en Google Maps</a></div>` : ''}
                 <div style="margin-top:16px;text-align:center;">
-                  <a href="${webUrl}" style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:999px;">Ver mensajes en AiPetFriendly</a>
+                  <a href="${messagesUrl}" style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;border-radius:999px;">Ver mensajes en AiPetFriendly</a>
                 </div>
               </td>
             </tr>
@@ -212,7 +213,7 @@ Deno.serve(async (req) => {
 
       const { data: pet, error: petError } = await supabase
         .from('pets')
-        .select('id, name, user_id, photo_url')
+        .select('id, name, user_id, photo_url, public_code')
         .eq('public_code', code)
         .maybeSingle();
 
@@ -250,6 +251,12 @@ Deno.serve(async (req) => {
           const ownerName = owner.full_name?.trim() || emailLocalPart || 'tutor';
 
           if (owner.email && RESEND_API_KEY) {
+            // Link directo a la vista de "Mensajes recibidos" de esta mascota: al abrir
+            // la app con ?pet_messages=<codigo>, App.tsx selecciona la mascota y abre
+            // la seccion de Identificacion (ver src/App.tsx y usePetIdentification).
+            const messagesUrl = pet.public_code
+              ? `${WEB_APP_URL}/?pet_messages=${encodeURIComponent(pet.public_code)}`
+              : WEB_APP_URL;
             await sendEmail(
               owner.email,
               `AiPetFriendly: ¡encontraron a ${pet.name}!`,
@@ -261,6 +268,7 @@ Deno.serve(async (req) => {
                 message: message || null,
                 contactInfo: contactInfo || null,
                 mapsUrl,
+                messagesUrl,
               }),
             );
           }

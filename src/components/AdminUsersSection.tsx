@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Gift, Inbox, Megaphone, Shield, UserCog } from 'lucide-react';
+import { Gift, Inbox, Megaphone, Shield, Tag, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AdminBeneficiosSection } from './AdminBeneficiosSection';
 import { AdminInboxSection } from './AdminInboxSection';
 import { AdminNewsCampaignsSection } from './AdminNewsCampaignsSection';
+import { AdminChapitasSection } from './AdminChapitasSection';
 import {
   fetchAdminAiDashboardMetrics,
   fetchAdminAiQueryAudit,
@@ -32,7 +33,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
-  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades'>('usuarios');
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades' | 'chapitas'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -202,6 +203,12 @@ export function AdminUsersSection() {
           }`}>
           <Megaphone size={15} /> Novedades
         </button>
+        <button type="button" onClick={() => setAdminTab('chapitas')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'chapitas' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <Tag size={15} /> Chapitas
+        </button>
       </div>
 
       {adminTab === 'beneficios' ? (
@@ -215,6 +222,10 @@ export function AdminUsersSection() {
       ) : adminTab === 'novedades' ? (
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminNewsCampaignsSection />
+        </div>
+      ) : adminTab === 'chapitas' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm">
+          <AdminChapitasSection />
         </div>
       ) : (<>
         <div className="flex flex-wrap items-center gap-2">

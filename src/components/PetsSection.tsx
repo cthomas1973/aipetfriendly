@@ -29,6 +29,12 @@ import type { ClinicalEntryCategory, PetFormData, PetSex, PetSightingMessage, Pe
 const MAX_DIM = 1280;
 const QUALITY = 0.82;
 
+// Id de la mascota que hay que abrir automaticamente en la vista de
+// Identificacion (mensajes recibidos). Lo deja App.tsx en localStorage cuando
+// el usuario entra desde el link "Ver mensajes en AiPetFriendly" del email de
+// mascota encontrada (?pet_messages=<codigo publico>).
+const OPEN_PET_IDENTIFICATION_KEY = 'apf_open_pet_identificacion';
+
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -447,6 +453,18 @@ export function PetsSection() {
   const dialOptions = buildCountryOptionsForPicker(detectedDialCode);
 
   const pet = pets.find(p => p.id === selectedPetId) ?? null;
+
+  // Si venimos del link del email "Ver mensajes en AiPetFriendly" (App.tsx ya
+  // selecciono esta mascota), abrimos directo la vista de Identificacion para
+  // mostrar los mensajes recibidos sin pasos extra.
+  useEffect(() => {
+    if (!pet) return;
+    const targetPetId = window.localStorage.getItem(OPEN_PET_IDENTIFICATION_KEY);
+    if (targetPetId !== pet.id) return;
+    window.localStorage.removeItem(OPEN_PET_IDENTIFICATION_KEY);
+    setErr(null);
+    setView('identificacion');
+  }, [pet]);
 
   useEffect(() => {
     const profile = readNotificationProfile(user);
@@ -2115,9 +2133,11 @@ export function PetsSection() {
   if (view === 'identificacion' && pet) {
     const tagStatusLabel: Record<PetTagRequestStatus, string> = {
       requested: 'Solicitada',
-      processing: 'En fabricacion',
+      pending_payment: 'Pendiente de pago',
+      stl_generated: 'En fabricacion',
+      printed: 'Impresa',
       shipped: 'Enviada',
-      delivered: 'Entregada',
+      linked: 'Entregada y vinculada',
       cancelled: 'Cancelada',
     };
     return (
