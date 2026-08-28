@@ -15,6 +15,14 @@ type RequestPayload = {
   petId?: string;
   question?: string;
   recentMessages?: ChatTurn[];
+  // Imagen adjunta (data URL base64, ej. "data:image/jpeg;base64,...") para analisis visual.
+  imageBase64?: string | null;
+  // "weight_insight": analisis proactivo automatico al registrar un nuevo peso (no cuenta
+  // contra el cupo de consultas IA del usuario, no es una pregunta manual del tutor).
+  mode?: "chat" | "weight_insight";
+  previousWeightKg?: number;
+  currentWeightKg?: number;
+  daysBetween?: number;
   guestContext?: {
     pet?: {
       id?: string;
@@ -53,7 +61,29 @@ type UsageSettingsRow = {
 
 type UserProfileRow = {
   access_mode: Tier;
+  full_name: string | null;
 };
+
+// Deriva un nombre "amigable" a partir de la parte local del email (lo que esta
+// antes de la arroba), para usar como nombre del tutor cuando no cargo full_name
+// (mismo criterio que send-preventive-reminders/index.ts).
+function deriveNameFromEmail(email: string): string {
+  const localPart = email.split("@")[0]?.trim() ?? "";
+  if (!localPart) {
+    return "tutor";
+  }
+
+  const cleaned = localPart.replace(/[._+\-0-9]+/g, " ").trim();
+  if (!cleaned) {
+    return "tutor";
+  }
+
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 type PetRow = {
   id: string;
@@ -87,6 +117,80 @@ type UsageRow = {
   usage_count: number;
   period_key: string;
 };
+
+// ~4.5MB decodificados (base64 agrega ~33%). El cliente ya redimensiona/comprime
+// la imagen antes de enviarla (target ~1024px), esto es solo una red de
+// seguridad server-side ante un cliente modificado o un caso raro.
+const MAX_IMAGE_BASE64_LENGTH = 6_000_000;
+const IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i;
+
+// Valida el formato del data URL de la imagen antes de reenviarlo al proveedor
+// de IA o subirlo a Storage. Solo se aceptan imagenes auto-contenidas en
+// base64 (nunca una URL remota arbitraria: evita que el usuario fuerce al
+// proveedor de IA o a nuestro storage a resolver una URL de terceros).
+function sanitizeImageDataUrl(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_IMAGE_BASE64_LENGTH) {
+    throw new Error("La imagen es demasiado grande.");
+  }
+
+  if (!IMAGE_DATA_URL_PATTERN.test(trimmed)) {
+    throw new Error("Formato de imagen invalido (se espera un data URL base64 de png/jpeg/webp).");
+  }
+
+  return trimmed;
+}
+
+function imageMimeFromDataUrl(dataUrl: string): string {
+  const match = dataUrl.match(/^data:(image\/[a-z]+);base64,/i);
+  return match ? match[1].toLowerCase() : "image/jpeg";
+}
+
+function imageExtensionFromMime(mime: string): string {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  return "jpg";
+}
+
+// deno-lint-ignore no-explicit-any
+async function uploadChatImage(admin: any, imageDataUrl: string): Promise<string | null> {
+  try {
+    const mime = imageMimeFromDataUrl(imageDataUrl);
+    const base64 = imageDataUrl.slice(imageDataUrl.indexOf(",") + 1);
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: mime });
+    const fileName = `${crypto.randomUUID()}.${imageExtensionFromMime(mime)}`;
+
+    let { error: uploadError } = await admin.storage.from("chat-images").upload(fileName, blob, {
+      contentType: mime,
+    });
+
+    if (uploadError && /Bucket not found/i.test(uploadError.message || "")) {
+      const { error: createBucketError } = await admin.storage.createBucket("chat-images", { public: true });
+      if (createBucketError && !/already exists/i.test(createBucketError.message || "")) {
+        console.error("No se pudo crear el bucket chat-images:", createBucketError.message);
+        return null;
+      }
+      const retry = await admin.storage.from("chat-images").upload(fileName, blob, { contentType: mime });
+      uploadError = retry.error;
+    }
+
+    if (uploadError) {
+      console.error("Error subiendo imagen de chat a Storage:", uploadError.message);
+      return null;
+    }
+
+    const { data: publicUrlData } = admin.storage.from("chat-images").getPublicUrl(fileName);
+    return publicUrlData?.publicUrl || null;
+  } catch (error) {
+    console.error("Error inesperado subiendo imagen de chat:", error);
+    return null;
+  }
+}
 
 function currentUsagePeriodKey(): string {
   // Formato 'YYYY-MM' en UTC, alineado con to_char(now(), 'YYYY-MM') en Postgres.
@@ -224,6 +328,7 @@ function buildPrompt(
   preventiveTasks: PreventiveRow[],
   question: string,
   recentMessages: ChatTurn[],
+  hasImage: boolean,
 ): string {
   const recentConversation = recentMessages.length === 0
     ? "Sin historial de chat previo."
@@ -246,6 +351,7 @@ function buildPrompt(
     "HISTORIAL DE CONVERSACION RECIENTE:",
     recentConversation,
     "",
+    hasImage ? "El usuario adjunto una imagen (foto de la mascota o de una zona puntual, ej. piel, ojo, oido, herida). Analizala junto con el resto del contexto." : "",
     "PREGUNTA DEL USUARIO:",
     question,
     "",
@@ -255,6 +361,12 @@ function buildPrompt(
     "3. Si faltan datos para una recomendacion segura, dilo y pide lo minimo necesario.",
     "4. Incluye alertas de urgencia cuando corresponda (veterinario inmediato).",
     "5. No inventes diagnosticos ni estudios que no aparecen en el historial.",
+    ...(hasImage
+      ? [
+          "5b. Describe de forma objetiva lo que se observa en la imagen adjunta (color, forma, tamano relativo, ubicacion, si hay inflamacion/secrecion/perdida de pelo, etc.) antes de dar recomendaciones.",
+          "5c. Un analisis de imagen por IA NO es un diagnostico: acláralo explicitamente y, ante cualquier signo de urgencia (sangrado activo, dificultad respiratoria, dolor intenso, hinchazon marcada, letargo severo), recomienda consulta veterinaria inmediata en vez de esperar.",
+        ]
+      : []),
     "6. Si sugieres medicacion, alimento, suplemento o cualquier producto, debes incluir SIEMPRE una seccion llamada 'Dosificacion orientativa (sugerencia)'.",
     "7. En esa seccion, la dosificacion debe estar adaptada a especie, edad, peso, raza/tamano e historial de esta mascota (si algun dato falta, indicalo y da un rango conservador o pide el dato faltante antes de usar el producto).",
     "8. La dosificacion debe ser concreta y practica (por ejemplo mg/kg, ml, comprimidos o porcion diaria segun corresponda), evitando afirmaciones absolutas.",
@@ -264,10 +376,46 @@ function buildPrompt(
     'PRODUCT_SUGGESTION: {"query": "palabras clave del producto en español", "grupo": "alimentos|accesorios|higiene|descanso"}',
     "Ejemplo: si recomendaste 'un baño con champú suave' para la piel de un perro, agrega: PRODUCT_SUGGESTION: {\"query\": \"shampoo perro piel sensible\", \"grupo\": \"higiene\"}",
     "Si no corresponde sugerir ningun producto (por ejemplo, si la respuesta es solo orientacion general o requiere atencion veterinaria urgente), NO agregues esa linea.",
+    "12. IMPORTANTE - Distingue entre el descargo de responsabilidad de rutina (punto 10, que va SIEMPRE) y una recomendacion real de que la mascota sea atendida presencialmente por un veterinario (por ejemplo: sintomas de urgencia, algo que no se resuelve con cuidados en casa, una lesion/mancha/hinchazon que requiere revision fisica o estudios, empeoramiento sostenido, etc.). SOLO en ese segundo caso, agrega al FINAL de tu respuesta (despues de la linea de PRODUCT_SUGGESTION si la hubiera), en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
+    "VET_VISIT_RECOMMENDED: true",
+    "No agregues esa linea si tu respuesta es solo orientacion general/preventiva que el tutor puede manejar en casa sin necesidad de una consulta presencial en el corto plazo.",
   ].join("\n");
 }
 
-async function callAiModel(prompt: string) {
+// Prompt para el aviso proactivo automatico que se dispara al registrar un nuevo peso
+// (no es una respuesta a una pregunta del tutor, sino un analisis breve tipo notificacion).
+function buildWeightInsightPrompt(
+  pet: PetRow,
+  ownerName: string,
+  previousWeightKg: number,
+  currentWeightKg: number,
+  daysBetween: number,
+): string {
+  const changeKg = currentWeightKg - previousWeightKg;
+  const changePct = previousWeightKg > 0 ? (changeKg / previousWeightKg) * 100 : 0;
+  const direction = changeKg > 0 ? "aumento" : changeKg < 0 ? "disminucion" : "sin cambios";
+  const speciesLabel = pet.species === "cat" ? "gato" : "perro";
+
+  return [
+    "Sos un asistente veterinario preventivo. Tu tarea es generar un aviso proactivo BREVE (no es la respuesta a una pregunta del tutor) sobre la evolucion de peso de una mascota.",
+    `Nombre del tutor/a: ${ownerName}. Si te diriges a el/ella por su nombre, usa exactamente ese nombre. NUNCA uses la palabra generica "tutor" como forma de dirigirte a la persona.`,
+    `Mascota: ${pet.name}, especie ${pet.species}, raza ${pet.breed || "no especificada"}, edad ${pet.age_years ?? 0} anios y ${pet.age_months ?? 0} meses, sexo ${pet.sex || "no especificado"}.`,
+    `Peso anterior: ${previousWeightKg} kg. Peso actual: ${currentWeightKg} kg. Cambio: ${changeKg.toFixed(2)} kg (${changePct.toFixed(1)}% de ${direction}) en ${daysBetween} dias.`,
+    "INSTRUCCIONES:",
+    "1. Compara ese cambio contra el rango de peso esperable para esa raza/especie/edad segun tu conocimiento general (es una estimacion aproximada, no una tabla exacta).",
+    `2. Si el cambio es significativo (en general, mas de 10% en pocos meses) escribe un aviso corto y calido dirigido a ${ownerName} (maximo 3 oraciones): menciona el porcentaje de cambio, si eso lo aleja del peso ideal, y una sugerencia concreta (revisar la cantidad/tipo de alimento, o consultar al veterinario si preocupa). Cierra invitando a consultarte sobre la dieta cuando quiera.`,
+    "3. Si el cambio NO es significativo o es esperable para su etapa de crecimiento/edad, responde con un aviso breve y tranquilizador (1-2 oraciones), sin alarmar.",
+    "4. Si el analisis sugiere sobrepeso (aumento marcado, por encima del rango esperable), podes agregar al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
+    `PRODUCT_SUGGESTION: {"query": "alimento control de peso ${speciesLabel}", "grupo": "alimentos"}`,
+    "No agregues esa linea si no hay indicio de sobrepeso.",
+    "5. Si la perdida de peso es brusca/marcada o el cambio es preocupante al punto de requerir revision presencial, agrega al final (en linea aparte, nunca lo menciones al usuario) exactamente:",
+    "VET_VISIT_RECOMMENDED: true",
+    "No agregues esa linea si no hace falta una consulta presencial en el corto plazo.",
+    "Responde en espanol, tono cercano, sin tecnicismos innecesarios, maximo 3 oraciones (sin contar las lineas ocultas del final).",
+  ].join("\n");
+}
+
+async function callAiModel(prompt: string, imageDataUrl?: string | null) {
   const apiKey = Deno.env.get("AI_API_KEY") || "";
   const model = Deno.env.get("AI_MODEL") || "gpt-4o-mini";
   const baseUrl = (Deno.env.get("AI_BASE_URL") || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -275,6 +423,20 @@ async function callAiModel(prompt: string) {
   if (!apiKey) {
     throw new Error("Missing AI_API_KEY in Edge Function secrets");
   }
+
+  // Si hay imagen, el mensaje del usuario va como contenido multimodal
+  // (texto + imagen), formato soportado por modelos con vision como
+  // gpt-4o / gpt-4o-mini via la misma API de chat completions.
+  // "detail: auto" deja que el propio modelo elija resolucion baja/alta segun
+  // el tamano de la imagen recibida: minimiza tokens cuando la imagen ya es
+  // chica/simple, sin perder detalle en fotos mas grandes/complejas (evita
+  // forzar "high" siempre, que es la opcion mas cara).
+  const userContent = imageDataUrl
+    ? [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: imageDataUrl, detail: "auto" } },
+      ]
+    : prompt;
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -289,11 +451,11 @@ async function callAiModel(prompt: string) {
         {
           role: "system",
           content:
-            "Eres un asistente veterinario preventivo. Debes ser prudente, preciso y responsable. Nunca presentes una dosis como orden medica definitiva: siempre como sugerencia orientativa y con recomendacion de confirmacion veterinaria.",
+            "Eres un asistente veterinario preventivo. Debes ser prudente, preciso y responsable. Nunca presentes una dosis como orden medica definitiva: siempre como sugerencia orientativa y con recomendacion de confirmacion veterinaria. Si el usuario adjunta una imagen, analizala con cautela: describe lo que se observa objetivamente y aclara siempre que un analisis visual por IA no reemplaza un examen fisico veterinario.",
         },
         {
           role: "user",
-          content: prompt,
+          content: userContent,
         },
       ],
     }),
@@ -430,6 +592,37 @@ function extractProductSuggestion(answer: string): { cleanAnswer: string; query:
   return { cleanAnswer: answer, query: fallback?.query ?? null, grupo: fallback?.grupo ?? null };
 }
 
+// Red de seguridad por si la IA no agrego el marcador VET_VISIT_RECOMMENDED
+// pese a describir una situacion de urgencia real (no solo el descargo de
+// rutina del punto 10 del prompt, que aparece en TODAS las respuestas).
+const VET_VISIT_FALLBACK_PATTERNS = [
+  /consult(a|e|ar).{0,40}(veterinari\w*).{0,20}(inmediat\w*|urgen\w*|cuanto antes|lo antes posible|sin demora)/i,
+  /(llev\w+|acud\w+|acerc\w+).{0,40}(veterinari\w*).{0,20}(inmediat\w*|urgen\w*|cuanto antes|lo antes posible)/i,
+  /(emergencia|urgencia)\s+veterinaria/i,
+];
+
+function findFallbackVetVisitSignal(text: string): boolean {
+  return VET_VISIT_FALLBACK_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+// Extrae el marcador oculto VET_VISIT_RECOMMENDED del texto de la IA (ya
+// limpio de PRODUCT_SUGGESTION) y lo remueve de la respuesta visible. A
+// diferencia del descargo de responsabilidad generico (que va siempre), este
+// marcador indica que la situacion puntual requiere que la mascota sea
+// llevada fisicamente a una veterinaria. Si el modelo no lo agrega pero el
+// texto igual describe una urgencia clara, se detecta por patrones como red
+// de seguridad (ver findFallbackVetVisitSignal).
+function extractVetVisitRecommendation(answer: string): { cleanAnswer: string; recommendVetVisit: boolean } {
+  const match = answer.match(/VET_VISIT_RECOMMENDED:\s*(true|false)/i);
+
+  if (match) {
+    const cleanAnswer = answer.replace(match[0], "").trim();
+    return { cleanAnswer, recommendVetVisit: match[1].toLowerCase() === "true" };
+  }
+
+  return { cleanAnswer: answer, recommendVetVisit: findFallbackVetVisitSignal(answer) };
+}
+
 function getMattToolId(): string {
   const template = Deno.env.get("ML_AFFILIATE_TEMPLATE") || "";
   if (template) {
@@ -536,6 +729,23 @@ serve(async (req) => {
       });
     }
 
+    let imageDataUrl: string | null = null;
+    try {
+      imageDataUrl = sanitizeImageDataUrl(payload.imageBase64);
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Imagen invalida" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Cuando hay imagen, el costo en tokens ya sube por la propia imagen: se
+    // recorta el historial de chat que se reenvia en el prompt (el contexto
+    // conversacional pesa menos que la foto para este tipo de consulta) para
+    // compensar y mantener el costo total acotado sin resignar calidad del
+    // analisis visual en si.
+    const promptRecentMessages = imageDataUrl ? recentMessages.slice(-4) : recentMessages;
+
     const admin = createClient(supabaseUrl, supabaseServiceKey);
     const authHeader = req.headers.get("Authorization") || "";
     const jwt = authHeader.replace("Bearer ", "").trim();
@@ -551,6 +761,15 @@ serve(async (req) => {
     }
 
     if (!jwt) {
+      // Los invitados no tienen acceso Premium: la subida de imagenes queda
+      // bloqueada tambien para el modo visitante.
+      if (imageDataUrl) {
+        return new Response(JSON.stringify({ error: "La subida de imagenes es una funcion Premium." }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const guestPet = normalizeGuestPet(payload);
       if (!guestPet) {
         return new Response(JSON.stringify({ error: "guestContext.pet is required for visitor mode" }), {
@@ -564,13 +783,15 @@ serve(async (req) => {
         normalizeGuestClinical(payload),
         normalizeGuestPreventive(payload),
         question,
-        recentMessages,
+        promptRecentMessages,
+        Boolean(imageDataUrl),
       );
 
-      const ai = await callAiModel(prompt);
+      const ai = await callAiModel(prompt, imageDataUrl);
       const limit = resolveLimitByTier(settingsRowData, "guest");
 
-      const { cleanAnswer, query, grupo } = extractProductSuggestion(ai.answer);
+      const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(ai.answer);
+      const { cleanAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
       let suggestedProduct: SuggestedProduct | null = null;
       if (query) {
         try {
@@ -584,6 +805,9 @@ serve(async (req) => {
         ...ai,
         answer: cleanAnswer,
         suggestedProduct,
+        recommendVetVisit,
+        // No se persiste la imagen de un visitante (no hay historial guest en DB).
+        imageUrl: null,
         usage: {
           tier: "guest",
           limit,
@@ -617,7 +841,7 @@ serve(async (req) => {
 
     const { data: profile, error: profileError } = await admin
       .from("users")
-      .select("access_mode")
+      .select("access_mode,full_name")
       .eq("id", user.id)
       .single<UserProfileRow>();
 
@@ -630,6 +854,79 @@ serve(async (req) => {
       : profile.access_mode === "guest"
         ? "guest"
         : "free";
+
+    // La subida de imagenes para analisis visual es una funcion Premium. Se
+    // valida tambien server-side (no solo se oculta/deshabilita en el
+    // cliente) porque cualquiera podria llamar a este endpoint directo.
+    if (imageDataUrl && tier !== "premium") {
+      return new Response(JSON.stringify({ error: "La subida de imagenes es una funcion Premium." }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Aviso proactivo automatico al registrar un nuevo peso: no es una consulta manual
+    // del tutor, asi que NO consume el cupo de consultas IA (no toca ai_pet_usage ni
+    // ai_query_logs). Requiere datos de peso validos ademas del petId ya validado arriba.
+    if (payload.mode === "weight_insight") {
+      const previousWeightKg = Number(payload.previousWeightKg);
+      const currentWeightKg = Number(payload.currentWeightKg);
+      const daysBetween = Number(payload.daysBetween);
+
+      if (!(previousWeightKg > 0) || !(currentWeightKg > 0) || !(daysBetween > 0)) {
+        return new Response(JSON.stringify({ error: "Datos de peso invalidos para el analisis." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: insightPet, error: insightPetError } = await admin
+        .from("pets")
+        .select("id,user_id,name,species,breed,sex,age_years,age_months,weight_kg,notes")
+        .eq("id", petId)
+        .eq("user_id", user.id)
+        .maybeSingle<PetRow>();
+
+      if (insightPetError) {
+        throw new Error(`Error loading pet profile: ${insightPetError.message}`);
+      }
+      if (!insightPet) {
+        return new Response(JSON.stringify({ error: "Pet not found for this user" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const insightPrompt = buildWeightInsightPrompt(
+        insightPet,
+        profile.full_name?.trim() || deriveNameFromEmail(user.email || ""),
+        previousWeightKg,
+        currentWeightKg,
+        daysBetween,
+      );
+      const insightAi = await callAiModel(insightPrompt, null);
+
+      const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(insightAi.answer);
+      const { cleanAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
+
+      let suggestedProduct: SuggestedProduct | null = null;
+      if (query) {
+        try {
+          suggestedProduct = await findSuggestedProduct(admin, query, grupo, insightPet.species);
+        } catch {
+          suggestedProduct = null;
+        }
+      }
+
+      return new Response(JSON.stringify({
+        answer: cleanAnswer,
+        suggestedProduct,
+        recommendVetVisit,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const limit = resolveLimitByTier(settingsRowData, tier);
 
@@ -704,12 +1001,14 @@ serve(async (req) => {
       (clinicalRows || []) as ClinicalRow[],
       (preventiveRows || []) as PreventiveRow[],
       question,
-      recentMessages,
+      promptRecentMessages,
+      Boolean(imageDataUrl),
     );
 
-    const ai = await callAiModel(prompt);
+    const ai = await callAiModel(prompt, imageDataUrl);
 
-    const { cleanAnswer, query, grupo } = extractProductSuggestion(ai.answer);
+    const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(ai.answer);
+    const { cleanAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
     ai.answer = cleanAnswer;
     let suggestedProduct: SuggestedProduct | null = null;
     if (query) {
@@ -719,6 +1018,10 @@ serve(async (req) => {
         suggestedProduct = null;
       }
     }
+
+    // Se sube recien aca (con la IA ya respondida OK) para no gastar Storage
+    // en imagenes de consultas que fallaron.
+    const imageUrl = imageDataUrl ? await uploadChatImage(admin, imageDataUrl) : null;
 
     const usedAfter = usedBefore + 1;
     const { error: upsertUsageError } = await admin
@@ -759,6 +1062,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       ...ai,
       suggestedProduct,
+      imageUrl,
+      recommendVetVisit,
       usage: {
         tier,
         limit,

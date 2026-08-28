@@ -1,4 +1,5 @@
 import {
+  applyDiscountToAmount,
   createUsdGatewaySession,
   ensureMethod,
   getBillingPricingSettings,
@@ -9,6 +10,8 @@ import {
   mpRequest,
   normalizeCountryCode,
   readBody,
+  registerDiscountCodeUsage,
+  resolveDiscountCode,
   sendJson,
   upsertBillingRecord,
 } from './_shared.js';
@@ -28,13 +31,20 @@ export default async function handler(req, res) {
       admin,
     } = await getAuthenticatedContext(req);
     const pricing = await getBillingPricingSettings(admin);
-    const monthlyAmount = Number(pricing.premiumMonthlyManualArs || 9900);
+    const discount = await resolveDiscountCode(admin, payload?.discountCode);
+    let monthlyAmount = Number(pricing.premiumMonthlyManualArs || 9900);
+    if (discount) {
+      monthlyAmount = applyDiscountToAmount(monthlyAmount, discount.percentOff);
+    }
 
     const appBaseUrl = getAppBaseUrl().replace(/\/$/, '');
     const notificationUrl = getWebhookNotificationUrl();
 
     if (!isArgentinaCountry(countryCode)) {
-      const amountUsd = Number(pricing.premiumMonthlyManualUsd || 9.9);
+      let amountUsd = Number(pricing.premiumMonthlyManualUsd || 9.9);
+      if (discount) {
+        amountUsd = applyDiscountToAmount(amountUsd, discount.percentOff);
+      }
       const usdCheckout = await createUsdGatewaySession({
         mode: 'one_time',
         planCode,
@@ -47,6 +57,8 @@ export default async function handler(req, res) {
         metadata: {
           origin: 'aipetfriendly',
           settlementCountry: countryCode,
+          discountCode: discount?.code || null,
+          discountPercentOff: discount?.percentOff || null,
         },
       });
 
@@ -65,9 +77,15 @@ export default async function handler(req, res) {
           pricingUsd: amountUsd,
           checkoutProvider: process.env.USD_GATEWAY_PROVIDER || 'stripe',
           providerReference: usdCheckout.providerReference,
+          discountCode: discount?.code || null,
+          discountPercentOff: discount?.percentOff || null,
           checkout: usdCheckout.raw,
         },
       });
+
+      if (discount) {
+        await registerDiscountCodeUsage(admin, discount.code);
+      }
 
       return sendJson(res, 200, {
         initPoint: usdCheckout.initPoint,
@@ -129,9 +147,15 @@ export default async function handler(req, res) {
         pricingArs: monthlyAmount,
         pricingUsd: pricing.premiumMonthlyManualUsd,
         preferenceId: preference?.id || null,
+        discountCode: discount?.code || null,
+        discountPercentOff: discount?.percentOff || null,
         checkout: preference,
       },
     });
+
+    if (discount) {
+      await registerDiscountCodeUsage(admin, discount.code);
+    }
 
     return sendJson(res, 200, {
       initPoint,

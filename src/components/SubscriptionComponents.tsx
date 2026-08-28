@@ -11,8 +11,9 @@ import {
   fetchBillingPricingSettings,
   fetchBeneficiosProductos,
   sendFeedbackMessage,
+  validateDiscountCode,
 } from '../lib/supabase';
-import type { BillingPricingSettings, Species } from '../types';
+import type { BillingPricingSettings, DiscountCodeValidation, Species } from '../types';
 
 function detectUserCountryCode(): string {
   const timezoneToCountry: Record<string, string> = {
@@ -160,6 +161,10 @@ export function PaywallCard() {
   const [checkoutLoadingMode, setCheckoutLoadingMode] = useState<'monthly' | 'annual' | 'monthly_manual' | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
+  const [discountCodeInput, setDiscountCodeInput] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountCodeValidation | null>(null);
+  const [discountValidating, setDiscountValidating] = useState(false);
+  const [discountError, setDiscountError] = useState<string | null>(null);
   const [detectedCountryCode] = useState<string>(detectUserCountryCode());
   const [pricing, setPricing] = useState<BillingPricingSettings>({
     premiumMonthlyAutoArs: 9900,
@@ -331,6 +336,7 @@ export function PaywallCard() {
       setCheckoutLoadingMode(planCode);
       const checkout = await createMercadoPagoRecurringSubscription(planCode, {
         countryCode: checkoutCountryCode,
+        discountCode: appliedDiscount?.code,
       });
       window.location.href = checkout.initPoint;
     } catch (err) {
@@ -347,6 +353,7 @@ export function PaywallCard() {
       setCheckoutLoadingMode('monthly_manual');
       const checkout = await createMercadoPagoOneTimeMonthlyPayment({
         countryCode: checkoutCountryCode,
+        discountCode: appliedDiscount?.code,
       });
       window.location.href = checkout.initPoint;
     } catch (err) {
@@ -355,6 +362,45 @@ export function PaywallCard() {
       setCheckoutLoadingMode(null);
     }
   };
+
+  const applyDiscountCode = async () => {
+    const trimmed = discountCodeInput.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    try {
+      setDiscountValidating(true);
+      setDiscountError(null);
+      const result = await validateDiscountCode(trimmed);
+      if (!result) {
+        setAppliedDiscount(null);
+        setDiscountError('El codigo ingresado no es valido o ya no esta disponible.');
+        return;
+      }
+      setAppliedDiscount(result);
+      setDiscountCodeInput(result.code);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo validar el codigo de descuento.';
+      setDiscountError(message);
+    } finally {
+      setDiscountValidating(false);
+    }
+  };
+
+  const removeDiscountCode = () => {
+    setAppliedDiscount(null);
+    setDiscountCodeInput('');
+    setDiscountError(null);
+  };
+
+  const applyDiscountToPreview = (amount: number) => {
+    if (!appliedDiscount) {
+      return amount;
+    }
+    return amount * (1 - appliedDiscount.percentOff / 100);
+  };
+
 
   const showInternationalPendingNotice = (mode: 'monthly' | 'annual' | 'monthly_manual') => {
     setCheckoutLoadingMode(null);
@@ -549,6 +595,44 @@ export function PaywallCard() {
             </div>
             {!isPremium && (
               <div className="mt-5 space-y-2">
+                <div className="rounded-2xl bg-white/15 px-3 py-2.5">
+                  {appliedDiscount ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-white">
+                        Codigo <span className="font-extrabold">{appliedDiscount.code}</span> aplicado · {appliedDiscount.percentOff}% off
+                      </p>
+                      <button
+                        type="button"
+                        onClick={removeDiscountCode}
+                        className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white hover:bg-white/30"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        value={discountCodeInput}
+                        onChange={(e) => setDiscountCodeInput(e.target.value.toUpperCase())}
+                        placeholder="¿Tenes un codigo de descuento?"
+                        className="min-w-0 flex-1 rounded-full border border-white/40 bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void applyDiscountCode()}
+                        disabled={discountValidating || !discountCodeInput.trim()}
+                        className="rounded-full bg-white px-4 py-2 text-sm font-bold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {discountValidating ? 'Validando...' : 'Aplicar'}
+                      </button>
+                    </div>
+                  )}
+                  {discountError && !appliedDiscount && (
+                    <p className="mt-2 text-xs font-semibold text-rose-100">{discountError}</p>
+                  )}
+                </div>
+
                 <button
                   type="button"
                   disabled={checkoutLoadingMode !== null}
@@ -565,8 +649,8 @@ export function PaywallCard() {
                   {checkoutLoadingMode === 'monthly'
                     ? 'Redirigiendo...'
                     : isArgentinaCheckout
-                      ? `Premium mensual (Mercado Pago) · ${arsFormatter.format(pricing.premiumMonthlyAutoArs)}`
-                      : `Premium mensual (internacional) · ${usdFormatter.format(pricing.premiumMonthlyAutoUsd)}`}
+                      ? `Premium mensual (Mercado Pago) · ${arsFormatter.format(applyDiscountToPreview(pricing.premiumMonthlyAutoArs))}`
+                      : `Premium mensual (internacional) · ${usdFormatter.format(applyDiscountToPreview(pricing.premiumMonthlyAutoUsd))}`}
                 </button>
 
                 <button
@@ -584,9 +668,10 @@ export function PaywallCard() {
                   {checkoutLoadingMode === 'annual'
                     ? 'Redirigiendo...'
                     : isArgentinaCheckout
-                      ? `Premium anual (Mercado Pago) · ${arsFormatter.format(pricing.premiumAnnualAutoArs)}`
-                      : `Premium anual (internacional) · ${usdFormatter.format(pricing.premiumAnnualAutoUsd)}`}
+                      ? `Premium anual (Mercado Pago) · ${arsFormatter.format(applyDiscountToPreview(pricing.premiumAnnualAutoArs))}`
+                      : `Premium anual (internacional) · ${usdFormatter.format(applyDiscountToPreview(pricing.premiumAnnualAutoUsd))}`}
                 </button>
+
 
                 <div className="rounded-2xl bg-white/15 px-3 py-2 text-xs text-white">
                   <p>Ahorro anual con debito automatico:</p>
@@ -620,8 +705,8 @@ export function PaywallCard() {
                   {checkoutLoadingMode === 'monthly_manual'
                     ? 'Redirigiendo...'
                     : isArgentinaCheckout
-                      ? `Premium pago mensual manual (Mercado Pago) · ${arsFormatter.format(pricing.premiumMonthlyManualArs)}`
-                      : `Premium pago mensual manual (internacional) · ${usdFormatter.format(pricing.premiumMonthlyManualUsd)}`}
+                      ? `Premium pago mensual manual (Mercado Pago) · ${arsFormatter.format(applyDiscountToPreview(pricing.premiumMonthlyManualArs))}`
+                      : `Premium pago mensual manual (internacional) · ${usdFormatter.format(applyDiscountToPreview(pricing.premiumMonthlyManualUsd))}`}
                 </button>
 
                 <p className="px-2 text-xs text-white/85">

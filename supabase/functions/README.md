@@ -91,12 +91,31 @@ const { data, error } = await supabase.functions.invoke('pet-ai-chat', {
       { role: 'user', content: '...' },
       { role: 'assistant', content: '...' },
     ],
+    // Opcional: foto para que la IA la analice (ej. una mancha en la piel).
+    // Data URL base64 (png/jpeg/webp), ya redimensionada/comprimida en el cliente.
+    imageBase64: 'data:image/jpeg;base64,...',
   },
 });
 
 if (error) throw error;
 console.log(data.answer);
+// Si se envio imageBase64 y el usuario esta autenticado, data.imageUrl trae la
+// URL publica ya persistida en el bucket de Storage "chat-images" (se crea
+// solo, la primera vez que se usa). Para invitados siempre viene en null.
+// data.recommendVetVisit (boolean) indica si la IA considera que la mascota
+// deberia ser atendida presencialmente por un veterinario (mas alla del
+// descargo de responsabilidad de rutina que va en toda respuesta).
 ```
+
+También acepta un modo especial `mode: 'weight_insight'` (usado internamente por
+`usePetFood.ts` al registrar un nuevo peso con cambio significativo respecto al
+anterior): recibe `{ petId, question, recentMessages: [], mode: 'weight_insight',
+previousWeightKg, currentWeightKg, daysBetween }`, genera un aviso proactivo corto
+comparando el cambio contra lo esperable para esa raza/especie/edad, puede sugerir
+un producto "control de peso" o recomendar visita veterinaria (misma logica de
+marcadores ocultos que el chat normal), y NO consume el cupo de consultas IA del
+usuario (no toca `ai_pet_usage` ni `ai_query_logs`).
+
 
 ### Sugerencias y reclamos (Mi Cuenta)
 

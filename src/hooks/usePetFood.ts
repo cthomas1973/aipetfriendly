@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import { usePreventive } from './usePreventive';
-import { createPetWeightLog, fetchPetWeightLogs } from '../lib/supabase';
+import { createPetWeightLog, fetchPetWeightLogs, requestPetWeightInsight, type WeightInsightResponse } from '../lib/supabase';
 import type { Pet, PetWeightLog } from '../types';
 
 const GUEST_WEIGHT_LOGS_KEY = 'apf_guest_weight_logs_v1';
+
+// Umbral a partir del cual un cambio de peso entre dos registros se considera
+// lo suficientemente significativo como para disparar un analisis de IA (evita
+// spam de avisos por variaciones normales/ruido de balanza).
+const WEIGHT_CHANGE_ALERT_THRESHOLD_PCT = 10;
+// No comparar contra un registro demasiado viejo (ej. de hace mas de ~6 meses):
+// el cambio ya no es "reciente" y pierde sentido como aviso proactivo.
+const WEIGHT_CHANGE_MAX_WINDOW_DAYS = 200;
 
 function readGuestWeightLogs(): Record<string, PetWeightLog[]> {
   if (typeof window === 'undefined') return {};
@@ -28,6 +36,12 @@ function addDaysToDateStr(dateStr: string, days: number) {
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function daysBetweenDateStrings(fromDateStr: string, toDateStr: string): number {
+  const from = new Date(`${fromDateStr}T00:00:00`);
+  const to = new Date(`${toDateStr}T00:00:00`);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
 // Estimacion teorica aproximada de consumo diario (kg) en base a peso, edad y especie:
@@ -60,6 +74,8 @@ export function usePetFood(pet: Pet | null) {
   const { preventiveTasks, addPreventiveTask } = usePreventive();
   const [weightLogs, setWeightLogs] = useState<PetWeightLog[]>([]);
   const [loadingWeightLogs, setLoadingWeightLogs] = useState(false);
+  const [weightInsight, setWeightInsight] = useState<WeightInsightResponse | null>(null);
+  const [loadingWeightInsight, setLoadingWeightInsight] = useState(false);
 
   const loadWeightLogs = useCallback(async () => {
     if (!pet) {
@@ -117,9 +133,42 @@ export function usePetFood(pet: Pet | null) {
       }
 
       setWeightLogs((current) => [...current, saved].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt)));
+
+      // Aviso proactivo de IA: solo si hay un registro previo (no el primero) y el
+      // cambio de peso es significativo dentro de una ventana reciente razonable.
+      // No bloquea ni afecta el guardado del peso si falla (fire and forget).
+      const previousLogs = weightLogs.filter((log) => log.recordedAt < recordedAt);
+      const previousLog = previousLogs.length > 0
+        ? [...previousLogs].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))[0]
+        : null;
+
+      if (previousLog && previousLog.weightKg > 0) {
+        const daysBetween = daysBetweenDateStrings(previousLog.recordedAt, recordedAt);
+        const pctChange = Math.abs((weightKg - previousLog.weightKg) / previousLog.weightKg) * 100;
+
+        if (
+          daysBetween > 0 &&
+          daysBetween <= WEIGHT_CHANGE_MAX_WINDOW_DAYS &&
+          pctChange >= WEIGHT_CHANGE_ALERT_THRESHOLD_PCT
+        ) {
+          setLoadingWeightInsight(true);
+          requestPetWeightInsight({
+            petId: pet.id,
+            previousWeightKg: previousLog.weightKg,
+            currentWeightKg: weightKg,
+            daysBetween,
+          })
+            .then(setWeightInsight)
+            .catch((ex) => {
+              console.error('No se pudo generar el analisis de IA sobre el cambio de peso:', ex);
+            })
+            .finally(() => setLoadingWeightInsight(false));
+        }
+      }
+
       return saved;
     },
-    [pet, user?.isGuest],
+    [pet, user?.isGuest, weightLogs],
   );
 
   const feedingTasks = useMemo(
@@ -198,5 +247,8 @@ export function usePetFood(pet: Pet | null) {
     realDailyKg,
     theoreticalDailyKg,
     scheduleNextPurchaseReminder,
+    weightInsight,
+    loadingWeightInsight,
+    clearWeightInsight: () => setWeightInsight(null),
   };
 }

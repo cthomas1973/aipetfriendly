@@ -137,6 +137,15 @@ export async function buildPetPosterPdf(params: {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.text('AiPetFriendly', logoData ? marginX + 11 : marginX, y);
+  doc.setTextColor(148, 163, 184);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text(
+    'Generado gratis en AiPetFriendly.ar - Cuidado inteligente para tu mascota',
+    marginX + contentWidth,
+    y,
+    { align: 'right' },
+  );
   y += 9;
 
   // Foto grande: se muestra completa (sin recortar), centrada dentro del recuadro.

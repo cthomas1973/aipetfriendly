@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Send, Stethoscope } from 'lucide-react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { ExternalLink, ImagePlus, Lock, MapPinned, Send, Stethoscope, X } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { useAppState } from '../context/AppStateContext';
 import { isNativeAndroidApp, showInterstitialForNonPremium } from '../lib/mobileAds';
@@ -19,13 +19,55 @@ const SUGGESTIONS = [
   'Señales de alerta en salud',
 ];
 
+const MAX_IMAGE_SOURCE_BYTES = 15 * 1024 * 1024; // limite razonable antes de procesar (foto de camara sin comprimir)
+
+// Redimensiona/comprime la imagen en el navegador antes de enviarla (mantiene
+// el payload chico para el edge function y para el uso de datos moviles).
+function resizeImageToDataUrl(file: File, maxDim = 1024, quality = 0.72): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('No se pudo procesar la imagen.'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export function ChatSection() {
   const { pets, selectedPetId, setSelectedPetId, subscription, setActiveTab } = useAppState();
-  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, suggestedProductByMessageId } = useChat();
+  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, suggestedProductByMessageId, vetVisitRecommendedByMessageId } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [view, setView] = useState<'new' | 'history'>('new');
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isPremium = subscription?.isPremiumUser ?? false;
@@ -54,20 +96,52 @@ export function ChatSection() {
 
   const doSend = async (text: string) => {
     const t = text.trim();
-    if (!t || sending || !canUseAI || !selectedPetId) return;
+    const image = isPremium ? pendingImage : null;
+    if ((!t && !image) || sending || !canUseAI || !selectedPetId) return;
+    const finalText = t || 'Analiza esta imagen de mi mascota, por favor.';
     setInput('');
+    setPendingImage(null);
     setSending(true);
     try {
       if (!isPremium && isNativeAndroidApp()) {
         void showInterstitialForNonPremium();
       }
-      await sendMessage(t, selectedPetId);
+      await sendMessage(finalText, selectedPetId, image);
     } finally {
       setSending(false);
     }
   };
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); doSend(input); };
+
+  const onFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !isPremium) return;
+    setImageError(null);
+    if (!file.type.startsWith('image/')) {
+      setImageError('El archivo seleccionado no es una imagen.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_SOURCE_BYTES) {
+      setImageError('La imagen es demasiado pesada. Proba con otra foto.');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      setPendingImage(dataUrl);
+    } catch {
+      setImageError('No se pudo procesar la imagen. Proba de nuevo.');
+    }
+  };
+
+  const onAttachClick = () => {
+    if (!isPremium) {
+      setActiveTab('subscription');
+      return;
+    }
+    fileInputRef.current?.click();
+  };
 
   return (
     <section className="flex flex-col gap-4 pb-2">
@@ -160,6 +234,13 @@ export function ChatSection() {
                         ? 'bg-emerald-500 text-white'
                         : 'bg-white text-slate-700 shadow-sm'
                     }`}>
+                      {m.imageUrl && (
+                        <img
+                          src={m.imageUrl}
+                          alt="Imagen adjunta"
+                          className="mb-2 max-h-56 w-full rounded-xl object-cover"
+                        />
+                      )}
                       {m.content}
                     </div>
                     {m.role === 'assistant' && suggestedProductByMessageId[m.id] && (
@@ -187,6 +268,22 @@ export function ChatSection() {
                         <ExternalLink size={16} className="shrink-0 text-emerald-600" />
                       </a>
                     )}
+                    {m.role === 'assistant' && vetVisitRecommendedByMessageId[m.id] && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('map')}
+                        className="flex w-full items-center gap-3 rounded-2xl bg-rose-50 p-3 text-left shadow-sm ring-1 ring-rose-100 transition hover:bg-rose-100"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                          <MapPinned size={20} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-rose-600">Recomendacion</p>
+                          <p className="text-sm font-semibold text-slate-800">Conviene que la vea un veterinario</p>
+                          <p className="text-xs text-slate-500">Buscar veterinaria cercana en el mapa</p>
+                        </div>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -212,6 +309,13 @@ export function ChatSection() {
                       ? 'bg-sky-500 text-white'
                       : 'bg-white text-slate-700 shadow-sm'
                   }`}>
+                    {m.imageUrl && (
+                      <img
+                        src={m.imageUrl}
+                        alt="Imagen adjunta"
+                        className="mb-2 max-h-56 w-full rounded-xl object-cover"
+                      />
+                    )}
                     <p>{m.content}</p>
                     <p className={`mt-1 text-[11px] ${m.role === 'user' ? 'text-sky-100' : 'text-slate-400'}`}>
                       {new Date(m.createdAt).toLocaleString('es-AR')}
@@ -247,7 +351,42 @@ export function ChatSection() {
       )}
 
       {/* input bar */}
+      {pendingImage && (
+        <div className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-100">
+          <img src={pendingImage} alt="Vista previa" className="h-14 w-14 rounded-xl object-cover" />
+          <p className="flex-1 text-xs text-slate-500">Imagen lista para enviar con tu consulta.</p>
+          <button
+            type="button"
+            onClick={() => setPendingImage(null)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {imageError && (
+        <p className="px-2 text-xs font-semibold text-rose-600">{imageError}</p>
+      )}
       <form onSubmit={onSubmit} className="flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={onFileSelected}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={onAttachClick}
+          disabled={view !== 'new' || sending || !hasValidSelectedPet || (isPremium && !canUseAI)}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow ring-1 transition disabled:opacity-40 ${
+            isPremium ? 'bg-white text-emerald-600 ring-slate-100' : 'bg-amber-50 text-amber-600 ring-amber-100'
+          }`}
+          aria-label={isPremium ? 'Adjuntar imagen' : 'Adjuntar imagen (funcion Premium)'}
+          title={isPremium ? 'Adjuntar imagen' : 'Funcion Premium: sube una foto para que la IA la analice'}
+        >
+          {isPremium ? <ImagePlus size={20} /> : <Lock size={18} />}
+        </button>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -263,7 +402,7 @@ export function ChatSection() {
           }
           className="flex-1 rounded-full bg-white px-5 py-3.5 text-sm ring-1 ring-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-50"
         />
-        <button type="submit" disabled={view !== 'new' || !canUseAI || !input.trim() || sending || !hasValidSelectedPet}
+        <button type="submit" disabled={view !== 'new' || !canUseAI || (!input.trim() && !pendingImage) || sending || !hasValidSelectedPet}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition disabled:opacity-40">
           <Send size={18} />
         </button>

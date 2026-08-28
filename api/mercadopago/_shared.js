@@ -366,3 +366,52 @@ export function addDaysIso(baseDateIso, days) {
   base.setDate(base.getDate() + days);
   return base.toISOString();
 }
+
+// Valida un codigo de descuento contra discount_codes (via RPC, activo/no vencido/con
+// cupo) usando el cliente admin (service role). Devuelve null si no hay codigo o no es
+// valido: nunca lanza por un codigo invalido, solo por un error real de conexion/RPC.
+export async function resolveDiscountCode(admin, rawCode) {
+  const code = String(rawCode || '').trim();
+  if (!code) {
+    return null;
+  }
+
+  const { data, error } = await admin.rpc('validate_discount_code', { p_code: code });
+  if (error) {
+    throw new Error(error.message || 'No se pudo validar el codigo de descuento.');
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return null;
+  }
+
+  return {
+    code: String(row.code),
+    percentOff: Number(row.percent_off),
+  };
+}
+
+// Aplica el porcentaje de descuento a un monto, redondeando a 2 decimales.
+export function applyDiscountToAmount(amount, percentOff) {
+  const base = Number(amount) || 0;
+  if (!percentOff || percentOff <= 0) {
+    return base;
+  }
+  const discounted = base * (1 - Math.min(percentOff, 100) / 100);
+  return Math.round(discounted * 100) / 100;
+}
+
+// Registra el uso de un codigo de descuento ya aplicado a una orden nueva (no bloquea
+// el checkout si falla: solo se loguea el error).
+export async function registerDiscountCodeUsage(admin, code) {
+  if (!code) return;
+  try {
+    const { error } = await admin.rpc('increment_discount_code_usage', { p_code: code });
+    if (error) {
+      console.error('No se pudo incrementar el uso del codigo de descuento:', error);
+    }
+  } catch (ex) {
+    console.error('No se pudo incrementar el uso del codigo de descuento:', ex);
+  }
+}

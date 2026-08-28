@@ -6,6 +6,8 @@ import type {
   AdminUserRow,
   AdminPetTagRequestRow,
   BillingPricingSettings,
+  DiscountCode,
+  DiscountCodeValidation,
   InboundEmailReply,
   InboundEmailRow,
   NewsCampaign,
@@ -31,6 +33,8 @@ interface PetAssistantRequest {
   petId: string;
   question: string;
   recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** Imagen adjunta (data URL base64, ej. "data:image/jpeg;base64,...") para que la IA la analice. */
+  imageBase64?: string | null;
   guestContext?: {
     pet: {
       id: string;
@@ -74,6 +78,10 @@ interface PetAssistantResponse {
     used: number;
     remaining: number;
   };
+  /** URL publica de la imagen ya subida a Storage (solo si habia usuario autenticado). */
+  imageUrl?: string | null;
+  /** true si la respuesta indica que la mascota debe ser llevada a una veterinaria (no solo el descargo de rutina). */
+  recommendVetVisit?: boolean;
 }
 
 type MercadoPagoPlanCode = 'monthly' | 'annual';
@@ -86,6 +94,7 @@ interface MercadoPagoInitPointResponse {
 
 interface CheckoutContext {
   countryCode?: string;
+  discountCode?: string;
 }
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -1295,6 +1304,7 @@ export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> 
     content: msg.content,
     petId: msg.pet_id || null,
     createdAt: msg.created_at,
+    imageUrl: msg.image_url || null,
   }));
 }
 
@@ -1303,6 +1313,7 @@ export async function createChatMessage(
   petId: string | null,
   role: string,
   content: string,
+  imageUrl?: string | null,
 ): Promise<ChatMessage | null> {
   const { data, error } = await supabase
     .from('chat_messages')
@@ -1312,6 +1323,7 @@ export async function createChatMessage(
         pet_id: petId,
         role,
         content,
+        image_url: imageUrl ?? null,
       },
     ])
     .select()
@@ -1328,6 +1340,7 @@ export async function createChatMessage(
     content: data.content,
     petId: data.pet_id || null,
     createdAt: data.created_at,
+    imageUrl: data.image_url || null,
   };
 }
 
@@ -1345,6 +1358,51 @@ export async function askPetAssistant(payload: PetAssistantRequest): Promise<Pet
   }
 
   return data as PetAssistantResponse;
+}
+
+interface WeightInsightRequest {
+  petId: string;
+  previousWeightKg: number;
+  currentWeightKg: number;
+  daysBetween: number;
+}
+
+export interface WeightInsightResponse {
+  answer: string;
+  suggestedProduct?: {
+    title: string;
+    thumbnail: string | null;
+    price: number | null;
+    link: string;
+  } | null;
+  recommendVetVisit?: boolean;
+}
+
+// Aviso proactivo automatico de IA al registrar un nuevo peso (compara contra el registro
+// anterior). No consume el cupo de consultas IA del usuario (el edge function lo maneja
+// como un modo separado, sin tocar ai_pet_usage).
+export async function requestPetWeightInsight(payload: WeightInsightRequest): Promise<WeightInsightResponse> {
+  const { data, error } = await supabase.functions.invoke('pet-ai-chat', {
+    body: {
+      petId: payload.petId,
+      question: 'Analisis automatico de registro de peso.',
+      recentMessages: [],
+      mode: 'weight_insight',
+      previousWeightKg: payload.previousWeightKg,
+      currentWeightKg: payload.currentWeightKg,
+      daysBetween: payload.daysBetween,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo invocar el analisis de IA');
+  }
+
+  if (!data || typeof data.answer !== 'string') {
+    throw new Error('Respuesta invalida del analisis de IA');
+  }
+
+  return data as WeightInsightResponse;
 }
 
 export async function sendFeedbackMessage(args: {
@@ -1609,6 +1667,7 @@ export async function createMercadoPagoRecurringSubscription(
   return postMercadoPagoEndpoint<MercadoPagoInitPointResponse>('/api/mercadopago/create-subscription', {
     planCode,
     countryCode: context?.countryCode,
+    discountCode: context?.discountCode,
   });
 }
 
@@ -1616,7 +1675,89 @@ export async function createMercadoPagoOneTimeMonthlyPayment(context?: CheckoutC
   return postMercadoPagoEndpoint<MercadoPagoInitPointResponse>('/api/mercadopago/create-checkout', {
     planCode: 'monthly_manual',
     countryCode: context?.countryCode,
+    discountCode: context?.discountCode,
   });
+}
+
+// Valida un codigo de descuento contra el catalogo de discount_codes (activo, no
+// vencido, con cupo disponible). Devuelve null si el codigo no es valido/no existe,
+// nunca lanza por codigo invalido (solo por error real de red/RPC).
+export async function validateDiscountCode(code: string): Promise<DiscountCodeValidation | null> {
+  const trimmed = code.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('validate_discount_code', { p_code: trimmed });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo validar el codigo de descuento.');
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    return null;
+  }
+
+  return {
+    code: row.code,
+    percentOff: Number(row.percent_off),
+  };
+}
+
+export async function fetchAdminDiscountCodes(): Promise<DiscountCode[]> {
+  const { data, error } = await supabase.rpc('admin_list_discount_codes');
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    code: row.code,
+    percentOff: Number(row.percent_off),
+    active: Boolean(row.active),
+    maxUses: row.max_uses === null || row.max_uses === undefined ? null : Number(row.max_uses),
+    usedCount: Number(row.used_count || 0),
+    expiresAt: row.expires_at || null,
+    notes: row.notes || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function saveAdminDiscountCode(input: {
+  id?: string | null;
+  code: string;
+  percentOff: number;
+  active: boolean;
+  maxUses?: number | null;
+  expiresAt?: string | null;
+  notes?: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_upsert_discount_code', {
+    p_id: input.id ?? null,
+    p_code: input.code,
+    p_percent_off: input.percentOff,
+    p_active: input.active,
+    p_max_uses: input.maxUses ?? null,
+    p_expires_at: input.expiresAt ?? null,
+    p_notes: input.notes ?? null,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo guardar el codigo de descuento.');
+  }
+
+  return data as string;
+}
+
+export async function deleteAdminDiscountCode(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_discount_code', { p_id: id });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo eliminar el codigo de descuento.');
+  }
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {

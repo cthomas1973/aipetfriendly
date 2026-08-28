@@ -1,4 +1,5 @@
 import {
+  applyDiscountToAmount,
   createUsdGatewaySession,
   ensureMethod,
   getBillingPricingSettings,
@@ -9,6 +10,8 @@ import {
   mpRequest,
   normalizeCountryCode,
   readBody,
+  registerDiscountCodeUsage,
+  resolveDiscountCode,
   sendJson,
   upsertBillingRecord,
 } from './_shared.js';
@@ -117,12 +120,20 @@ export default async function handler(req, res) {
     } = await getAuthenticatedContext(req);
     const pricing = await getBillingPricingSettings(admin);
     const plan = resolvePlan(selectedPlanCode, pricing);
+    const discount = await resolveDiscountCode(admin, payload?.discountCode);
+
+    if (discount) {
+      plan.amount = applyDiscountToAmount(plan.amount, discount.percentOff);
+    }
 
     const appBaseUrl = getAppBaseUrl().replace(/\/$/, '');
     const notificationUrl = getWebhookNotificationUrl();
 
     if (!isArgentinaCountry(countryCode)) {
-      const amountUsd = resolveUsdAmount(selectedPlanCode, pricing);
+      let amountUsd = resolveUsdAmount(selectedPlanCode, pricing);
+      if (discount) {
+        amountUsd = applyDiscountToAmount(amountUsd, discount.percentOff);
+      }
       const usdCheckout = await createUsdGatewaySession({
         mode: 'recurring',
         planCode: selectedPlanCode,
@@ -135,6 +146,8 @@ export default async function handler(req, res) {
         metadata: {
           origin: 'aipetfriendly',
           settlementCountry: countryCode,
+          discountCode: discount?.code || null,
+          discountPercentOff: discount?.percentOff || null,
         },
       });
 
@@ -152,9 +165,15 @@ export default async function handler(req, res) {
           pricingUsd: amountUsd,
           checkoutProvider: process.env.USD_GATEWAY_PROVIDER || 'stripe',
           providerReference: usdCheckout.providerReference,
+          discountCode: discount?.code || null,
+          discountPercentOff: discount?.percentOff || null,
           checkout: usdCheckout.raw,
         },
       });
+
+      if (discount) {
+        await registerDiscountCodeUsage(admin, discount.code);
+      }
 
       return sendJson(res, 200, {
         initPoint: usdCheckout.initPoint,
@@ -167,16 +186,19 @@ export default async function handler(req, res) {
     let fallbackWithoutPlanId = false;
 
     try {
+      // Si hay un codigo de descuento aplicado, el preapproval_plan_id de MP (con un
+      // monto fijo configurado en el dashboard) ignoraria nuestro transaction_amount
+      // personalizado: directamente NO se intenta usar el plan fijo en ese caso.
       const withPlanPayload = buildMpPreapprovalPayload({
         plan,
         user,
         appBaseUrl,
         notificationUrl,
-        includeProviderPlanId: true,
+        includeProviderPlanId: !discount,
       });
       preapproval = await mpRequest('/preapproval', 'POST', withPlanPayload);
     } catch (errorWithPlanId) {
-      if (!plan.providerPlanId) {
+      if (!plan.providerPlanId || discount) {
         throw errorWithPlanId;
       }
 
@@ -211,7 +233,7 @@ export default async function handler(req, res) {
       planCode: plan.planCode,
       status: String(preapproval?.status || 'pending'),
       providerPreapprovalId: preapproval?.id,
-      providerPlanId: preapproval?.preapproval_plan_id || plan.providerPlanId,
+      providerPlanId: preapproval?.preapproval_plan_id || (discount ? null : plan.providerPlanId),
       externalReference: user.id,
       payerEmail: user.email,
       amount: plan.amount,
@@ -223,9 +245,15 @@ export default async function handler(req, res) {
         pricingArs: plan.amount,
         pricingUsd: plan.planCode === 'annual' ? pricing.premiumAnnualAutoUsd : pricing.premiumMonthlyAutoUsd,
         fallbackWithoutPlanId,
+        discountCode: discount?.code || null,
+        discountPercentOff: discount?.percentOff || null,
         checkout: preapproval,
       },
     });
+
+    if (discount) {
+      await registerDiscountCodeUsage(admin, discount.code);
+    }
 
     return sendJson(res, 200, {
       initPoint,

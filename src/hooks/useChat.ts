@@ -77,6 +77,7 @@ export function useChat() {
   const [usageByPet, setUsageByPet] = useState<Record<string, number>>({});
   const [sessionMessagesByPet, setSessionMessagesByPet] = useState<Record<string, ChatMessage[]>>({});
   const [suggestedProductByMessageId, setSuggestedProductByMessageId] = useState<Record<string, SuggestedProduct>>({});
+  const [vetVisitRecommendedByMessageId, setVetVisitRecommendedByMessageId] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     // Cada inicio/cambio de sesion comienza con consultorio limpio.
@@ -184,7 +185,7 @@ export function useChat() {
   }, [sessionMessages]);
 
   const sendMessage = useCallback(
-    async (content: string, petId: string | null) => {
+    async (content: string, petId: string | null, imageDataUrl?: string | null) => {
       if (!canUseAI) {
         throw new Error('Limite de consultas IA alcanzado para esta mascota.');
       }
@@ -199,6 +200,7 @@ export function useChat() {
         content,
         petId,
         createdAt: new Date().toISOString(),
+        imageUrl: imageDataUrl || null,
       };
 
       const nextMessages = [...messagesWithSystem, userMessage];
@@ -209,12 +211,10 @@ export function useChat() {
       }));
       setChatMessages([...chatMessages, userMessage]);
 
-      if (user && !user.isGuest) {
-        void createChatMessage(user.id, petId, 'user', content);
-      }
-
       let assistantText = createAssistantFallback(content);
       let suggestedProduct: SuggestedProduct | null = null;
+      let persistedImageUrl: string | null = null;
+      let recommendVetVisit = false;
       try {
         const recentMessages = nextMessages
           .filter((message) => message.role !== 'system')
@@ -265,6 +265,7 @@ export function useChat() {
           petId,
           question: content,
           recentMessages,
+          imageBase64: imageDataUrl || null,
           guestContext,
         });
 
@@ -274,6 +275,14 @@ export function useChat() {
 
         if (response.suggestedProduct) {
           suggestedProduct = response.suggestedProduct;
+        }
+
+        if (response.imageUrl) {
+          persistedImageUrl = response.imageUrl;
+        }
+
+        if (response.recommendVetVisit) {
+          recommendVetVisit = true;
         }
 
         if (response.usage && petId) {
@@ -310,6 +319,13 @@ export function useChat() {
         }));
       }
 
+      if (recommendVetVisit) {
+        setVetVisitRecommendedByMessageId((current) => ({
+          ...current,
+          [assistantMessage.id]: true,
+        }));
+      }
+
       setSessionMessagesByPet((current) => ({
         ...current,
         [petId]: [...(current[petId] || []), assistantMessage],
@@ -317,6 +333,9 @@ export function useChat() {
       setChatMessages([...chatMessages, userMessage, assistantMessage]);
 
       if (user && !user.isGuest) {
+        // Se persiste aca (despues de la respuesta) para poder guardar la URL
+        // publica de Storage de la imagen, ya subida por el edge function.
+        void createChatMessage(user.id, petId, 'user', content, persistedImageUrl);
         void createChatMessage(user.id, petId, 'assistant', assistantText);
       }
 
@@ -347,5 +366,6 @@ export function useChat() {
     },
     sendMessage,
     suggestedProductByMessageId,
+    vetVisitRecommendedByMessageId,
   };
 }

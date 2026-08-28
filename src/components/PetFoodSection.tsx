@@ -1,8 +1,11 @@
 import { FormEvent, useState } from 'react';
-import { ChevronLeft, Plus } from 'lucide-react';
+import { ChevronLeft, ExternalLink, MapPinned, Plus, Sparkles } from 'lucide-react';
+import { useAppState } from '../context/AppStateContext';
 import { usePetFood } from '../hooks/usePetFood';
 import { usePets } from '../hooks/usePets';
 import type { Pet, PetWeightLog } from '../types';
+
+const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -100,6 +103,7 @@ function WeightLineChart({ logs }: { logs: PetWeightLog[] }) {
 
 export function PetFoodSection({ pet, onBack }: { pet: Pet; onBack: () => void }) {
   const { updatePet } = usePets();
+  const { setActiveTab } = useAppState();
   const {
     weightLogs,
     addWeightLog,
@@ -109,6 +113,9 @@ export function PetFoodSection({ pet, onBack }: { pet: Pet; onBack: () => void }
     realDailyKg,
     theoreticalDailyKg,
     scheduleNextPurchaseReminder,
+    weightInsight,
+    loadingWeightInsight,
+    clearWeightInsight,
   } = usePetFood(pet);
 
   const [weightInput, setWeightInput] = useState('');
@@ -282,6 +289,73 @@ export function PetFoodSection({ pet, onBack }: { pet: Pet; onBack: () => void }
             <WeightLineChart logs={weightLogs} />
           </div>
         </div>
+
+        {(loadingWeightInsight || weightInsight) && (
+          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-indigo-100">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                  <Sparkles size={16} />
+                </span>
+                <p className="font-bold text-slate-900">Analisis de IA sobre el peso</p>
+              </div>
+              {weightInsight && (
+                <button type="button" onClick={clearWeightInsight} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                  Cerrar
+                </button>
+              )}
+            </div>
+            {loadingWeightInsight && !weightInsight && (
+              <p className="text-sm text-slate-400">Analizando la evolucion de peso...</p>
+            )}
+            {weightInsight && (
+              <>
+                <p className="text-sm text-slate-700">{weightInsight.answer}</p>
+                {weightInsight.suggestedProduct && (
+                  <a
+                    href={weightInsight.suggestedProduct.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 flex items-center gap-3 rounded-2xl bg-emerald-50 p-3 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100"
+                  >
+                    {weightInsight.suggestedProduct.thumbnail && (
+                      <img
+                        src={weightInsight.suggestedProduct.thumbnail}
+                        alt={weightInsight.suggestedProduct.title}
+                        className="h-12 w-12 shrink-0 rounded-xl object-cover bg-white"
+                        loading="lazy"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Producto recomendado</p>
+                      <p className="truncate text-sm font-semibold text-slate-800">{weightInsight.suggestedProduct.title}</p>
+                      {weightInsight.suggestedProduct.price != null && (
+                        <p className="text-xs font-bold text-slate-600">{PRICE_FORMATTER.format(weightInsight.suggestedProduct.price)}</p>
+                      )}
+                    </div>
+                    <ExternalLink size={16} className="shrink-0 text-emerald-600" />
+                  </a>
+                )}
+                {weightInsight.recommendVetVisit && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('map')}
+                    className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-rose-50 p-3 text-left shadow-sm ring-1 ring-rose-100 transition hover:bg-rose-100"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                      <MapPinned size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-rose-600">Recomendacion</p>
+                      <p className="text-sm font-semibold text-slate-800">Conviene que la vea un veterinario</p>
+                      <p className="text-xs text-slate-500">Buscar veterinaria cercana en el mapa</p>
+                    </div>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

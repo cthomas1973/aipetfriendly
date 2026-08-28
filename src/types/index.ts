@@ -297,6 +297,8 @@ export interface ChatMessage {
   content: string;
   petId?: string | null;
   createdAt: string;
+  /** Imagen adjunta por el usuario (foto para que la IA la analice). Data URL en memoria/sesion, o URL publica una vez persistida en Storage. */
+  imageUrl?: string | null;
 }
 
 export interface AiUsageSettings {
@@ -314,6 +316,24 @@ export interface BillingPricingSettings {
   premiumMonthlyManualUsd: number;
   veterinaryPremiumMonthlyArs: number;
   veterinaryPremiumAnnualArs: number;
+}
+
+export interface DiscountCode {
+  id: string;
+  code: string;
+  percentOff: number;
+  active: boolean;
+  maxUses: number | null;
+  usedCount: number;
+  expiresAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiscountCodeValidation {
+  code: string;
+  percentOff: number;
 }
 
 export interface PetAiUsageRow {
