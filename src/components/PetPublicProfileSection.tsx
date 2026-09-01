@@ -1,7 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { MapPin, PawPrint, Send } from 'lucide-react';
 import { PublicFooter } from './PublicLegalPages';
-import type { PetPublicProfile, PetSightingSource } from '../types';
+import { AuthScreens } from './AuthScreens';
+import { useAppState } from '../context/AppStateContext';
+import { linkPetTagCode } from '../lib/supabase';
+import type { PetPublicLookupResult, PetSightingSource } from '../types';
 
 const SPECIES_LABEL: Record<string, string> = {
   dog: 'Perro',
@@ -9,7 +12,7 @@ const SPECIES_LABEL: Record<string, string> = {
   other: 'Otra especie',
 };
 
-async function fetchPetPublicProfile(code: string): Promise<PetPublicProfile> {
+async function fetchPetPublicProfile(code: string): Promise<PetPublicLookupResult> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   if (!supabaseUrl || !anonKey) {
@@ -24,7 +27,90 @@ async function fetchPetPublicProfile(code: string): Promise<PetPublicProfile> {
   if (!response.ok) {
     throw new Error(payload?.error || 'No encontramos esa mascota.');
   }
-  return payload as PetPublicProfile;
+  if (payload?.orphan) {
+    return { orphan: true, profile: null };
+  }
+  return { orphan: false, profile: payload };
+}
+
+// Panel mostrado cuando el codigo escaneado es una chapita pre-generada por
+// lote que todavia no fue vinculada a ninguna mascota (ver Admin > Chapitas).
+function OrphanTagPanel({ code }: { code: string }) {
+  const { user, pets } = useAppState();
+  const [selectedPetId, setSelectedPetId] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linked, setLinked] = useState(false);
+
+  useEffect(() => {
+    if (pets.length > 0 && !selectedPetId) setSelectedPetId(pets[0].id);
+  }, [pets, selectedPetId]);
+
+  if (linked) {
+    return (
+      <div className="rounded-2xl bg-emerald-50 p-5 text-center">
+        <p className="font-bold text-emerald-800">¡Listo! Esta chapita ya esta vinculada.</p>
+        <p className="mt-1 text-sm text-emerald-700">Recarga esta pagina para ver el perfil publico.</p>
+      </div>
+    );
+  }
+
+  if (!user || user.isGuest) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">
+          Esta chapita todavia no esta vinculada a ninguna mascota. Inicia sesion o crea tu cuenta para vincularla.
+        </div>
+        <AuthScreens initialMode="login" />
+      </div>
+    );
+  }
+
+  if (pets.length === 0) {
+    return (
+      <div className="rounded-2xl bg-amber-50 p-5 text-center text-sm text-amber-800">
+        Todavia no tenes ninguna mascota cargada. Agrega una mascota en la app y despues volve a escanear esta chapita para vincularla.
+      </div>
+    );
+  }
+
+  const onLink = async () => {
+    if (!selectedPetId) return;
+    setLinking(true);
+    setLinkError(null);
+    try {
+      await linkPetTagCode(code, selectedPetId);
+      setLinked(true);
+    } catch (ex) {
+      setLinkError(ex instanceof Error ? ex.message : 'No se pudo vincular la chapita.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-slate-600">Elegi a que mascota queres vincular esta chapita:</p>
+      <select
+        value={selectedPetId}
+        onChange={(e) => setSelectedPetId(e.target.value)}
+        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+      >
+        {pets.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+      {linkError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{linkError}</p>}
+      <button
+        type="button"
+        onClick={onLink}
+        disabled={linking}
+        className="w-full rounded-full bg-purple-500 py-3.5 font-bold text-white disabled:opacity-60"
+      >
+        {linking ? 'Vinculando...' : 'Vincular esta chapita'}
+      </button>
+    </div>
+  );
 }
 
 async function sendSightingMessage(args: {
@@ -54,7 +140,8 @@ async function sendSightingMessage(args: {
 }
 
 export function PetPublicProfileSection({ code }: { code: string }) {
-  const [profile, setProfile] = useState<PetPublicProfile | null>(null);
+  const [profile, setProfile] = useState<PetPublicLookupResult['profile']>(null);
+  const [orphan, setOrphan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -73,7 +160,11 @@ export function PetPublicProfileSection({ code }: { code: string }) {
     setLoading(true);
     setLoadError(null);
     fetchPetPublicProfile(code)
-      .then((data) => { if (!cancelled) setProfile(data); })
+      .then((result) => {
+        if (cancelled) return;
+        setOrphan(result.orphan);
+        setProfile(result.profile);
+      })
       .catch((ex) => { if (!cancelled) setLoadError(ex instanceof Error ? ex.message : 'No encontramos esa mascota.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -129,6 +220,23 @@ export function PetPublicProfileSection({ code }: { code: string }) {
         <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-emerald-100">
           <p className="text-slate-500">Buscando mascota...</p>
         </div>
+      </section>
+    );
+  }
+
+  if (orphan) {
+    return (
+      <section className="space-y-6 pb-6">
+        <header className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-purple-100">
+          <div className="bg-purple-500 px-5 py-4 text-white">
+            <p className="text-xs font-semibold uppercase tracking-wide text-purple-100">Chapita AiPetFriendly</p>
+            <h1 className="mt-1 text-2xl font-extrabold">Vincula esta chapita a tu mascota</h1>
+          </div>
+          <div className="p-5">
+            <OrphanTagPanel code={code} />
+          </div>
+        </header>
+        <PublicFooter />
       </section>
     );
   }

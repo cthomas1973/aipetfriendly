@@ -2,9 +2,12 @@ import { useCallback } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import {
   createPetTagRequest,
+  fetchLinkedPetTagCode,
   fetchPetSightingMessages,
   fetchPetTagRequest,
+  linkPetTagCode,
   markSightingMessageRead,
+  unlinkPetTagCode,
 } from '../lib/supabase';
 import { buildPetPosterPdf } from '../lib/petPosterPdf';
 import type { Pet, PetSightingSource } from '../types';
@@ -76,11 +79,32 @@ export function usePetIdentification() {
     [subscription.isPremiumUser],
   );
 
+  const getLinkedTagCode = useCallback(async (petId: string) => {
+    return fetchLinkedPetTagCode(petId);
+  }, []);
+
+  const linkTagCode = useCallback(
+    async (petId: string, code: string) => {
+      if (!user || user.isGuest) {
+        throw new Error('Debes iniciar sesion para vincular una chapita.');
+      }
+      await linkPetTagCode(code, petId);
+    },
+    [user],
+  );
+
+  const unlinkTagCode = useCallback(async (petId: string) => {
+    await unlinkPetTagCode(petId);
+  }, []);
+
   return {
     getMessages,
     markMessageRead,
     getTagRequest,
     requestTag,
     generatePosterPdf,
+    getLinkedTagCode,
+    linkTagCode,
+    unlinkTagCode,
   };
 }

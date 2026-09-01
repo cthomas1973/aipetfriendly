@@ -67,6 +67,15 @@ function getPetPublicCodeFromPath(normalizedPath: string): string | null {
   return match ? match[1].toUpperCase() : null;
 }
 
+// Extrae el codigo de una chapita pre-generada por lote desde una ruta
+// /chapita/{codigo} (o su alias corto /t/{codigo}, pensado para el QR fisico).
+// A diferencia de /mascota, este codigo puede estar "huerfano" (sin ninguna
+// mascota vinculada todavia): ver Admin > Chapitas y PetPublicProfileSection.
+function getTagCodeFromPath(normalizedPath: string): string | null {
+  const match = normalizedPath.match(/^\/(?:chapita|t)\/([A-Za-z0-9]{4,16})$/);
+  return match ? match[1].toUpperCase() : null;
+}
+
 // Determina si, en la primera carga, el visitante sin sesion debe entrar
 // directamente como invitado (en vez de ver la landing o el login primero).
 // Esto permite que cualquier persona (o el rastreador de Google para AdSense)
@@ -84,7 +93,7 @@ function shouldAutoStartAsGuest(): boolean {
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLoginRoute = normalizedPath === '/login';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
-  const isPetPublicRoute = Boolean(getPetPublicCodeFromPath(normalizedPath));
+  const isPetPublicRoute = Boolean(getPetPublicCodeFromPath(normalizedPath)) || Boolean(getTagCodeFromPath(normalizedPath));
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = path === '/reset-password' || isRecoveryLink;
@@ -282,7 +291,9 @@ function AppContent() {
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
   const isLoginRoute = normalizedPath === '/login';
   const petPublicCode = getPetPublicCodeFromPath(normalizedPath);
-  const isPetPublicRoute = Boolean(petPublicCode);
+  const tagCode = getTagCodeFromPath(normalizedPath);
+  const isPetPublicRoute = Boolean(petPublicCode) || Boolean(tagCode);
+  const publicProfileCode = petPublicCode || tagCode;
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
@@ -472,8 +483,8 @@ function AppContent() {
       return <AuthScreens initialMode="reset-password" />;
     }
 
-    if (isPetPublicRoute && petPublicCode) {
-      return <PetPublicProfileSection code={petPublicCode} />;
+    if (isPetPublicRoute && publicProfileCode) {
+      return <PetPublicProfileSection code={publicProfileCode} />;
     }
 
     if (isGuidesRoute) {

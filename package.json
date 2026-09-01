@@ -23,6 +23,8 @@
     "@supabase/supabase-js": "^2.108.2",
     "capacitor-native-settings": "^8.1.0",
     "jspdf": "^4.2.1",
+    "jsqr": "^1.4.0",
+    "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.542.0",
     "qrcode": "^1.5.4",

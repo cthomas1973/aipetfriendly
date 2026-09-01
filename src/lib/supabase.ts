@@ -5,6 +5,9 @@ import type {
   AiUsageSettings,
   AdminUserRow,
   AdminPetTagRequestRow,
+  AdminPetTagCodeRow,
+  AdminPetTagCodeBatchRow,
+  PetTagCodeStatus,
   BillingPricingSettings,
   DiscountCode,
   DiscountCodeValidation,
@@ -1906,6 +1909,109 @@ export async function updateAdminPetTagRequest(
   }
 
   return true;
+}
+
+// ── Chapitas: lotes de codigos QR pre-generados (Admin) ────────────────────
+
+export async function adminCreatePetTagCodesBatch(quantity: number): Promise<{ batchId: string; codes: string[] }> {
+  const { data, error } = await supabase.rpc('admin_create_pet_tag_codes_batch', { p_quantity: quantity });
+
+  if (error) {
+    console.error('Error creating pet tag codes batch:', error);
+    throw error;
+  }
+
+  const rows = data || [];
+  return {
+    batchId: rows[0]?.batch_id ?? '',
+    codes: rows.map((row: any) => row.code),
+  };
+}
+
+export async function fetchAdminPetTagCodeBatches(): Promise<AdminPetTagCodeBatchRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_pet_tag_code_batches');
+
+  if (error) {
+    console.error('Error fetching admin pet tag code batches:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    quantity: row.quantity,
+    createdAt: row.created_at,
+    downloadedZipAt: row.downloaded_zip_at || undefined,
+    downloadedPdfAt: row.downloaded_pdf_at || undefined,
+    linkedCount: row.linked_count,
+    orphanCount: row.orphan_count,
+  }));
+}
+
+export async function fetchPetTagCodeBatchCodes(batchId: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc('admin_get_pet_tag_code_batch_codes', { p_batch_id: batchId });
+
+  if (error) {
+    console.error('Error fetching pet tag code batch codes:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => (typeof row === 'string' ? row : row.admin_get_pet_tag_code_batch_codes));
+}
+
+export async function markPetTagCodeBatchDownloaded(batchId: string, format: 'zip' | 'pdf'): Promise<void> {
+  const { error } = await supabase.rpc('admin_mark_pet_tag_code_batch_downloaded', { p_batch_id: batchId, p_format: format });
+
+  if (error) {
+    console.error('Error marking pet tag code batch as downloaded:', error);
+    throw error;
+  }
+}
+
+export async function fetchAdminPetTagCodes(status?: PetTagCodeStatus): Promise<AdminPetTagCodeRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_pet_tag_codes', { p_status: status ?? null });
+
+  if (error) {
+    console.error('Error fetching admin pet tag codes:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    code: row.code,
+    status: row.status,
+    petId: row.pet_id || undefined,
+    petName: row.pet_name || undefined,
+    petPublicCode: row.pet_public_code || undefined,
+    userEmail: row.user_email || undefined,
+    userFullName: row.user_full_name || undefined,
+    createdAt: row.created_at,
+    linkedAt: row.linked_at || undefined,
+  }));
+}
+
+// ── Chapitas: vincular/desvincular codigo <-> mascota (usuario final) ──────
+
+export async function linkPetTagCode(code: string, petId: string): Promise<void> {
+  const { error } = await supabase.rpc('link_pet_tag_code', { p_code: code, p_pet_id: petId });
+  if (error) {
+    throw new Error(error.message || 'No se pudo vincular el codigo de chapita.');
+  }
+}
+
+export async function unlinkPetTagCode(petId: string): Promise<void> {
+  const { error } = await supabase.rpc('unlink_pet_tag_code', { p_pet_id: petId });
+  if (error) {
+    throw new Error(error.message || 'No se pudo desvincular el codigo de chapita.');
+  }
+}
+
+export async function fetchLinkedPetTagCode(petId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_pet_tag_code', { p_pet_id: petId });
+  if (error) {
+    console.error('Error fetching linked pet tag code:', error);
+    return null;
+  }
+  return data || null;
 }
 
 // ── Campañas de novedades por email (Admin) ───────────────────────────────────

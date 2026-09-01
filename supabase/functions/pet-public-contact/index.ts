@@ -47,6 +47,34 @@ function normalizeCode(raw: unknown): string | null {
   return /^[A-Z0-9]{4,16}$/.test(trimmed) ? trimmed : null;
 }
 
+// Resuelve un codigo publico (el propio public_code de la mascota, usado por
+// /mascota y /m, o un codigo de chapita pre-generado por lote, usado por
+// /chapita y /t) al id de mascota correspondiente. Los codigos de chapita se
+// chequean primero porque son independientes y pueden estar "huerfanos" (sin
+// ninguna mascota vinculada todavia).
+async function resolveCodeToPetId(code: string): Promise<{ petId: string | null; orphan: boolean }> {
+  const { data: tag } = await supabase
+    .from('pet_tag_codes')
+    .select('status, pet_id')
+    .eq('code', code)
+    .maybeSingle();
+
+  if (tag) {
+    if (tag.status === 'linked' && tag.pet_id) {
+      return { petId: tag.pet_id, orphan: false };
+    }
+    return { petId: null, orphan: true };
+  }
+
+  const { data: pet } = await supabase
+    .from('pets')
+    .select('id')
+    .eq('public_code', code)
+    .maybeSingle();
+
+  return { petId: pet?.id ?? null, orphan: false };
+}
+
 async function sendEmail(to: string, subject: string, html: string) {
   if (!RESEND_API_KEY) {
     throw new Error('Missing RESEND_API_KEY');
@@ -177,10 +205,20 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'Codigo invalido' });
       }
 
+      const { petId, orphan } = await resolveCodeToPetId(code);
+
+      if (orphan) {
+        return jsonResponse(200, { orphan: true });
+      }
+
+      if (!petId) {
+        return jsonResponse(404, { error: 'No encontramos una mascota con ese codigo.' });
+      }
+
       const { data: pet, error } = await supabase
         .from('pets')
         .select('name, species, breed, photo_url')
-        .eq('public_code', code)
+        .eq('id', petId)
         .maybeSingle();
 
       if (error || !pet) {
@@ -188,6 +226,7 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse(200, {
+        orphan: false,
         name: pet.name,
         species: pet.species,
         breed: pet.breed,
@@ -211,10 +250,15 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'Escribe un mensaje o un dato de contacto.' });
       }
 
+      const { petId, orphan } = await resolveCodeToPetId(code);
+      if (orphan || !petId) {
+        return jsonResponse(404, { error: 'Esta chapita todavia no esta vinculada a ninguna mascota.' });
+      }
+
       const { data: pet, error: petError } = await supabase
         .from('pets')
         .select('id, name, user_id, photo_url, public_code')
-        .eq('public_code', code)
+        .eq('id', petId)
         .maybeSingle();
 
       if (petError || !pet) {

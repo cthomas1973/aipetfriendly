@@ -138,6 +138,39 @@ export interface PetPublicProfile {
   photoUrl?: string;
 }
 
+// Resultado de resolver un codigo publico (propio de mascota o de chapita
+// pre-generada) desde la edge function pet-public-contact.
+export interface PetPublicLookupResult {
+  orphan: boolean;
+  profile: PetPublicProfile | null;
+}
+
+export type PetTagCodeStatus = 'orphan' | 'linked';
+
+export interface AdminPetTagCodeRow {
+  id: string;
+  code: string;
+  status: PetTagCodeStatus;
+  petId?: string;
+  petName?: string;
+  petPublicCode?: string;
+  userEmail?: string;
+  userFullName?: string;
+  createdAt: string;
+  linkedAt?: string;
+}
+
+export interface AdminPetTagCodeBatchRow {
+  id: string;
+  quantity: number;
+  createdAt: string;
+  downloadedZipAt?: string;
+  downloadedPdfAt?: string;
+  linkedCount: number;
+  orphanCount: number;
+}
+
+
 export interface PetWeightLog {
   id: string;
   petId: string;

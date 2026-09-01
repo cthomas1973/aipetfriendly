@@ -4,6 +4,7 @@ import {
   Circle, ClipboardList, Download, Heart, Mail,
   MapPin, MessageCircle, PawPrint, Pill, Plus, QrCode, Shield, Syringe, Tag, Trash2, Utensils, X,
 } from 'lucide-react';
+import jsQR from 'jsqr';
 import { useClinical } from '../hooks/useClinical';
 import { usePetIdentification } from '../hooks/usePetIdentification';
 import { usePetReports } from '../hooks/usePetReports';
@@ -386,7 +387,7 @@ export function PetsSection() {
     sendMedicationLogPdfByEmail,
   } = usePetReports();
   const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask } = usePreventive();
-  const { getMessages, markMessageRead, getTagRequest, requestTag, generatePosterPdf } = usePetIdentification();
+  const { getMessages, markMessageRead, getTagRequest, generatePosterPdf, getLinkedTagCode, linkTagCode, unlinkTagCode } = usePetIdentification();
 
   const [view, setView]   = useState<View>('list');
   const [step, setStep]   = useState(1);
@@ -406,7 +407,14 @@ export function PetsSection() {
   const [tagRequest, setTagRequest] = useState<PetTagRequest | null>(null);
   const [idLoading, setIdLoading] = useState(false);
   const [posterBusy, setPosterBusy] = useState(false);
-  const [tagRequestBusy, setTagRequestBusy] = useState(false);
+  const [linkedTagCode, setLinkedTagCode] = useState<string | null>(null);
+  const [tagCodeInput, setTagCodeInput] = useState('');
+  const [tagLinkBusy, setTagLinkBusy] = useState(false);
+  const [tagScannerOpen, setTagScannerOpen] = useState(false);
+  const [tagScannerErr, setTagScannerErr] = useState<string | null>(null);
+  const tagScannerVideoRef = useRef<HTMLVideoElement | null>(null);
+  const tagScannerStreamRef = useRef<MediaStream | null>(null);
+  const tagScannerFrameRef = useRef<number | null>(null);
   const [posterModal, setPosterModal] = useState(false);
   const [posterLostDate, setPosterLostDate] = useState('');
   const [posterLostPlace, setPosterLostPlace] = useState('');
@@ -889,16 +897,17 @@ export function PetsSection() {
     if (view !== 'identificacion' || !pet) return;
     let cancelled = false;
     setIdLoading(true);
-    Promise.all([getMessages(pet.id), getTagRequest(pet.id)])
-      .then(([messages, tag]) => {
+    Promise.all([getMessages(pet.id), getTagRequest(pet.id), getLinkedTagCode(pet.id)])
+      .then(([messages, tag, linkedCode]) => {
         if (cancelled) return;
         setSightingMessages(messages);
         setTagRequest(tag);
+        setLinkedTagCode(linkedCode);
       })
       .catch((ex) => { if (!cancelled) setErr(ex instanceof Error ? ex.message : 'No se pudieron cargar los mensajes.'); })
       .finally(() => { if (!cancelled) setIdLoading(false); });
     return () => { cancelled = true; };
-  }, [view, pet, getMessages, getTagRequest]);
+  }, [view, pet, getMessages, getTagRequest, getLinkedTagCode]);
 
   const doGeneratePoster = async () => {
     if (!pet) return;
@@ -924,21 +933,6 @@ export function PetsSection() {
     }
   };
 
-  const doRequestTag = async () => {
-    if (!pet) return;
-    setTagRequestBusy(true);
-    try {
-      const created = await requestTag(pet.id);
-      setTagRequest(created);
-      setMsg('Solicitud de chapita registrada. Te contactaremos para coordinar la fabricacion.');
-      setErr(null);
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'No se pudo solicitar la chapita.');
-    } finally {
-      setTagRequestBusy(false);
-    }
-  };
-
   const doMarkMessageRead = async (messageId: string) => {
     try {
       await markMessageRead(messageId);
@@ -947,6 +941,106 @@ export function PetsSection() {
       setErr(ex instanceof Error ? ex.message : 'No se pudo actualizar el mensaje.');
     }
   };
+
+  const doLinkTagCode = async (codeOverride?: string) => {
+    const code = (codeOverride ?? tagCodeInput).trim();
+    if (!pet || !code) return;
+    setTagLinkBusy(true);
+    setErr(null);
+    try {
+      await linkTagCode(pet.id, code);
+      setLinkedTagCode(code.toUpperCase());
+      setTagCodeInput('');
+      setMsg('Chapita vinculada correctamente.');
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo vincular la chapita.');
+    } finally {
+      setTagLinkBusy(false);
+    }
+  };
+
+  const doUnlinkTagCode = async () => {
+    if (!pet) return;
+    setTagLinkBusy(true);
+    setErr(null);
+    try {
+      await unlinkTagCode(pet.id);
+      setLinkedTagCode(null);
+      setMsg('Chapita desvinculada.');
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'No se pudo desvincular la chapita.');
+    } finally {
+      setTagLinkBusy(false);
+    }
+  };
+
+  // Los QR de chapita codifican una URL tipo /t/{codigo} o /chapita/{codigo}; tambien aceptamos el codigo suelto.
+  const extractTagCodeFromScan = (raw: string): string | null => {
+    const text = raw.trim();
+    if (!text) return null;
+    let path = text;
+    try {
+      path = new URL(text).pathname;
+    } catch {
+      // no es una URL absoluta, se usa el texto tal cual
+    }
+    const match = path.match(/\/(?:t|chapita)\/([A-Za-z0-9]+)\/?$/);
+    if (match) return match[1].toUpperCase();
+    if (/^[A-Za-z0-9]{4,16}$/.test(text)) return text.toUpperCase();
+    return null;
+  };
+
+  const stopTagScanner = () => {
+    if (tagScannerFrameRef.current !== null) {
+      cancelAnimationFrame(tagScannerFrameRef.current);
+      tagScannerFrameRef.current = null;
+    }
+    if (tagScannerStreamRef.current) {
+      tagScannerStreamRef.current.getTracks().forEach((t) => t.stop());
+      tagScannerStreamRef.current = null;
+    }
+    setTagScannerOpen(false);
+  };
+
+  const startTagScanner = async () => {
+    setTagScannerErr(null);
+    setTagScannerOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      tagScannerStreamRef.current = stream;
+      const video = tagScannerVideoRef.current;
+      if (!video) return;
+      video.srcObject = stream;
+      await video.play();
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const tick = () => {
+        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA || !ctx) {
+          tagScannerFrameRef.current = requestAnimationFrame(tick);
+          return;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const result = jsQR(frame.data, frame.width, frame.height);
+        if (result?.data) {
+          const code = extractTagCodeFromScan(result.data);
+          if (code) {
+            stopTagScanner();
+            void doLinkTagCode(code);
+            return;
+          }
+        }
+        tagScannerFrameRef.current = requestAnimationFrame(tick);
+      };
+      tagScannerFrameRef.current = requestAnimationFrame(tick);
+    } catch {
+      setTagScannerErr('No se pudo acceder a la camara. Verifica los permisos.');
+    }
+  };
+
+  useEffect(() => () => stopTagScanner(), []);
 
   /* ─── LIST ─────────────────────────────────────────── */
   if (view === 'list') return (
@@ -2178,22 +2272,68 @@ export function PetsSection() {
           <Tag size={20} className="text-purple-600" />
           <h3 className="font-bold">Chapita para el collar</h3>
         </div>
-        {tagRequest ? (
+        {tagRequest && (
           <p className="mt-2 text-sm text-slate-600">
             Estado de tu solicitud: <span className="font-semibold">{tagStatusLabel[tagRequest.status]}</span>
           </p>
-        ) : (
-          <>
-            <p className="mt-1 text-sm text-slate-500">
-              Solicita una chapita fisica con el mismo QR de identificacion para el collar de {pet.name}. Te contactaremos para coordinar la fabricacion y el envio.
-            </p>
-            <button type="button" onClick={doRequestTag} disabled={tagRequestBusy}
-              className="mt-3 w-full rounded-full bg-purple-500 py-3 font-bold text-white disabled:opacity-60">
-              {tagRequestBusy ? 'Enviando…' : 'Solicitar chapita'}
-            </button>
-          </>
         )}
+
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          {linkedTagCode ? (
+            <>
+              <p className="text-sm text-slate-600">
+                Chapita vinculada: <span className="font-mono font-bold text-slate-900">{linkedTagCode}</span>
+              </p>
+              <button type="button" onClick={doUnlinkTagCode} disabled={tagLinkBusy}
+                className="mt-2 w-full rounded-full border-2 border-purple-200 py-2.5 text-sm font-semibold text-purple-600 disabled:opacity-60">
+                {tagLinkBusy ? 'Desvinculando…' : 'Desvincular chapita'}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500">
+                ¿Ya tenes una chapita fisica con su propio codigo? Escanea su QR o escribi el codigo para vincularla a {pet.name}.
+              </p>
+              <button type="button" onClick={startTagScanner} disabled={tagLinkBusy}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border-2 border-purple-200 py-2.5 text-sm font-semibold text-purple-600 disabled:opacity-60">
+                <QrCode size={16} /> Escanear QR
+              </button>
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="text"
+                  value={tagCodeInput}
+                  onChange={(e) => setTagCodeInput(e.target.value.toUpperCase())}
+                  placeholder="Ej: A1B2C3D4"
+                  className="min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm font-mono uppercase"
+                />
+                <button type="button" onClick={() => doLinkTagCode()} disabled={tagLinkBusy || !tagCodeInput.trim()}
+                  className="shrink-0 rounded-full bg-purple-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+                  {tagLinkBusy ? '...' : 'Vincular'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {tagScannerOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800">Escanear QR de la chapita</h3>
+              <button type="button" onClick={stopTagScanner} className="rounded-full p-1 text-slate-500">
+                <X size={20} />
+              </button>
+            </div>
+            {tagScannerErr ? (
+              <p className="text-sm text-red-600">{tagScannerErr}</p>
+            ) : (
+              <video ref={tagScannerVideoRef} muted playsInline className="w-full rounded-2xl bg-black" />
+            )}
+            <p className="mt-3 text-center text-xs text-slate-500">Apunta la camara al codigo QR de la chapita</p>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-3xl bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 text-slate-800">
