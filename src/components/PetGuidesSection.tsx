@@ -149,7 +149,7 @@ function GuidesList() {
                     src={guide.coverImage.src}
                     alt={guide.coverImage.alt}
                     loading="lazy"
-                    className="h-36 w-full object-cover"
+                    className="h-36 w-full bg-slate-100 object-contain"
                   />
                 )}
                 <div className="flex items-start gap-3 p-5">
@@ -255,7 +255,7 @@ function GuideDetail({ slug }: { slug: string }) {
           src={guide.coverImage.src}
           alt={guide.coverImage.alt}
           loading="lazy"
-          className="max-h-80 w-full rounded-2xl object-cover"
+          className="max-h-[32rem] w-full rounded-2xl bg-slate-100 object-contain"
         />
       )}
 
@@ -275,7 +275,7 @@ function GuideDetail({ slug }: { slug: string }) {
                 src={section.image.src}
                 alt={section.image.alt}
                 loading="lazy"
-                className="mt-3 max-h-72 w-full rounded-xl object-cover"
+                className="mt-3 max-h-[28rem] w-full rounded-xl bg-slate-100 object-contain"
               />
             )}
           </div>
