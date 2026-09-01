@@ -516,6 +516,84 @@ export const PET_GUIDES: PetGuide[] = [
     ],
   },
   {
+    slug: 'como-ensenar-a-tu-perro-a-echarse',
+    title: 'Cómo enseñar a tu perro a echarse: la postura de descanso total',
+    category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-09-01',
+    summary:
+      'Enseñá a tu perro a adoptar una postura de descanso y calma total a tu señal: la guía paso a paso para lograr un "echate" confiable partiendo de "sentado".',
+    readingTime: '5 min',
+    coverImage: {
+      src: '/guides/como-ensenar-a-tu-perro-a-echarse/portada.jpg',
+      alt: 'Perro echado y relajado sobre el pasto mirando a su entrenadora',
+    },
+    sections: [
+      {
+        heading: 'Por qué enseñar "echarse"',
+        paragraphs: [
+          'Echarse es la posición de descanso más relajada que puede aprender un perro: mucho más calma que quedarse sentado, y una base ideal para pedirle que espere tranquilo en un restaurante, en el parque o cuando llegan visitas a casa.',
+          'Un perro echado también es mucho más difícil que se escape o reaccione de forma impulsiva ante un estímulo, por lo que es un ejercicio que suma seguridad. Además, refuerza el enfoque en la persona que lo entrena y la capacidad del perro de desconectar y quedarse tranquilo.',
+        ],
+      },
+      {
+        heading: 'Paso 1: el señuelo inicial (luring)',
+        paragraphs: [
+          'Conviene empezar con el perro ya sentado, porque desde esa posición es mucho más fácil guiarlo hacia abajo. Se toma un premio de alto valor entre los dedos y se lo muestra frente a su nariz, sin dárselo todavía.',
+          'Con la mano cerca de su hocico, se la baja despacio en línea recta hacia el suelo, justo entre sus patas delanteras. Es importante guiarlo con el gesto y no empujarlo ni forzarlo con la otra mano.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-echarse/paso1-senuelo-inicial.jpg',
+          alt: 'Entrenadora bajando la mano con un premio hacia el suelo para guiar al perro a echarse',
+        },
+      },
+      {
+        heading: 'Paso 2: formar la "L" y premiar la calma',
+        paragraphs: [
+          'Una vez que el premio toca el suelo, se arrastra la mano un poco hacia adelante (hacia el cuerpo de la persona) dibujando una especie de "L". Ese movimiento invita al perro a estirar el cuerpo hacia adelante hasta quedar completamente tumbado.',
+          'En cuanto los codos y el pecho tocan el piso, hay que marcarlo con un "¡muy bien!" entusiasta y entregar el premio enseguida. Si el perro se levanta antes de completar el movimiento, no se premia: simplemente se repite la secuencia con calma.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-echarse/paso2-formando-la-l.jpg',
+          alt: 'Perro estirando el cuerpo hacia adelante siguiendo la mano de la entrenadora hasta quedar echado',
+        },
+      },
+      {
+        heading: 'Paso 3: sumar la señal verbal',
+        paragraphs: [
+          'El timing es clave en este paso: conviene repetir el señuelo varias veces hasta que el perro baje siguiendo la mano con fluidez. Recién ahí se agrega la palabra "echate" (o "down"), diciéndola justo antes de empezar el gesto con la mano.',
+          'De a poco, el movimiento de la mano se puede achicar y apoyarse cada vez más en la palabra, premiando siempre en el momento en que el perro llega al suelo por completo.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-echarse/paso3-senal-verbal.jpg',
+          alt: 'Entrenadora dando la señal verbal "echate" con un gesto de mano cada vez más pequeño',
+        },
+      },
+      {
+        heading: 'Solución de problemas: errores comunes',
+        paragraphs: [
+          'Si el perro levanta la cadera mientras baja la mano (queda con el trasero en el aire), es señal de que se está yendo muy rápido o de que la "L" es demasiado larga: conviene volver a guiar solo hasta el suelo y subir la exigencia de a poco.',
+          'También hay que evitar que muerda o mordisquee la mano mientras se lo guía: si eso pasa, se detiene el movimiento y se vuelve a intentar. Algunos perros, sobre todo cachorros o en superficies frías, dudan en bajar del todo: una manta y mucha paciencia ayudan, premiando incluso si al principio solo apoya un codo.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-echarse/error-comun.jpg',
+          alt: 'Perro levantando la cadera en lugar de echarse por completo, un error común al guiarlo demasiado rápido',
+        },
+      },
+      {
+        heading: 'Consolidación y generalización',
+        paragraphs: [
+          'Una vez que el perro domina "echate" en casa, conviene practicarlo en el jardín, el parque o la calle, y de a poco sumar distracciones (una pelota rebotando, gente pasando cerca) siempre a una distancia segura.',
+          'Con la práctica, "echate" se convierte en un verdadero comando de descanso: una herramienta confiable para que el perro aprenda a estar tranquilo en cualquier situación.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-perro-a-echarse/cierre.jpg',
+          alt: 'Perro echado y tranquilo junto a su entrenadora tras completar el ejercicio',
+        },
+      },
+    ],
+  },
+  {
     slug: 'paseo-con-correa-sin-tirones',
     title: 'Paseo con correa sin tirones: guía para caminatas relajadas',
     category: 'adiestramiento',
