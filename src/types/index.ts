@@ -170,6 +170,19 @@ export interface AdminPetTagCodeBatchRow {
   orphanCount: number;
 }
 
+// Post del blog "Tips del día", generado automaticamente por el cron de IA
+// (ver api/cron/generate-blog-post.js) y leido publicamente desde /blog.
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  imageUrl?: string;
+  sourceName?: string;
+  estimatedReadingTime: number;
+  createdAt: string;
+}
+
 
 export interface PetWeightLog {
   id: string;

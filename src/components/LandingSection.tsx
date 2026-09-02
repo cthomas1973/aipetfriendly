@@ -8,6 +8,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
+import { BlogTeaser } from './BlogTeaser';
 import { PublicFooter } from './PublicLegalPages';
 
 interface LandingSectionProps {
@@ -164,6 +165,7 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
         </div>
       </div>
 
+      <BlogTeaser />
       <PetGuidesTeaser />
 
       <PublicFooter />

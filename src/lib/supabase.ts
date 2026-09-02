@@ -9,6 +9,7 @@ import type {
   AdminPetTagCodeBatchRow,
   PetTagCodeStatus,
   BillingPricingSettings,
+  BlogPost,
   DiscountCode,
   DiscountCodeValidation,
   InboundEmailReply,
@@ -1987,6 +1988,48 @@ export async function fetchAdminPetTagCodes(status?: PetTagCodeStatus): Promise<
     createdAt: row.created_at,
     linkedAt: row.linked_at || undefined,
   }));
+}
+
+// ── Blog "Tips del día" (contenido publico, generado por el cron de IA) ────
+
+function mapBlogPostRow(row: any): BlogPost {
+  return {
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    content: row.content,
+    imageUrl: row.image_url || undefined,
+    sourceName: row.source_name || undefined,
+    estimatedReadingTime: row.estimated_reading_time,
+    createdAt: row.created_at,
+  };
+}
+
+export async function fetchBlogPosts(limit = 20, offset = 0): Promise<BlogPost[]> {
+  const { data, error } = await supabase.rpc('list_blog_posts', { p_limit: limit, p_offset: offset });
+
+  if (error) {
+    console.error('Error fetching blog posts:', error);
+    throw error;
+  }
+
+  return (data || []).map(mapBlogPostRow);
+}
+
+export async function fetchBlogPostBySlug(slug: string): Promise<BlogPost | null> {
+  const { data, error } = await supabase.rpc('get_blog_post_by_slug', { p_slug: slug });
+
+  if (error) {
+    console.error('Error fetching blog post by slug:', error);
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapBlogPostRow(row) : null;
 }
 
 // ── Chapitas: vincular/desvincular codigo <-> mascota (usuario final) ──────

@@ -14,6 +14,7 @@ import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
 import { PetFoodSection } from './PetFoodSection';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
+import { BlogTeaser } from './BlogTeaser';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import {
   buildCountryOptionsForPicker,
@@ -1126,6 +1127,7 @@ export function PetsSection() {
         )
       )}
 
+      <BlogTeaser className="mt-2" />
       <PetGuidesTeaser className="mt-2" />
     </section>
   );

@@ -5,12 +5,15 @@ import {
   Gift,
   MapPinned,
   MessageCircle,
+  MoreHorizontal,
+  Newspaper,
   PawPrint,
   Shield,
 } from 'lucide-react';
 import { AdminUsersSection } from './components/AdminUsersSection';
 import { AgendaSection } from './components/AgendaSection';
 import { AuthScreens } from './components/AuthScreens';
+import { BlogSection } from './components/BlogSection';
 import { ChatSection } from './components/ChatSection';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { LandingSection } from './components/LandingSection';
@@ -90,6 +93,7 @@ function shouldAutoStartAsGuest(): boolean {
   const path = window.location.pathname;
   const normalizedPath = path.length > 1 ? path.replace(/\/+$/, '') : path;
   const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
+  const isBlogRoute = normalizedPath === '/blog' || normalizedPath.startsWith('/blog/');
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLoginRoute = normalizedPath === '/login';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
@@ -102,6 +106,7 @@ function shouldAutoStartAsGuest(): boolean {
 
   return (
     !isGuidesRoute
+    && !isBlogRoute
     && !isSocialLandingRoute
     && !isLoginRoute
     && !isLegalRoute
@@ -160,6 +165,66 @@ function getTaskTimeString(task: PreventiveTask): string | null {
   return null;
 }
 
+// Items secundarios del bottom-sheet "Más": Tienda, Mi Cuenta, Admin (si
+// corresponde) y Blog. Blog navega a /blog en vez de cambiar de tab, ya que
+// es una pagina de contenido publico propia (mismo patron que /guias).
+function BottomNavMoreSheet({
+  activeTab,
+  onChange,
+  isAdmin,
+  onClose,
+}: {
+  activeTab: AppTab;
+  onChange: (tab: AppTab) => void;
+  isAdmin: boolean;
+  onClose: () => void;
+}) {
+  const items: Array<{ id: string; label: string; icon: typeof Gift; onSelect: () => void }> = [
+    { id: 'offers', label: 'Tienda', icon: Gift, onSelect: () => onChange('offers') },
+    { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard, onSelect: () => onChange('subscription') },
+  ];
+
+  if (isAdmin) {
+    items.push({ id: 'admin', label: 'Admin', icon: Shield, onSelect: () => onChange('admin') });
+  }
+
+  items.push({ id: 'blog', label: 'Blog', icon: Newspaper, onSelect: () => { window.location.href = '/blog'; } });
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end bg-black/30 md:hidden"
+      onClick={onClose}
+    >
+      <div
+        className="w-full rounded-t-3xl bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  item.onSelect();
+                  onClose();
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                  activeTab === item.id
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'text-slate-700 hover:bg-emerald-50'
+                }`}
+              >
+                <item.icon size={18} /> {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function BottomNav({
   activeTab,
   onChange,
@@ -171,49 +236,77 @@ function BottomNav({
   isAdmin: boolean;
   hasMobileBanner: boolean;
 }) {
-  const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
+  const [moreOpen, setMoreOpen] = useState(false);
+  const primaryTabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
     { id: 'map', label: 'Mapa Vet', icon: MapPinned },
-    { id: 'offers', label: 'Tienda', icon: Gift },
-    { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
-
-  if (isAdmin) {
-    tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
-  }
+  // El boton "Más" se marca como activo cuando la pestaña actual vive dentro
+  // del bottom-sheet (Tienda, Mi Cuenta o Admin), para que el usuario no
+  // pierda la referencia de donde esta parado.
+  const isMoreActive = ['offers', 'subscription', 'admin'].includes(activeTab);
 
   return (
-    <nav
-      className="fixed left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden"
-      style={{ bottom: hasMobileBanner ? '52px' : '0px' }}
-    >
-      <ul className={`grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} gap-1`}>
-        {tabs.map((tab) => (
-          <li key={tab.id} className="text-center">
+    <>
+      <nav
+        className="fixed left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden"
+        style={{ bottom: hasMobileBanner ? '52px' : '0px' }}
+      >
+        <ul className="grid grid-cols-5 gap-1">
+          {primaryTabs.map((tab) => (
+            <li key={tab.id} className="text-center">
+              <button
+                type="button"
+                onClick={() => onChange(tab.id)}
+                className={`w-full rounded-2xl px-1 py-1.5 text-[11px] font-medium transition ${
+                  activeTab === tab.id
+                    ? 'text-emerald-700'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <span
+                  className={`mx-auto mb-1 inline-flex h-9 w-9 items-center justify-center rounded-full transition ${
+                    activeTab === tab.id ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400'
+                  }`}
+                >
+                  <tab.icon size={18} />
+                </span>
+                {tab.label}
+              </button>
+            </li>
+          ))}
+          <li className="text-center">
             <button
               type="button"
-              onClick={() => onChange(tab.id)}
+              onClick={() => setMoreOpen(true)}
               className={`w-full rounded-2xl px-1 py-1.5 text-[11px] font-medium transition ${
-                activeTab === tab.id
-                  ? 'text-emerald-700'
-                  : 'text-slate-400 hover:text-slate-600'
+                isMoreActive ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
               }`}
             >
               <span
                 className={`mx-auto mb-1 inline-flex h-9 w-9 items-center justify-center rounded-full transition ${
-                  activeTab === tab.id ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400'
+                  isMoreActive ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400'
                 }`}
               >
-                <tab.icon size={18} />
+                <MoreHorizontal size={18} />
               </span>
-              {tab.label}
+              Más
             </button>
           </li>
-        ))}
-      </ul>
-    </nav>
+        </ul>
+      </nav>
+
+      {moreOpen && (
+        <BottomNavMoreSheet
+          activeTab={activeTab}
+          onChange={onChange}
+          isAdmin={isAdmin}
+          onClose={() => setMoreOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -241,7 +334,7 @@ function DesktopTabNav({
 
   return (
     <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className={`grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} gap-2`}>
+      <ul className={`grid ${isAdmin ? 'grid-cols-8' : 'grid-cols-7'} gap-2`}>
         {tabs.map((tab) => (
           <li key={tab.id}>
             <button
@@ -257,6 +350,14 @@ function DesktopTabNav({
             </button>
           </li>
         ))}
+        <li>
+          <a
+            href="/blog"
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50"
+          >
+            <Newspaper size={16} /> Blog
+          </a>
+        </li>
       </ul>
     </nav>
   );
@@ -287,6 +388,8 @@ function AppContent() {
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
   const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
   const guideSlug = isGuidesRoute ? normalizedPath.replace(/^\/guias\/?/, '') || undefined : undefined;
+  const isBlogRoute = normalizedPath === '/blog' || normalizedPath.startsWith('/blog/');
+  const blogSlug = isBlogRoute ? normalizedPath.replace(/^\/blog\/?/, '') || undefined : undefined;
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
   const isLoginRoute = normalizedPath === '/login';
@@ -298,11 +401,11 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isLoginRoute && !isPetPublicRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isBlogRoute && !isLoginRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app solo tiene sentido si hay un usuario navegando
-  // dentro de la app; en /guias sin login se muestra como pagina publica de contenido.
-  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute && (!isGuidesRoute || Boolean(user));
+  // dentro de la app; en /guias y /blog sin login se muestran como paginas publicas de contenido.
+  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute && (!isGuidesRoute || Boolean(user)) && (!isBlogRoute || Boolean(user));
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -489,6 +592,10 @@ function AppContent() {
 
     if (isGuidesRoute) {
       return <PetGuidesSection slug={guideSlug} />;
+    }
+
+    if (isBlogRoute) {
+      return <BlogSection slug={blogSlug} />;
     }
 
     if (isLegalRoute) {
