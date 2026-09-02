@@ -230,19 +230,24 @@ async function generateArticleImage(title) {
     'Mostra un perro o gato en una situacion cotidiana relacionada al tema, luz natural, composicion profesional, sin texto ni logos en la imagen.',
   ].join(' ');
 
+  // gpt-image-1 no acepta "response_format" (siempre devuelve b64_json por
+  // defecto); dall-e-3/dall-e-2 si lo requieren para pedir base64 en vez de URL.
+  const supportsResponseFormat = !imageModel.startsWith('gpt-image');
+  const body = {
+    model: imageModel,
+    prompt,
+    n: 1,
+    size: '1024x1024',
+    ...(supportsResponseFormat ? { response_format: 'b64_json' } : {}),
+  };
+
   const response = await fetch(`${baseUrl}/images/generations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: imageModel,
-      prompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'b64_json',
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
