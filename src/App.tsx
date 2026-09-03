@@ -403,9 +403,22 @@ function AppContent() {
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
   const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isBlogRoute && !isLoginRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
-  // La barra de tabs de la app solo tiene sentido si hay un usuario navegando
-  // dentro de la app; en /guias y /blog sin login se muestran como paginas publicas de contenido.
-  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute && (!isGuidesRoute || Boolean(user)) && (!isBlogRoute || Boolean(user));
+  // La barra de tabs de la app se muestra tambien en /guias y /blog (con o sin
+  // login) para que se pueda navegar directo a otras secciones sin volver antes al inicio.
+  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute;
+
+  // Si estamos en una pagina de contenido publico (/guias, /blog) y se elige un
+  // tab de la app, no alcanza con cambiar el estado (renderTabContent prioriza
+  // la ruta actual): navegamos al inicio y dejamos el tab pedido guardado para
+  // aplicarlo apenas cargue la app (mismo mecanismo que POST_SIGNUP_TAB_KEY).
+  const handleTabChange = (tab: AppTab) => {
+    if (isGuidesRoute || isBlogRoute) {
+      window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
+      window.location.href = '/';
+      return;
+    }
+    setActiveTab(tab);
+  };
 
   // Sincronizar con Supabase
   useSupabaseSync();
@@ -706,7 +719,7 @@ function AppContent() {
         </div>
 
         {!isResetPasswordRoute && showAppNav && (
-          <DesktopTabNav activeTab={activeTab} onChange={setActiveTab} isAdmin={Boolean(user?.isAdmin)} />
+          <DesktopTabNav activeTab={activeTab} onChange={handleTabChange} isAdmin={Boolean(user?.isAdmin)} />
         )}
 
         {user && !user.isGuest && !isResetPasswordRoute && <SubscriptionBanner />}
@@ -760,7 +773,7 @@ function AppContent() {
       {!isResetPasswordRoute && showAppNav && (
         <BottomNav
           activeTab={activeTab}
-          onChange={setActiveTab}
+          onChange={handleTabChange}
           isAdmin={Boolean(user?.isAdmin)}
           hasMobileBanner={hasMobileBanner}
         />
