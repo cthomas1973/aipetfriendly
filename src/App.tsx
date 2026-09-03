@@ -401,18 +401,20 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isBlogRoute && !isLoginRoute && !isPetPublicRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
-  // La barra de tabs de la app se muestra tambien en /guias y /blog (con o sin
-  // login) para que se pueda navegar directo a otras secciones sin volver antes al inicio.
+  // La barra de tabs de la app se muestra tambien en /guias, /blog y las paginas
+  // legales (con o sin login) para que se pueda navegar directo a otras secciones
+  // sin volver antes al inicio.
   const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute;
 
-  // Si estamos en una pagina de contenido publico (/guias, /blog) y se elige un
-  // tab de la app, no alcanza con cambiar el estado (renderTabContent prioriza
-  // la ruta actual): navegamos al inicio y dejamos el tab pedido guardado para
-  // aplicarlo apenas cargue la app (mismo mecanismo que POST_SIGNUP_TAB_KEY).
+  // Si estamos en una pagina de contenido publico (/guias, /blog, legales) y se
+  // elige un tab de la app, no alcanza con cambiar el estado (renderTabContent
+  // prioriza la ruta actual): navegamos al inicio y dejamos el tab pedido
+  // guardado para aplicarlo apenas cargue la app (mismo mecanismo que
+  // POST_SIGNUP_TAB_KEY).
   const handleTabChange = (tab: AppTab) => {
-    if (isGuidesRoute || isBlogRoute) {
+    if (isGuidesRoute || isBlogRoute || isLegalRoute) {
       window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
       window.location.href = '/';
       return;
@@ -488,6 +490,13 @@ function AppContent() {
 
   const onLogoGoToLogin = async () => {
     if (switchingUser) {
+      return;
+    }
+
+    // En paginas de contenido publico (/guias, /blog, legales) el logo debe
+    // llevar siempre al inicio, no disparar el cambio/cierre de usuario.
+    if (isGuidesRoute || isBlogRoute || isLegalRoute) {
+      window.location.href = '/';
       return;
     }
 
