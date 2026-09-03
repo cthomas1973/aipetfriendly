@@ -13,6 +13,7 @@ supabase functions deploy inbound-email-webhook --no-verify-jwt
 supabase functions deploy admin-reply-inbound-email
 supabase functions deploy send-guide-notifications --no-verify-jwt
 supabase functions deploy send-news-campaigns --no-verify-jwt
+supabase functions deploy send-blog-post-notifications --no-verify-jwt
 ```
 
 ## Variables de entorno
@@ -33,6 +34,7 @@ Configurar en Supabase Dashboard:
 - `RESEND_WEBHOOK_SECRET`: signing secret que entrega Resend al crear el webhook `email.received` (Resend → Webhooks). Usado por `inbound-email-webhook` para verificar la firma svix antes de procesar el evento.
 - `GUIDE_NOTIFICATIONS_API_KEY`: clave propia (inventada) que valida el header `x-guide-notifications-key` en `send-guide-notifications`, para que solo el workflow de GitHub Actions pueda dispararla.
 - `NEWS_CAMPAIGNS_API_KEY`: clave propia (inventada) que valida el header `x-news-campaigns-key` en `send-news-campaigns`.
+- `BLOG_NOTIFICATIONS_API_KEY`: clave propia (inventada) que valida el header `x-blog-notifications-key` en `send-blog-post-notifications`, para que solo el workflow de GitHub Actions pueda dispararla.
 
 ### Campañas de novedades a medida (`send-news-campaigns`)
 
@@ -49,6 +51,15 @@ Configurar en Supabase Dashboard:
 - Para cada guia nueva, envia un email (con boton "Leer la guia") a todos los usuarios con `news_opt_in = true` en `public.users`, y despues registra la guia en `notified_guides` para no repetir el aviso.
 - Requiere los mismos secrets de Resend que `send-preventive-reminders` (`RESEND_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, `EMAIL_LOGO_URL`) mas `GUIDE_NOTIFICATIONS_API_KEY`.
 - Secret de GitHub Actions a crear: `GUIDE_NOTIFICATIONS_API_KEY` (mismo valor que el secret de Supabase).
+
+### Aviso por email de posts nuevos del blog (`send-blog-post-notifications`)
+
+- Se dispara por cron (`.github/workflows/send-blog-notifications.yml`, diario) o manualmente desde GitHub Actions.
+- Consulta `public.blog_posts` directamente (service role) filtrando `status = 'published'` — los drafts generados por el cron de IA (`api/cron/generate-blog-post.js`) nunca se notifican, solo lo que un admin aprobo desde Admin → Blog (`AdminBlogSection.tsx`).
+- Compara contra la tabla `public.notified_blog_posts` para detectar posts publicados todavia no avisados (mismo patron que `notified_guides`).
+- Para cada post nuevo, envia un email (con boton "Leer el artículo") a todos los usuarios con `news_opt_in = true` en `public.users`, y despues registra el post en `notified_blog_posts` para no repetir el aviso.
+- Requiere los mismos secrets de Resend que `send-preventive-reminders` (`RESEND_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`, `EMAIL_LOGO_URL`) mas `BLOG_NOTIFICATIONS_API_KEY`.
+- Secret de GitHub Actions a crear: `BLOG_NOTIFICATIONS_API_KEY` (mismo valor que el secret de Supabase).
 
 ### Buzon de correo entrante (`notificacion@aipetfriendly.ar`)
 

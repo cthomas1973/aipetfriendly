@@ -1,0 +1,26 @@
+name: Send Blog Post Notifications
+
+on:
+  schedule:
+    - cron: '30 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-blog-post-notifications:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Supabase blog post notifications function
+        env:
+          BLOG_NOTIFICATIONS_API_KEY: ${{ secrets.BLOG_NOTIFICATIONS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BLOG_NOTIFICATIONS_API_KEY}" ]; then
+            echo "BLOG_NOTIFICATIONS_API_KEY is not configured in GitHub Secrets"
+            exit 1
+          fi
+
+          curl -sS -X POST "https://apejkczbthvbxoksmlye.supabase.co/functions/v1/send-blog-post-notifications" \
+            -H "Content-Type: application/json" \
+            -H "x-blog-notifications-key: ${BLOG_NOTIFICATIONS_API_KEY}" \
+            --fail-with-body

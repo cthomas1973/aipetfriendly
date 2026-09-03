@@ -1,0 +1,7 @@
+{
+  "name": "send-blog-post-notifications",
+  "version": "1.0.0",
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2"
+  }
+}
