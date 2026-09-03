@@ -172,6 +172,7 @@ export interface AdminPetTagCodeBatchRow {
 
 // Post del blog "Tips del día", generado automaticamente por el cron de IA
 // (ver api/cron/generate-blog-post.js) y leido publicamente desde /blog.
+// Se genera como 'draft' y un admin lo revisa/publica (ver AdminBlogSection.tsx).
 export interface BlogPost {
   id: string;
   title: string;
@@ -181,6 +182,7 @@ export interface BlogPost {
   sourceName?: string;
   estimatedReadingTime: number;
   createdAt: string;
+  status: 'draft' | 'published';
 }
 
 

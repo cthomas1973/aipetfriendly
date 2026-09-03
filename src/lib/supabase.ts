@@ -2002,6 +2002,7 @@ function mapBlogPostRow(row: any): BlogPost {
     sourceName: row.source_name || undefined,
     estimatedReadingTime: row.estimated_reading_time,
     createdAt: row.created_at,
+    status: row.status === 'published' ? 'published' : 'draft',
   };
 }
 
@@ -2030,6 +2031,48 @@ export async function fetchBlogPostBySlug(slug: string): Promise<BlogPost | null
 
   const row = Array.isArray(data) ? data[0] : data;
   return row ? mapBlogPostRow(row) : null;
+}
+
+// Admin: ve todos los posts (draft y published) para revisarlos antes de publicar.
+export async function fetchAdminBlogPosts(): Promise<BlogPost[]> {
+  const { data, error } = await supabase.rpc('admin_list_blog_posts');
+
+  if (error) {
+    console.error('Error fetching admin blog posts:', error);
+    throw error;
+  }
+
+  return (data || []).map(mapBlogPostRow);
+}
+
+export async function updateAdminBlogPost(input: {
+  id: string;
+  title: string;
+  content: string;
+  status: 'draft' | 'published';
+}): Promise<BlogPost> {
+  const { data, error } = await supabase.rpc('admin_update_blog_post', {
+    p_id: input.id,
+    p_title: input.title,
+    p_content: input.content,
+    p_status: input.status,
+  });
+
+  if (error) {
+    console.error('Error updating admin blog post:', error);
+    throw error;
+  }
+
+  return mapBlogPostRow(data);
+}
+
+export async function deleteAdminBlogPost(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_blog_post', { p_id: id });
+
+  if (error) {
+    console.error('Error deleting admin blog post:', error);
+    throw error;
+  }
 }
 
 // ── Chapitas: vincular/desvincular codigo <-> mascota (usuario final) ──────

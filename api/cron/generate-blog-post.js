@@ -1,7 +1,7 @@
 // api/cron/generate-blog-post.js
 //
-// Vercel Cron Job (ver "crons" en vercel.json) que corre 1 vez por dia y
-// genera automaticamente un post nuevo para el blog "Tips del dia":
+// Vercel Cron Job (ver "crons" en vercel.json) que corre cada 2 dias y
+// genera automaticamente un BORRADOR para el blog "Tips del dia":
 //   1. Busca noticias recientes en SerpApi (Google News) sobre un tema que
 //      rota entre 4 fijos, para no gastar de mas la cuota mensual gratuita.
 //   2. Le pide a la IA (mismo proveedor que el consultorio, ver AI_API_KEY /
@@ -9,7 +9,10 @@
 //      articulo corto en tono "influencer veterinario".
 //   3. Genera una imagen con DALL-E (mismo AI_API_KEY) y la sube a Supabase
 //      Storage (bucket "blog-images", publico).
-//   4. Inserta el post en la tabla blog_posts (ver migracion 041).
+//   4. Inserta el post en la tabla blog_posts (ver migracion 041) con
+//      status='draft': NO se publica solo. Un admin lo revisa/edita y lo
+//      aprueba desde el panel Admin > Blog (ver migracion 042 y
+//      AdminBlogSection.tsx) antes de que aparezca en /blog.
 //
 // Seguridad: si existe la variable de entorno CRON_SECRET, se exige el header
 // "Authorization: Bearer <CRON_SECRET>" (Vercel Cron lo envia automaticamente
@@ -370,6 +373,7 @@ export default async function handler(req, res) {
         image_url: imageUrl,
         source_name: article.sourceName,
         estimated_reading_time: article.estimatedReadingTime,
+        status: 'draft',
       })
       .select()
       .single();
@@ -381,7 +385,7 @@ export default async function handler(req, res) {
     return sendJson(res, 200, {
       created: true,
       topic,
-      post: { id: inserted.id, slug: inserted.slug, title: inserted.title, hasImage: Boolean(imageUrl) },
+      post: { id: inserted.id, slug: inserted.slug, title: inserted.title, hasImage: Boolean(imageUrl), status: inserted.status },
     });
   } catch (error) {
     console.error('Error generando el post diario del blog:', error);

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { BadgePercent, Gift, Inbox, Megaphone, Shield, Tag, UserCog } from 'lucide-react';
+import { BadgePercent, Gift, Inbox, Megaphone, Newspaper, Shield, Tag, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AdminBeneficiosSection } from './AdminBeneficiosSection';
+import { AdminBlogSection } from './AdminBlogSection';
 import { AdminInboxSection } from './AdminInboxSection';
 import { AdminNewsCampaignsSection } from './AdminNewsCampaignsSection';
 import { AdminChapitasSection } from './AdminChapitasSection';
@@ -34,7 +35,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
-  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades' | 'chapitas' | 'codigos'>('usuarios');
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades' | 'chapitas' | 'codigos' | 'blog'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -216,6 +217,12 @@ export function AdminUsersSection() {
           }`}>
           <BadgePercent size={15} /> Codigos
         </button>
+        <button type="button" onClick={() => setAdminTab('blog')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'blog' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <Newspaper size={15} /> Blog
+        </button>
       </div>
 
       {adminTab === 'beneficios' ? (
@@ -237,6 +244,10 @@ export function AdminUsersSection() {
       ) : adminTab === 'codigos' ? (
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminDiscountCodesSection />
+        </div>
+      ) : adminTab === 'blog' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm">
+          <AdminBlogSection />
         </div>
       ) : (<>
         <div className="flex flex-wrap items-center gap-2">
