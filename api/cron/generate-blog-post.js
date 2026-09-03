@@ -231,15 +231,14 @@ async function generateArticleImage(title) {
     'Mostra un perro o gato en una situacion cotidiana relacionada al tema, luz natural, composicion profesional, sin texto ni logos en la imagen.',
   ].join(' ');
 
-  // gpt-image-1 no acepta "response_format" (siempre devuelve b64_json por
-  // defecto); dall-e-3/dall-e-2 si lo requieren para pedir base64 en vez de URL.
-  const supportsResponseFormat = !imageModel.toLowerCase().includes('gpt-image');
+  // La API de imagenes de OpenAI ya no acepta "response_format" (rechaza el
+  // parametro con "Unknown parameter" para cualquier modelo); simplemente no
+  // lo mandamos y aceptamos que la respuesta venga en b64_json o en una url.
   const body = {
     model: imageModel,
     prompt,
     n: 1,
     size: '1024x1024',
-    ...(supportsResponseFormat ? { response_format: 'b64_json' } : {}),
   };
 
   const response = await fetch(`${baseUrl}/images/generations`, {
@@ -258,11 +257,20 @@ async function generateArticleImage(title) {
 
   const data = await response.json();
   const b64 = data.data?.[0]?.b64_json;
-  if (!b64) {
-    throw new Error('La respuesta de generacion de imagen no trajo b64_json.');
+  if (b64) {
+    return Buffer.from(b64, 'base64');
   }
 
-  return Buffer.from(b64, 'base64');
+  const imageUrl = data.data?.[0]?.url;
+  if (!imageUrl) {
+    throw new Error('La respuesta de generacion de imagen no trajo b64_json ni url.');
+  }
+
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) {
+    throw new Error(`No se pudo descargar la imagen generada desde la url (status ${imageResponse.status}).`);
+  }
+  return Buffer.from(await imageResponse.arrayBuffer());
 }
 
 async function uploadImageToStorage(admin, slug, imageBuffer) {
