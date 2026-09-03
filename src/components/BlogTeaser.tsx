@@ -67,7 +67,7 @@ export function BlogTeaser({
                 src={post.imageUrl}
                 alt={post.title}
                 loading="lazy"
-                className="h-24 w-full bg-slate-100 object-cover"
+                className="h-24 w-full bg-slate-100 object-contain"
               />
             )}
             <div className="p-2.5">

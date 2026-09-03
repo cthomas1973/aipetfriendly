@@ -113,7 +113,7 @@ function BlogList() {
               src={latest.imageUrl}
               alt={latest.title}
               loading="lazy"
-              className="h-48 w-full bg-slate-100 object-cover md:h-64"
+              className="h-48 w-full bg-slate-100 object-contain md:h-56"
             />
           )}
           <div className="p-5">
@@ -138,7 +138,7 @@ function BlogList() {
                   src={post.imageUrl}
                   alt={post.title}
                   loading="lazy"
-                  className="h-36 w-full bg-slate-100 object-cover"
+                  className="h-36 w-full bg-slate-100 object-contain"
                 />
               )}
               <div className="p-4">
@@ -225,7 +225,7 @@ function BlogDetail({ slug }: { slug: string }) {
           src={post.imageUrl}
           alt={post.title}
           loading="lazy"
-          className="max-h-[28rem] w-full rounded-2xl bg-slate-100 object-cover"
+          className="mx-auto max-h-80 w-auto max-w-full rounded-2xl bg-slate-100 object-contain"
         />
       )}
 
