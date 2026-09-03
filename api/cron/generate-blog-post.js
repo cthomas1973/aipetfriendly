@@ -19,6 +19,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+// SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
+// que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
+export const config = { maxDuration: 60 };
+
 // Temas fijos entre los que rota la busqueda diaria (1 por dia, sin repetir
 // el mismo tema 2 dias seguidos gracias al modulo por dia-del-anio). Con 1
 // busqueda/dia esto usa como mucho ~31 llamadas/mes a SerpApi, muy por debajo
