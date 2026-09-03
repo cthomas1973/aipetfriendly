@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useAppState } from '../context/AppStateContext';
 
@@ -57,6 +57,10 @@ interface AdBannerProps {
 export function AdBanner({ adSenseSlotId, forcePublic = false }: AdBannerProps) {
   const { user, subscription } = useAppState();
   const insRef = useRef<HTMLModElement>(null);
+  // Google marca el <ins> con data-ad-status="unfilled" cuando no hay anuncio
+  // para servir (comun mientras la cuenta esta en revision/sin aprobar). Sin
+  // esto, el bloque se queda reservando el minHeight vacio para siempre.
+  const [adUnfilled, setAdUnfilled] = useState(false);
 
   const isNative = Capacitor.isNativePlatform();
   const shouldShowAds = !subscription.isPremiumUser
@@ -83,12 +87,23 @@ export function AdBanner({ adSenseSlotId, forcePublic = false }: AdBannerProps) 
         console.warn(error);
       });
 
+    const el = insRef.current;
+    const observer = el
+      ? new MutationObserver(() => {
+          if (el.getAttribute('data-ad-status') === 'unfilled') {
+            setAdUnfilled(true);
+          }
+        })
+      : null;
+    observer?.observe(el as HTMLModElement, { attributes: true, attributeFilter: ['data-ad-status'] });
+
     return () => {
       cancelled = true;
+      observer?.disconnect();
     };
   }, [isNative, shouldShowAds]);
 
-  if (isNative || !shouldShowAds || !ADSENSE_CLIENT_ID) {
+  if (isNative || !shouldShowAds || !ADSENSE_CLIENT_ID || adUnfilled) {
     return null;
   }
 
