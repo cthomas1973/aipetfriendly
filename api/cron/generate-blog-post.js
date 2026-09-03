@@ -222,7 +222,8 @@ async function generateArticleFromNews(topic, newsItems) {
 async function generateArticleImage(title) {
   const apiKey = getEnvOrThrow('AI_API_KEY');
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-  const imageModel = process.env.AI_IMAGE_MODEL || 'dall-e-3';
+  const imageModel = (process.env.AI_IMAGE_MODEL || 'dall-e-3').trim();
+  console.log('generateArticleImage: baseUrl =', baseUrl, '| imageModel =', JSON.stringify(imageModel));
 
   const prompt = [
     'Fotografia editorial calida y realista para un blog de cuidado de mascotas.',
@@ -232,7 +233,7 @@ async function generateArticleImage(title) {
 
   // gpt-image-1 no acepta "response_format" (siempre devuelve b64_json por
   // defecto); dall-e-3/dall-e-2 si lo requieren para pedir base64 en vez de URL.
-  const supportsResponseFormat = !imageModel.startsWith('gpt-image');
+  const supportsResponseFormat = !imageModel.toLowerCase().includes('gpt-image');
   const body = {
     model: imageModel,
     prompt,
@@ -252,7 +253,7 @@ async function generateArticleImage(title) {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
-    throw new Error(`Fallo la generacion de imagen (status ${response.status}): ${detail.slice(0, 300)}`);
+    throw new Error(`Fallo la generacion de imagen (status ${response.status}, body enviado: ${JSON.stringify(body)}): ${detail.slice(0, 300)}`);
   }
 
   const data = await response.json();
