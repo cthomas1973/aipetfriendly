@@ -4,7 +4,7 @@ import type { Pet } from '../types';
 // foto grande, banner rojo, nombre destacado, datos de extravio y señas
 // particulares en dos columnas, y el QR de contacto en la esquina inferior derecha.
 
-async function imageToDataUrl(url: string): Promise<string | null> {
+export async function imageToDataUrl(url: string): Promise<string | null> {
   try {
     const response = await fetch(url);
     const blob = await response.blob();
@@ -74,7 +74,7 @@ const MESES_ES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
 
-function formatLostDateEs(isoDate?: string): string | undefined {
+export function formatLostDateEs(isoDate?: string): string | undefined {
   if (!isoDate) return undefined;
   const match = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return isoDate;
@@ -83,7 +83,7 @@ function formatLostDateEs(isoDate?: string): string | undefined {
   return `${Number(day)} de ${monthLabel} de ${year}`;
 }
 
-const SPECIES_LABEL: Record<Pet['species'], string> = {
+export const SPECIES_LABEL: Record<Pet['species'], string> = {
   dog: 'Perro',
   cat: 'Gato',
   other: 'Otra especie',

@@ -388,7 +388,7 @@ export function PetsSection() {
     sendMedicationLogPdfByEmail,
   } = usePetReports();
   const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask } = usePreventive();
-  const { getMessages, markMessageRead, getTagRequest, generatePosterPdf, getLinkedTagCode, linkTagCode, unlinkTagCode } = usePetIdentification();
+  const { getMessages, markMessageRead, getTagRequest, generatePosterPdf, generatePosterImage, getLinkedTagCode, linkTagCode, unlinkTagCode } = usePetIdentification();
 
   const [view, setView]   = useState<View>('list');
   const [step, setStep]   = useState(1);
@@ -408,6 +408,7 @@ export function PetsSection() {
   const [tagRequest, setTagRequest] = useState<PetTagRequest | null>(null);
   const [idLoading, setIdLoading] = useState(false);
   const [posterBusy, setPosterBusy] = useState(false);
+  const [posterShareBusy, setPosterShareBusy] = useState(false);
   const [linkedTagCode, setLinkedTagCode] = useState<string | null>(null);
   const [tagCodeInput, setTagCodeInput] = useState('');
   const [tagLinkBusy, setTagLinkBusy] = useState(false);
@@ -931,6 +932,49 @@ export function PetsSection() {
       setErr(ex instanceof Error ? ex.message : 'No se pudo generar el cartel.');
     } finally {
       setPosterBusy(false);
+    }
+  };
+
+  const doSharePosterImage = async () => {
+    if (!pet) return;
+    setPosterShareBusy(true);
+    try {
+      const f = await generatePosterImage(pet, '/logo-aipetfriendly.png', {
+        lostDate: posterLostDate || undefined,
+        lostPlace: posterLostPlace || undefined,
+        contactPhone: posterContactPhone.trim() || undefined,
+        distinguishingMarks: posterDistinguishingMarks.trim() || undefined,
+        extraMessage: posterExtraMessage.trim() || undefined,
+      });
+      const file = new File([f.blob], f.fileName, { type: 'image/png' });
+      const shareData = {
+        files: [file],
+        title: `Ayudame a encontrar a ${pet.name}`,
+        text: `${pet.name} se perdio. Si lo viste o sabes algo, avisame por favor.`,
+      };
+      // En celulares con soporte de Web Share (nivel 2, con archivos) esto abre
+      // el selector nativo: estado de WhatsApp, grupos, Instagram, etc. Si el
+      // navegador no lo soporta (ej. desktop), se descarga la imagen para que
+      // el usuario la comparta manualmente.
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.(shareData)) {
+        await navigator.share(shareData);
+        setErr(null);
+        setPosterModal(false);
+      } else {
+        const url = URL.createObjectURL(f.blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = f.fileName; a.click();
+        URL.revokeObjectURL(url);
+        setErr(null);
+        setMsg('Imagen descargada. Ya la podes compartir por WhatsApp, redes o donde prefieras.');
+        setPosterModal(false);
+      }
+    } catch (ex) {
+      // El usuario puede cancelar el selector nativo de compartir: no es un error real.
+      if (ex instanceof Error && ex.name === 'AbortError') return;
+      setErr(ex instanceof Error ? ex.message : 'No se pudo generar la imagen para compartir.');
+    } finally {
+      setPosterShareBusy(false);
     }
   };
 
@@ -2425,11 +2469,15 @@ export function PetsSection() {
             <div className="mt-5 flex gap-3">
               <button type="button" onClick={() => setPosterModal(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
-              <button type="button" onClick={doGeneratePoster} disabled={posterBusy}
+              <button type="button" onClick={doGeneratePoster} disabled={posterBusy || posterShareBusy}
                 className="w-full rounded-full bg-amber-500 py-3 font-bold text-white disabled:opacity-60">
                 {posterBusy ? 'Generando…' : 'Generar PDF'}
               </button>
             </div>
+            <button type="button" onClick={doSharePosterImage} disabled={posterBusy || posterShareBusy}
+              className="mt-3 w-full rounded-full bg-emerald-600 py-3 font-bold text-white disabled:opacity-60">
+              {posterShareBusy ? 'Generando imagen…' : 'Compartir imagen (WhatsApp, redes...)'}
+            </button>
           </div>
         </div>
       )}

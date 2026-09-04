@@ -10,6 +10,7 @@ import {
   unlinkPetTagCode,
 } from '../lib/supabase';
 import { buildPetPosterPdf } from '../lib/petPosterPdf';
+import { buildPetPosterImage } from '../lib/petPosterImage';
 import type { Pet, PetSightingSource } from '../types';
 
 export function buildPetPublicUrl(pet: Pet, source: PetSightingSource): string {
@@ -79,6 +80,32 @@ export function usePetIdentification() {
     [subscription.isPremiumUser],
   );
 
+  const generatePosterImage = useCallback(
+    async (
+      pet: Pet,
+      logoUrl?: string,
+      posterInfo?: { lostDate?: string; lostPlace?: string; contactPhone?: string; distinguishingMarks?: string; extraMessage?: string },
+    ) => {
+      if (!subscription.isPremiumUser) {
+        throw new Error('Generar la imagen del cartel es exclusivo para Premium.');
+      }
+      if (!pet.publicCode) {
+        throw new Error('Esta mascota todavia no tiene codigo de identificacion.');
+      }
+      return buildPetPosterImage({
+        pet,
+        publicUrl: buildPetPublicUrl(pet, 'cartel'),
+        logoUrl,
+        lostDate: posterInfo?.lostDate,
+        lostPlace: posterInfo?.lostPlace,
+        contactPhone: posterInfo?.contactPhone,
+        distinguishingMarks: posterInfo?.distinguishingMarks,
+        extraMessage: posterInfo?.extraMessage,
+      });
+    },
+    [subscription.isPremiumUser],
+  );
+
   const getLinkedTagCode = useCallback(async (petId: string) => {
     return fetchLinkedPetTagCode(petId);
   }, []);
@@ -103,6 +130,7 @@ export function usePetIdentification() {
     getTagRequest,
     requestTag,
     generatePosterPdf,
+    generatePosterImage,
     getLinkedTagCode,
     linkTagCode,
     unlinkTagCode,
