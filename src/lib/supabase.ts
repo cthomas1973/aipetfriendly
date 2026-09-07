@@ -21,6 +21,11 @@ import type {
   PetSightingMessage,
   PetTagRequest,
   PetTagRequestStatus,
+  PetFriendlyPlace,
+  PetFriendlyPlaceCategory,
+  PetFriendlyPlaceClaimLanding,
+  PetFriendlyPlaceIncubatorItem,
+  PetFriendlyPlaceReview,
   ClinicalTimelineEntry,
   PreventiveTask,
   ChatMessage,
@@ -874,6 +879,10 @@ export async function suggestVeterinary(input: {
   latitude?: number;
   longitude?: number;
   claimSourceRefUserId?: string;
+  contactEmail?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
 }): Promise<VeterinaryProfile | null> {
   if (!isSupabaseConfigured) {
     return null;
@@ -887,6 +896,10 @@ export async function suggestVeterinary(input: {
     p_latitude: input.latitude ?? null,
     p_longitude: input.longitude ?? null,
     p_claim_source_ref_user_id: input.claimSourceRefUserId ?? null,
+    p_contact_email: input.contactEmail ?? null,
+    p_website_url: input.websiteUrl ?? null,
+    p_instagram_url: input.instagramUrl ?? null,
+    p_facebook_url: input.facebookUrl ?? null,
   });
 
   if (error || !data) {
@@ -896,6 +909,64 @@ export async function suggestVeterinary(input: {
 
   const row = Array.isArray(data) ? data[0] : data;
   return row ? mapVeterinaryProfileRow(row) : null;
+}
+
+export async function claimVeterinaryAdminNotification(veterinaryId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+  const { data, error } = await supabase.rpc('claim_veterinary_admin_notification', {
+    p_veterinary_id: veterinaryId,
+  });
+  if (error) {
+    console.error('Error claiming veterinary admin notification:', error);
+    return false;
+  }
+  return Boolean(data);
+}
+
+export async function claimPetFriendlyPlaceAdminNotification(placeId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+  const { data, error } = await supabase.rpc('claim_pet_friendly_place_admin_notification', {
+    p_place_id: placeId,
+  });
+  if (error) {
+    console.error('Error claiming pet friendly place admin notification:', error);
+    return false;
+  }
+  return Boolean(data);
+}
+
+export async function notifyAdminThreshold(args: {
+  entityType: 'veterinary' | 'place';
+  name: string;
+  zoneLabel?: string;
+  address?: string;
+  upvotesCount?: number;
+  validationsGoal?: number;
+  claimUrl?: string;
+}): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+  const { data, error } = await supabase.functions.invoke('notify-admin-threshold', {
+    body: {
+      entityType: args.entityType,
+      name: args.name,
+      zoneLabel: args.zoneLabel ?? null,
+      address: args.address ?? null,
+      upvotesCount: args.upvotesCount ?? null,
+      validationsGoal: args.validationsGoal ?? null,
+      claimUrl: args.claimUrl ?? null,
+    },
+  });
+  if (error) {
+    console.error('Error notifying admin threshold:', error);
+    return false;
+  }
+  return Boolean((data as { sent?: boolean } | null)?.sent);
 }
 
 export async function fetchVeterinaryIncubatorByZone(args: {
@@ -1290,6 +1361,438 @@ export async function claimVeterinaryProfile(args: {
   return row ? mapVeterinaryProfileRow(row) : null;
 }
 
+function mapPetFriendlyPlaceRow(row: any): PetFriendlyPlace {
+  return {
+    id: row.id,
+    category: (row.category || 'otro') as PetFriendlyPlaceCategory,
+    name: row.name,
+    zoneLabel: row.zone_label,
+    address: row.address,
+    phoneWhatsapp: row.phone_whatsapp || undefined,
+    phoneSecondary: row.phone_secondary || undefined,
+    contactEmail: row.contact_email || undefined,
+    latitude: typeof row.latitude === 'number' ? row.latitude : undefined,
+    longitude: typeof row.longitude === 'number' ? row.longitude : undefined,
+    status: row.status,
+    suggestedByUserId: row.suggested_by_user_id || undefined,
+    upvotesCount: Number(row.upvotes_count || 0),
+    validationsGoal: Number(row.validations_goal || 5),
+    claimedByOwnerId: row.claimed_by_owner_id || undefined,
+    claimToken: row.claim_token || undefined,
+    claimSourceRefUserId: row.claim_source_ref_user_id || undefined,
+    isVerified: Boolean(row.is_verified),
+    consentGranted: Boolean(row.consent_granted),
+    basicDataConfirmed: Boolean(row.basic_data_confirmed),
+    subscriptionPlan: row.subscription_plan === 'premium' ? 'premium' : 'free',
+    subscriptionBillingMode:
+      row.subscription_billing_mode === 'monthly_auto' || row.subscription_billing_mode === 'annual'
+        ? row.subscription_billing_mode
+        : undefined,
+    petPolicy: row.pet_policy || undefined,
+    businessDays: row.business_days || undefined,
+    businessHours: row.business_hours || undefined,
+    websiteUrl: row.website_url || undefined,
+    instagramUrl: row.instagram_url || undefined,
+    facebookUrl: row.facebook_url || undefined,
+    imageUrl: row.image_url || undefined,
+    highlightPriority: Number(row.highlight_priority || 0),
+    ratingAvg: Number(row.rating_avg || 0),
+    ratingCount: Number(row.rating_count || 0),
+    activatedAt: row.activated_at || undefined,
+    lastValidationAt: row.last_validation_at || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapPetFriendlyPlaceClaimLandingRow(row: any): PetFriendlyPlaceClaimLanding {
+  return {
+    id: row.id,
+    name: row.name,
+    category: (row.category || 'otro') as PetFriendlyPlaceCategory,
+    zoneLabel: row.zone_label,
+    address: row.address,
+    phoneWhatsapp: row.phone_whatsapp || undefined,
+    phoneSecondary: row.phone_secondary || undefined,
+    status: row.status,
+    upvotesCount: Number(row.upvotes_count || 0),
+    validationsGoal: Number(row.validations_goal || 5),
+    isClaimed: Boolean(row.is_claimed),
+    suggestedClients: Number(row.suggested_clients || row.upvotes_count || 0),
+    contactEmail: row.contact_email || undefined,
+    consentGranted: Boolean(row.consent_granted),
+    basicDataConfirmed: Boolean(row.basic_data_confirmed),
+    subscriptionPlan: row.subscription_plan === 'premium' ? 'premium' : 'free',
+    subscriptionBillingMode:
+      row.subscription_billing_mode === 'monthly_auto' || row.subscription_billing_mode === 'annual'
+        ? row.subscription_billing_mode
+        : undefined,
+    petPolicy: row.pet_policy || undefined,
+    businessDays: row.business_days || undefined,
+    businessHours: row.business_hours || undefined,
+    websiteUrl: row.website_url || undefined,
+    instagramUrl: row.instagram_url || undefined,
+    facebookUrl: row.facebook_url || undefined,
+    imageUrl: row.image_url || undefined,
+    placePremiumMonthlyArs: Number(row.place_premium_monthly_ars || 0),
+    placePremiumAnnualArs: Number(row.place_premium_annual_ars || 0),
+  };
+}
+
+function mapPetFriendlyPlaceReviewRow(row: any): PetFriendlyPlaceReview {
+  return {
+    id: row.id,
+    placeId: row.place_id,
+    userId: row.user_id,
+    userLabel: row.author_label || undefined,
+    rating: Number(row.rating || 0),
+    comment: row.comment || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function suggestPetFriendlyPlace(input: {
+  name: string;
+  category: PetFriendlyPlaceCategory;
+  zoneLabel: string;
+  address: string;
+  phoneWhatsapp?: string;
+  latitude?: number;
+  longitude?: number;
+  claimSourceRefUserId?: string;
+  contactEmail?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+}): Promise<PetFriendlyPlace | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('create_pet_friendly_place_suggestion', {
+    p_name: input.name,
+    p_category: input.category,
+    p_zone_label: input.zoneLabel,
+    p_address: input.address,
+    p_phone_whatsapp: input.phoneWhatsapp ?? null,
+    p_latitude: input.latitude ?? null,
+    p_longitude: input.longitude ?? null,
+    p_claim_source_ref_user_id: input.claimSourceRefUserId ?? null,
+    p_contact_email: input.contactEmail ?? null,
+    p_website_url: input.websiteUrl ?? null,
+    p_instagram_url: input.instagramUrl ?? null,
+    p_facebook_url: input.facebookUrl ?? null,
+  });
+
+  if (error || !data) {
+    console.error('Error creating pet friendly place suggestion:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapPetFriendlyPlaceRow(row) : null;
+}
+
+export async function fetchPetFriendlyPlaceIncubatorByZone(args: {
+  zoneLabel: string;
+  userId?: string;
+  category?: PetFriendlyPlaceCategory;
+  limit?: number;
+}): Promise<PetFriendlyPlaceIncubatorItem[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.min(args.limit ?? 25, 50));
+  const cleanedZone = args.zoneLabel.trim();
+  const zoneFilter = cleanedZone.length > 0 ? `%${cleanedZone}%` : '%';
+
+  let query = supabase
+    .from('pet_friendly_places')
+    .select('*')
+    .in('status', ['IN_INCUBATOR', 'CLAIMABLE_PROFILE'])
+    .ilike('zone_label', zoneFilter);
+
+  if (args.category) {
+    query = query.eq('category', args.category);
+  }
+
+  const { data, error } = await query
+    .order('upvotes_count', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(safeLimit);
+
+  if (error) {
+    console.error('Error fetching pet friendly place incubator:', error);
+    return [];
+  }
+
+  const places: PetFriendlyPlace[] = (data || []).map((row: any) => mapPetFriendlyPlaceRow(row));
+  if (!args.userId || places.length === 0) {
+    return places.map((place) => ({ ...place, userHasValidated: false }));
+  }
+
+  const placeIds = places.map((place) => place.id);
+  const { data: votes, error: votesError } = await supabase
+    .from('pet_friendly_place_validations')
+    .select('place_id')
+    .eq('user_id', args.userId)
+    .in('place_id', placeIds);
+
+  if (votesError) {
+    console.error('Error fetching user place validations:', votesError);
+    return places.map((place) => ({ ...place, userHasValidated: false }));
+  }
+
+  const validatedIds = new Set((votes || []).map((row: any) => row.place_id as string));
+  return places.map((place) => ({ ...place, userHasValidated: validatedIds.has(place.id) }));
+}
+
+export async function fetchActivePetFriendlyPlacesByZone(args: {
+  zoneLabel: string;
+  category?: PetFriendlyPlaceCategory;
+  limit?: number;
+}): Promise<PetFriendlyPlace[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.min(args.limit ?? 50, 100));
+  const cleanedZone = args.zoneLabel.trim();
+  const zoneFilter = cleanedZone.length > 0 ? `%${cleanedZone}%` : '%';
+
+  let query = supabase
+    .from('pet_friendly_places')
+    .select('*')
+    .in('status', ['ACTIVE_FREE', 'ACTIVE_PREMIUM'])
+    .ilike('zone_label', zoneFilter);
+
+  if (args.category) {
+    query = query.eq('category', args.category);
+  }
+
+  const { data, error } = await query
+    .order('highlight_priority', { ascending: false })
+    .order('rating_avg', { ascending: false })
+    .limit(safeLimit);
+
+  if (error) {
+    console.error('Error fetching active pet friendly places:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => mapPetFriendlyPlaceRow(row));
+}
+
+export async function validatePetFriendlyPlace(placeId: string): Promise<PetFriendlyPlace | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('validate_pet_friendly_place', { p_place_id: placeId });
+
+  if (error || !data) {
+    console.error('Error validating pet friendly place:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapPetFriendlyPlaceRow(row) : null;
+}
+
+export async function getPetFriendlyPlaceClaimLanding(claimToken: string): Promise<PetFriendlyPlaceClaimLanding | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('get_pet_friendly_place_claim_landing', {
+    p_claim_token: claimToken,
+  });
+
+  if (error || !data) {
+    console.error('Error fetching pet friendly place claim landing:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapPetFriendlyPlaceClaimLandingRow(row) : null;
+}
+
+export async function submitPetFriendlyPlaceClaimDecision(args: {
+  claimToken: string;
+  action: 'correct' | 'reject' | 'subscribe';
+  name?: string;
+  category?: PetFriendlyPlaceCategory;
+  zoneLabel?: string;
+  address?: string;
+  phoneWhatsapp?: string;
+  phoneSecondary?: string;
+  contactEmail?: string;
+  consentGranted?: boolean;
+  basicDataConfirmed?: boolean;
+  petPolicy?: string;
+  businessDays?: string;
+  businessHours?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  subscriptionBillingMode?: 'monthly_auto' | 'annual';
+  deniedReason?: string;
+}): Promise<PetFriendlyPlace | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('submit_pet_friendly_place_claim_decision', {
+    p_claim_token: args.claimToken,
+    p_action: args.action,
+    p_name: args.name ?? null,
+    p_category: args.category ?? null,
+    p_zone_label: args.zoneLabel ?? null,
+    p_address: args.address ?? null,
+    p_phone_whatsapp: args.phoneWhatsapp ?? null,
+    p_phone_secondary: args.phoneSecondary ?? null,
+    p_contact_email: args.contactEmail ?? null,
+    p_consent_granted: args.consentGranted ?? null,
+    p_basic_data_confirmed: args.basicDataConfirmed ?? null,
+    p_pet_policy: args.petPolicy ?? null,
+    p_business_days: args.businessDays ?? null,
+    p_business_hours: args.businessHours ?? null,
+    p_website_url: args.websiteUrl ?? null,
+    p_instagram_url: args.instagramUrl ?? null,
+    p_facebook_url: args.facebookUrl ?? null,
+    p_subscription_billing_mode: args.subscriptionBillingMode ?? null,
+    p_denied_reason: args.deniedReason ?? null,
+  });
+
+  if (error || !data) {
+    console.error('Error submitting pet friendly place claim decision:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapPetFriendlyPlaceRow(row) : null;
+}
+
+export async function uploadPetFriendlyPlaceImage(args: {
+  claimToken: string;
+  imageDataUrl: string;
+}): Promise<string | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.functions.invoke('upload-place-image', {
+    body: { claimToken: args.claimToken, imageDataUrl: args.imageDataUrl },
+  });
+
+  if (error) {
+    console.error('Error uploading pet friendly place image:', error);
+    return null;
+  }
+
+  const payload = (data || {}) as { imageUrl?: string };
+  return payload.imageUrl || null;
+}
+
+export async function fetchPetFriendlyPlaceReviews(placeId: string): Promise<PetFriendlyPlaceReview[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('pet_friendly_place_reviews')
+    .select('id,place_id,user_id,rating,comment,author_label,created_at,updated_at')
+    .eq('place_id', placeId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching pet friendly place reviews:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => mapPetFriendlyPlaceReviewRow(row));
+}
+
+export async function upsertPetFriendlyPlaceReview(args: {
+  placeId: string;
+  rating: number;
+  comment?: string;
+}): Promise<PetFriendlyPlaceReview | null> {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc('upsert_pet_friendly_place_review', {
+    p_place_id: args.placeId,
+    p_rating: args.rating,
+    p_comment: args.comment ?? null,
+  });
+
+  if (error || !data) {
+    console.error('Error saving pet friendly place review:', error);
+    return null;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapPetFriendlyPlaceReviewRow(row) : null;
+}
+
+export async function deletePetFriendlyPlaceReview(placeId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+
+  const { error } = await supabase.rpc('delete_pet_friendly_place_review', { p_place_id: placeId });
+
+  if (error) {
+    console.error('Error deleting pet friendly place review:', error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function fetchAdminPetFriendlyPlaces(): Promise<PetFriendlyPlace[]> {
+  const { data, error } = await supabase.rpc('admin_list_pet_friendly_places');
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row: any) => mapPetFriendlyPlaceRow(row));
+}
+
+export async function adminUpdatePetFriendlyPlace(args: {
+  id: string;
+  status?: string;
+  highlightPriority?: number;
+  imageUrl?: string;
+}): Promise<PetFriendlyPlace | null> {
+  const { data, error } = await supabase.rpc('admin_update_pet_friendly_place', {
+    p_id: args.id,
+    p_status: args.status ?? null,
+    p_highlight_priority: args.highlightPriority ?? null,
+    p_image_url: args.imageUrl ?? null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? mapPetFriendlyPlaceRow(row) : null;
+}
+
+export async function adminDeletePetFriendlyPlaceReview(reviewId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_pet_friendly_place_review', { p_review_id: reviewId });
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from('chat_messages')
@@ -1506,6 +2009,8 @@ const DEFAULT_BILLING_PRICING: BillingPricingSettings = {
   premiumMonthlyManualUsd: 9.9,
   veterinaryPremiumMonthlyArs: 24900,
   veterinaryPremiumAnnualArs: 239000,
+  placePremiumMonthlyArs: 9900,
+  placePremiumAnnualArs: 95000,
 };
 
 export async function fetchBillingPricingSettings(): Promise<BillingPricingSettings> {
@@ -1533,6 +2038,12 @@ export async function fetchBillingPricingSettings(): Promise<BillingPricingSetti
     ),
     veterinaryPremiumAnnualArs: Number(
       row.veterinary_premium_annual_ars ?? DEFAULT_BILLING_PRICING.veterinaryPremiumAnnualArs,
+    ),
+    placePremiumMonthlyArs: Number(
+      row.place_premium_monthly_ars ?? DEFAULT_BILLING_PRICING.placePremiumMonthlyArs,
+    ),
+    placePremiumAnnualArs: Number(
+      row.place_premium_annual_ars ?? DEFAULT_BILLING_PRICING.placePremiumAnnualArs,
     ),
   };
 }
@@ -1562,6 +2073,12 @@ export async function fetchAdminBillingPricingSettings(): Promise<BillingPricing
     veterinaryPremiumAnnualArs: Number(
       row.veterinary_premium_annual_ars ?? DEFAULT_BILLING_PRICING.veterinaryPremiumAnnualArs,
     ),
+    placePremiumMonthlyArs: Number(
+      row.place_premium_monthly_ars ?? DEFAULT_BILLING_PRICING.placePremiumMonthlyArs,
+    ),
+    placePremiumAnnualArs: Number(
+      row.place_premium_annual_ars ?? DEFAULT_BILLING_PRICING.placePremiumAnnualArs,
+    ),
   };
 }
 
@@ -1575,6 +2092,8 @@ export async function updateAdminBillingPricingSettings(settings: BillingPricing
     p_premium_monthly_manual_usd: settings.premiumMonthlyManualUsd,
     p_veterinary_premium_monthly_ars: settings.veterinaryPremiumMonthlyArs,
     p_veterinary_premium_annual_ars: settings.veterinaryPremiumAnnualArs,
+    p_place_premium_monthly_ars: settings.placePremiumMonthlyArs,
+    p_place_premium_annual_ars: settings.placePremiumAnnualArs,
   });
 
   if (error) {

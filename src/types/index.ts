@@ -34,7 +34,7 @@ export type ClinicalEntryCategory =
 export type SubscriptionPlan = 'free' | 'premium';
 export type UserAccessLevel = 'guest' | 'free' | 'premium';
 
-export type AppTab = 'pets' | 'clinical' | 'agenda' | 'map' | 'offers' | 'subscription' | 'admin';
+export type AppTab = 'pets' | 'clinical' | 'agenda' | 'map' | 'places' | 'offers' | 'subscription' | 'admin';
 
 export type Species = 'dog' | 'cat' | 'other';
 
@@ -47,6 +47,15 @@ export type PreventiveCategory =
   | 'other';
 
 export type VeterinaryStatus = 'IN_INCUBATOR' | 'CLAIMABLE_PROFILE' | 'ACTIVE_FREE' | 'ACTIVE_PREMIUM' | 'REJECTED';
+
+export type PetFriendlyPlaceCategory =
+  | 'restaurante'
+  | 'hotel_alojamiento'
+  | 'playa'
+  | 'tienda'
+  | 'plaza_parque'
+  | 'bar_cafe'
+  | 'otro';
 
 export interface Pet {
   id: string;
@@ -364,6 +373,91 @@ export interface BillingPricingSettings {
   premiumMonthlyManualUsd: number;
   veterinaryPremiumMonthlyArs: number;
   veterinaryPremiumAnnualArs: number;
+  placePremiumMonthlyArs: number;
+  placePremiumAnnualArs: number;
+}
+
+export interface PetFriendlyPlace {
+  id: string;
+  category: PetFriendlyPlaceCategory;
+  name: string;
+  zoneLabel: string;
+  address: string;
+  phoneWhatsapp?: string;
+  phoneSecondary?: string;
+  contactEmail?: string;
+  latitude?: number;
+  longitude?: number;
+  status: VeterinaryStatus;
+  suggestedByUserId?: string;
+  upvotesCount: number;
+  validationsGoal: number;
+  claimedByOwnerId?: string;
+  claimToken?: string;
+  claimSourceRefUserId?: string;
+  isVerified: boolean;
+  consentGranted: boolean;
+  basicDataConfirmed: boolean;
+  subscriptionPlan: 'free' | 'premium';
+  subscriptionBillingMode?: 'monthly_auto' | 'annual';
+  petPolicy?: string;
+  businessDays?: string;
+  businessHours?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  imageUrl?: string;
+  highlightPriority: number;
+  ratingAvg: number;
+  ratingCount: number;
+  activatedAt?: string;
+  lastValidationAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PetFriendlyPlaceIncubatorItem extends PetFriendlyPlace {
+  userHasValidated: boolean;
+}
+
+export interface PetFriendlyPlaceClaimLanding {
+  id: string;
+  name: string;
+  category: PetFriendlyPlaceCategory;
+  zoneLabel: string;
+  address: string;
+  phoneWhatsapp?: string;
+  phoneSecondary?: string;
+  status: VeterinaryStatus;
+  upvotesCount: number;
+  validationsGoal: number;
+  isClaimed: boolean;
+  suggestedClients: number;
+  contactEmail?: string;
+  consentGranted: boolean;
+  basicDataConfirmed: boolean;
+  subscriptionPlan: 'free' | 'premium';
+  subscriptionBillingMode?: 'monthly_auto' | 'annual';
+  petPolicy?: string;
+  businessDays?: string;
+  businessHours?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  imageUrl?: string;
+  placePremiumMonthlyArs: number;
+  placePremiumAnnualArs: number;
+}
+
+export interface PetFriendlyPlaceReview {
+  id: string;
+  placeId: string;
+  userId: string;
+  userLabel?: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DiscountCode {

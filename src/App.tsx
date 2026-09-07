@@ -7,6 +7,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Newspaper,
+  Palmtree,
   PawPrint,
   Shield,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { ChatSection } from './components/ChatSection';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
+import { PetFriendlyPlacesSection } from './components/PetFriendlyPlacesSection';
 import { PetsSection } from './components/PetsSection';
 import { PetPublicProfileSection } from './components/PetPublicProfileSection';
 import { PublicLegalPage, isPublicLegalRoute } from './components/PublicLegalPages';
@@ -103,6 +105,7 @@ function shouldAutoStartAsGuest(): boolean {
   const isResetPasswordRoute = path === '/reset-password' || isRecoveryLink;
   const urlParams = new URLSearchParams(window.location.search);
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
+  const hasPublicPlaceClaimRoute = Boolean(urlParams.get('place_claim'));
 
   return (
     !isGuidesRoute
@@ -113,6 +116,7 @@ function shouldAutoStartAsGuest(): boolean {
     && !isPetPublicRoute
     && !isResetPasswordRoute
     && !hasPublicVetClaimRoute
+    && !hasPublicPlaceClaimRoute
   );
 }
 
@@ -242,6 +246,7 @@ function BottomNav({
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
     { id: 'map', label: 'Mapa Vet', icon: MapPinned },
+    { id: 'places', label: 'Pet Friendly', icon: Palmtree },
   ];
   // El boton "Más" se marca como activo cuando la pestaña actual vive dentro
   // del bottom-sheet (Tienda, Mi Cuenta o Admin), para que el usuario no
@@ -254,7 +259,7 @@ function BottomNav({
         className="fixed left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden"
         style={{ bottom: hasMobileBanner ? '52px' : '0px' }}
       >
-        <ul className="grid grid-cols-5 gap-1">
+        <ul className="grid grid-cols-6 gap-1">
           {primaryTabs.map((tab) => (
             <li key={tab.id} className="text-center">
               <button
@@ -324,6 +329,7 @@ function DesktopTabNav({
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
     { id: 'map', label: 'Mapa Vet', icon: MapPinned },
+    { id: 'places', label: 'Pet Friendly', icon: Palmtree },
     { id: 'offers', label: 'Tienda', icon: Gift },
     { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
@@ -334,7 +340,7 @@ function DesktopTabNav({
 
   return (
     <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className={`grid ${isAdmin ? 'grid-cols-8' : 'grid-cols-7'} gap-2`}>
+      <ul className={`grid ${isAdmin ? 'grid-cols-9' : 'grid-cols-8'} gap-2`}>
         {tabs.map((tab) => (
           <li key={tab.id}>
             <button
@@ -386,6 +392,7 @@ function AppContent() {
   const normalizedPath = currentPath.length > 1 ? currentPath.replace(/\/+$/, '') : currentPath;
   const urlParams = new URLSearchParams(window.location.search);
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
+  const hasPublicPlaceClaimRoute = Boolean(urlParams.get('place_claim'));
   const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
   const guideSlug = isGuidesRoute ? normalizedPath.replace(/^\/guias\/?/, '') || undefined : undefined;
   const isBlogRoute = normalizedPath === '/blog' || normalizedPath.startsWith('/blog/');
@@ -401,7 +408,7 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isPetPublicRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app se muestra tambien en /guias, /blog y las paginas
   // legales (con o sin login) para que se pueda navegar directo a otras secciones
@@ -663,6 +670,10 @@ function AppContent() {
       return <NearbyVetsMapSection />;
     }
 
+    if (!user && hasPublicPlaceClaimRoute) {
+      return <PetFriendlyPlacesSection />;
+    }
+
     if (!user) {
       return <AuthScreens initialMode={authInitialMode} />;
     }
@@ -681,6 +692,10 @@ function AppContent() {
 
     if (activeTab === 'map') {
       return <NearbyVetsMapSection />;
+    }
+
+    if (activeTab === 'places') {
+      return <PetFriendlyPlacesSection />;
     }
 
     if (activeTab === 'offers') {

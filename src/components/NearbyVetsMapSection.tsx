@@ -9,12 +9,14 @@ import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
 import { useAppState } from '../context/AppStateContext';
 import {
+  claimVeterinaryAdminNotification,
   fetchActiveVeterinaryProfilesByZone,
   fetchVeterinaryFavorite,
   fetchVeterinaryIncubatorByZone,
   fetchVeterinaryProfileById,
   getVeterinaryClaimLanding,
   clearVeterinaryFavorite,
+  notifyAdminThreshold,
   setOsmVeterinaryFavorite,
   setPlatformVeterinaryFavorite,
   submitVeterinaryClaimDecision,
@@ -443,6 +445,9 @@ export function NearbyVetsMapSection() {
   const [suggestAddress, setSuggestAddress] = useState('');
   const [suggestZone, setSuggestZone] = useState('');
   const [suggestPhone, setSuggestPhone] = useState('');
+  const [suggestEmail, setSuggestEmail] = useState('');
+  const [suggestWebsite, setSuggestWebsite] = useState('');
+  const [suggestSocial, setSuggestSocial] = useState('');
   const [lastSuggestedVet, setLastSuggestedVet] = useState<VeterinaryIncubatorItem | null>(null);
 
   const [claimToken, setClaimToken] = useState<string | null>(null);
@@ -796,6 +801,9 @@ export function NearbyVetsMapSection() {
         phoneWhatsapp: suggestPhone.trim() || undefined,
         latitude: location?.lat,
         longitude: location?.lng,
+        contactEmail: suggestEmail.trim() || undefined,
+        websiteUrl: suggestWebsite.trim() || undefined,
+        instagramUrl: suggestSocial.trim() || undefined,
       });
 
       if (!created) {
@@ -810,6 +818,9 @@ export function NearbyVetsMapSection() {
       setSuggestAddress('');
       setSuggestZone(cleanedZone);
       setSuggestPhone('');
+      setSuggestEmail('');
+      setSuggestWebsite('');
+      setSuggestSocial('');
       applyZoneSelection(cleanedZone, true);
       await loadIncubator(cleanedZone);
     } catch {
@@ -817,7 +828,7 @@ export function NearbyVetsMapSection() {
     } finally {
       setSuggesting(false);
     }
-  }, [applyZoneSelection, incubatorZone, loadIncubator, location?.lat, location?.lng, suggestAddress, suggestName, suggestPhone, suggestZone, user]);
+  }, [applyZoneSelection, incubatorZone, loadIncubator, location?.lat, location?.lng, suggestAddress, suggestEmail, suggestName, suggestPhone, suggestSocial, suggestWebsite, suggestZone, user]);
 
   const handleValidateVet = useCallback(async (vetId: string) => {
     if (!user || user.isGuest) {
@@ -843,6 +854,19 @@ export function NearbyVetsMapSection() {
         setSectionMessage(`${updated.name} supero los 5 respaldos. Se envio automaticamente la solicitud de consentimiento por WhatsApp.`);
       } else {
         setSectionMessage(`${updated.name} alcanzo el umbral y ya esta lista para activar su perfil.`);
+      }
+
+      const shouldNotifyAdmin = await claimVeterinaryAdminNotification(updated.id);
+      if (shouldNotifyAdmin) {
+        await notifyAdminThreshold({
+          entityType: 'veterinary',
+          name: updated.name,
+          zoneLabel: updated.zoneLabel,
+          address: updated.address,
+          upvotesCount: updated.upvotesCount,
+          validationsGoal: updated.validationsGoal,
+          claimUrl: updated.claimToken ? buildClaimUrl(updated.claimToken) : undefined,
+        });
       }
     } else {
       setSectionMessage('Gracias por validar la veterinaria sugerida.');
@@ -2127,6 +2151,19 @@ export function NearbyVetsMapSection() {
                 <label className="mb-1 block text-xs font-semibold text-slate-700">Telefono o WhatsApp (opcional)</label>
                 <input value={suggestPhone} onChange={(event) => setSuggestPhone(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
               </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Email de contacto (opcional)</label>
+                <input type="email" value={suggestEmail} onChange={(event) => setSuggestEmail(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Pagina web (opcional)</label>
+                <input value={suggestWebsite} onChange={(event) => setSuggestWebsite(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">Instagram/Facebook (opcional)</label>
+                <input value={suggestSocial} onChange={(event) => setSuggestSocial(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+              </div>
+              <p className="text-[11px] text-slate-400">Estos datos opcionales nos ayudan a ubicar a la veterinaria para pedirle autorizacion cuando junte los 5 respaldos.</p>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold text-slate-700">Solicitud de consentimiento automatica</p>
                 <p className="mt-1 text-[11px] text-slate-500">Cuando esta veterinaria supere los 5 respaldos comunitarios, AiPetFriendly enviara automaticamente el WhatsApp con el enlace a la landing de consentimiento.</p>

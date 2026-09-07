@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BadgePercent, Gift, Inbox, Megaphone, Newspaper, Shield, Tag, UserCog } from 'lucide-react';
+import { BadgePercent, Gift, Inbox, Megaphone, Newspaper, Palmtree, Shield, Tag, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AdminBeneficiosSection } from './AdminBeneficiosSection';
 import { AdminBlogSection } from './AdminBlogSection';
@@ -7,6 +7,7 @@ import { AdminInboxSection } from './AdminInboxSection';
 import { AdminNewsCampaignsSection } from './AdminNewsCampaignsSection';
 import { AdminChapitasSection } from './AdminChapitasSection';
 import { AdminDiscountCodesSection } from './AdminDiscountCodesSection';
+import { AdminPlacesSection } from './AdminPlacesSection';
 import {
   fetchAdminAiDashboardMetrics,
   fetchAdminAiQueryAudit,
@@ -35,7 +36,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
-  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades' | 'chapitas' | 'codigos' | 'blog'>('usuarios');
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades' | 'chapitas' | 'codigos' | 'blog' | 'lugares'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -65,6 +66,8 @@ export function AdminUsersSection() {
     premiumMonthlyManualUsd: 9.9,
     veterinaryPremiumMonthlyArs: 24900,
     veterinaryPremiumAnnualArs: 239000,
+    placePremiumMonthlyArs: 9900,
+    placePremiumAnnualArs: 95000,
   });
 
   const filtered = useMemo(() => {
@@ -133,6 +136,8 @@ export function AdminUsersSection() {
         pricing.premiumMonthlyManualUsd,
         pricing.veterinaryPremiumMonthlyArs,
         pricing.veterinaryPremiumAnnualArs,
+        pricing.placePremiumMonthlyArs,
+        pricing.placePremiumAnnualArs,
       ];
 
       if (values.some((value) => Number.isNaN(value) || value < 0)) {
@@ -223,6 +228,12 @@ export function AdminUsersSection() {
           }`}>
           <Newspaper size={15} /> Blog
         </button>
+        <button type="button" onClick={() => setAdminTab('lugares')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
+            adminTab === 'lugares' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+          }`}>
+          <Palmtree size={15} /> Lugares
+        </button>
       </div>
 
       {adminTab === 'beneficios' ? (
@@ -248,6 +259,10 @@ export function AdminUsersSection() {
       ) : adminTab === 'blog' ? (
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminBlogSection />
+        </div>
+      ) : adminTab === 'lugares' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm">
+          <AdminPlacesSection />
         </div>
       ) : (<>
         <div className="flex flex-wrap items-center gap-2">
@@ -462,6 +477,38 @@ export function AdminUsersSection() {
                     veterinaryPremiumAnnualArs: Number(e.target.value || 0),
                   }))}
                   className="mt-1 w-full rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+            <p className="text-sm font-semibold text-emerald-900">Lugares Pet Friendly Premium (listado destacado)</p>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <label className="text-sm text-emerald-900">
+                Mensual ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.placePremiumMonthlyArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    placePremiumMonthlyArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </label>
+              <label className="text-sm text-emerald-900">
+                Anual ARS
+                <input
+                  type="number"
+                  min={0}
+                  value={pricing.placePremiumAnnualArs}
+                  onChange={(e) => setPricing((current) => ({
+                    ...current,
+                    placePremiumAnnualArs: Number(e.target.value || 0),
+                  }))}
+                  className="mt-1 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 />
               </label>
             </div>

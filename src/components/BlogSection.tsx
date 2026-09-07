@@ -85,7 +85,7 @@ function BlogList() {
         <h1 className="text-2xl font-extrabold text-slate-900 md:text-3xl">Tips del día</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600 md:text-base">
           Novedades cortas y consejos prácticos sobre el cuidado de perros y gatos, escritos por
-          nuestra IA a partir de fuentes reales y actualizados todos los días.
+          nuestra IA a partir de fuentes reales y actualizadas.
         </p>
       </div>
 

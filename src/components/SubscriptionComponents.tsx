@@ -175,6 +175,8 @@ export function PaywallCard() {
     premiumMonthlyManualUsd: 9.9,
     veterinaryPremiumMonthlyArs: 24900,
     veterinaryPremiumAnnualArs: 239000,
+    placePremiumMonthlyArs: 9900,
+    placePremiumAnnualArs: 95000,
   });
   const detectedDialCode = useMemo(() => detectDefaultCountryDialCode(), []);
   const dialOptions = useMemo(() => buildCountryOptionsForPicker(detectedDialCode), [detectedDialCode]);

@@ -45,9 +45,11 @@ function buildQrTargetUrl(publicCode: string): string {
 // Los codigos de chapita pre-generados por lote usan el alias corto /t/ (en vez
 // de /mascota) porque todavia no tienen mascota asociada; ver App.tsx (getTagCodeFromPath)
 // y PetPublicProfileSection.tsx (panel de vinculacion cuando el codigo esta "huerfano").
+// El query "src=chapita" hace que, al reportar un avistamiento, el origen quede
+// registrado como chapita (y no como cartel, que es el valor por defecto).
 function buildTagCodeUrl(code: string): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.aipetfriendly.ar';
-  return `${origin}/t/${code}`;
+  return `${origin}/t/${code}?src=chapita`;
 }
 
 async function buildTagCodesZipBlob(codes: string[]): Promise<Blob> {
@@ -81,7 +83,9 @@ async function buildTagCodesPdfBlob(codes: string[]): Promise<Blob> {
   const cols = 4;
   const cellSize = (pageWidth - margin * 2) / cols;
   const qrSize = cellSize - 8;
-  const rowHeight = cellSize;
+  const codeFontSize = 18; // el doble de los 9pt originales, para que se lea mejor
+  const codeGap = 0.5; // mm entre el QR y el codigo, bien pegado
+  const rowHeight = qrSize + codeGap + 7; // deja espacio para el codigo mas grande
   const rowsPerPage = Math.floor((pageHeight - margin * 2) / rowHeight);
 
   for (let i = 0; i < codes.length; i += 1) {
@@ -94,10 +98,11 @@ async function buildTagCodesPdfBlob(codes: string[]): Promise<Blob> {
     const x = margin + col * cellSize;
     const y = margin + row * rowHeight;
 
-    const dataUrl: string = await QRCode.toDataURL(buildTagCodeUrl(codes[i]), { margin: 1, width: 300 });
+    const dataUrl: string = await QRCode.toDataURL(buildTagCodeUrl(codes[i]), { margin: 0, width: 300 });
     doc.addImage(dataUrl, 'PNG', x + (cellSize - qrSize) / 2, y, qrSize, qrSize);
-    doc.setFontSize(9);
-    doc.text(codes[i], x + cellSize / 2, y + qrSize + 5, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(codeFontSize);
+    doc.text(codes[i], x + cellSize / 2, y + qrSize + codeGap + 5, { align: 'center' });
   }
 
   return doc.output('blob');
