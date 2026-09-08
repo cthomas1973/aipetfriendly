@@ -195,28 +195,47 @@ function buildAddress(tags: Record<string, string> | undefined) {
 // que solo aparezcan resultados realmente marcados como pet friendly.
 const PET_FRIENDLY_TAG_FILTER = '["dog"~"yes|leashed"]';
 
+// Resuelve con el primer resultado exitoso de varias tareas en paralelo;
+// solo rechaza si TODAS fallan (equivalente a Promise.any, evitado por el
+// target ES2020 del proyecto que no incluye ese tipo).
+function firstSuccessful<T>(tasks: Array<() => Promise<T>>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let remaining = tasks.length;
+    let lastError: unknown = null;
+    tasks.forEach((task) => {
+      task()
+        .then(resolve)
+        .catch((error) => {
+          lastError = error;
+          remaining -= 1;
+          if (remaining === 0) {
+            reject(lastError instanceof Error ? lastError : new Error('No se pudo consultar Overpass'));
+          }
+        });
+    });
+  });
+}
+
+// Se consultan los 3 mirrors EN PARALELO (en vez de uno tras otro): los
+// mirrors publicos de Overpass a veces quedan inalcanzables a nivel de
+// conexion TCP (no solo lentos), y esperar el timeout completo de cada uno
+// en secuencia puede tardar minutos. En paralelo, el peor caso es un solo
+// timeout en vez de la suma de los 3.
 async function runOverpassQueryOnce(query: string): Promise<Array<Record<string, unknown>>> {
-  let lastError: unknown = null;
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
+  return firstSuccessful(
+    OVERPASS_ENDPOINTS.map((endpoint) => async () => {
       const response = await fetchWithTimeout(
         endpoint,
         { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: query },
         FETCH_TIMEOUT_MS,
       );
       if (!response.ok) {
-        lastError = new Error(`Overpass respondio HTTP ${response.status}`);
-        continue;
+        throw new Error(`Overpass respondio HTTP ${response.status}`);
       }
-
       const payload = (await response.json()) as { elements?: Array<Record<string, unknown>> };
       return payload.elements ?? [];
-    } catch (error) {
-      lastError = error;
-      continue;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error('No se pudo consultar Overpass');
+    }),
+  );
 }
 
 // Si los 3 mirrors fallan (caida transitoria/timeout) se reintenta el ciclo
