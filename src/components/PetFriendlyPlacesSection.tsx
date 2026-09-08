@@ -351,6 +351,40 @@ out center tags;`;
     .slice(0, 40);
 }
 
+// Cache local (localStorage) del ultimo resultado exitoso de Overpass por
+// zona/categoria: cuando los 3 mirrors estan caidos (pasa seguido, son
+// servicios publicos gratuitos sin SLA) se puede mostrar el ultimo listado
+// conocido en vez de nada, avisando que puede estar desactualizado. Util
+// sobre todo para el caso de "recargo la pagina y desaparecen los lugares".
+const OSM_CACHE_PREFIX = 'aipf_osm_cache_';
+const OSM_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function osmCacheKey(lat: number, lng: number, category: CategoryFilter): string {
+  // Redondeo a ~1km para que el cache sirva aunque el usuario se mueva un poco.
+  return `${OSM_CACHE_PREFIX}${category}_${lat.toFixed(2)}_${lng.toFixed(2)}`;
+}
+
+function readOsmCache(lat: number, lng: number, category: CategoryFilter): OsmPlace[] | null {
+  try {
+    const raw = localStorage.getItem(osmCacheKey(lat, lng, category));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { places?: unknown; timestamp?: unknown };
+    if (!Array.isArray(parsed.places) || typeof parsed.timestamp !== 'number') return null;
+    if (Date.now() - parsed.timestamp > OSM_CACHE_MAX_AGE_MS) return null;
+    return parsed.places as OsmPlace[];
+  } catch {
+    return null;
+  }
+}
+
+function writeOsmCache(lat: number, lng: number, category: CategoryFilter, places: OsmPlace[]): void {
+  try {
+    localStorage.setItem(osmCacheKey(lat, lng, category), JSON.stringify({ places, timestamp: Date.now() }));
+  } catch {
+    // localStorage puede fallar (modo privado, cuota llena, etc.); no es critico.
+  }
+}
+
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   const url = new URL(NOMINATIM_ENDPOINT);
   url.searchParams.set('q', address);
@@ -646,10 +680,19 @@ export function PetFriendlyPlacesSection() {
       const results = category === 'todos' ? await fetchNearbyOsmPlacesAll(lat, lng) : await fetchNearbyOsmPlaces(lat, lng, category);
       setOsmPlaces(results);
       setOsmError(null);
+      writeOsmCache(lat, lng, category, results);
     } catch {
       // Un fallo de red/Overpass no debe borrar lugares que ya se estaban
       // mostrando: se deja el listado anterior y se avisa con un reintento.
-      setOsmError('No pudimos actualizar los lugares de OpenStreetMap.');
+      // Si no hay nada mostrado (p.ej. la pagina se acaba de recargar), se
+      // usa el ultimo resultado guardado en este dispositivo para esa zona.
+      const cached = readOsmCache(lat, lng, category);
+      if (cached && cached.length > 0) {
+        setOsmPlaces((current) => (current.length > 0 ? current : cached));
+        setOsmError('OpenStreetMap no responde ahora mismo. Mostrando el ultimo listado guardado, puede estar desactualizado.');
+      } else {
+        setOsmError('No pudimos actualizar los lugares de OpenStreetMap.');
+      }
     } finally {
       setLoadingOsm(false);
     }
