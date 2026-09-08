@@ -195,7 +195,8 @@ function buildAddress(tags: Record<string, string> | undefined) {
 // que solo aparezcan resultados realmente marcados como pet friendly.
 const PET_FRIENDLY_TAG_FILTER = '["dog"~"yes|leashed"]';
 
-async function runOverpassQuery(query: string): Promise<Array<Record<string, unknown>>> {
+async function runOverpassQueryOnce(query: string): Promise<Array<Record<string, unknown>>> {
+  let lastError: unknown = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
       const response = await fetchWithTimeout(
@@ -203,15 +204,30 @@ async function runOverpassQuery(query: string): Promise<Array<Record<string, unk
         { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: query },
         FETCH_TIMEOUT_MS,
       );
-      if (!response.ok) continue;
+      if (!response.ok) {
+        lastError = new Error(`Overpass respondio HTTP ${response.status}`);
+        continue;
+      }
 
       const payload = (await response.json()) as { elements?: Array<Record<string, unknown>> };
       return payload.elements ?? [];
-    } catch {
+    } catch (error) {
+      lastError = error;
       continue;
     }
   }
-  return [];
+  throw lastError instanceof Error ? lastError : new Error('No se pudo consultar Overpass');
+}
+
+// Si los 3 mirrors fallan (caida transitoria/timeout) se reintenta el ciclo
+// una vez mas antes de propagar el error al llamador; esto evita que un
+// fallo momentaneo borre lugares que ya se habian mostrado.
+async function runOverpassQuery(query: string): Promise<Array<Record<string, unknown>>> {
+  try {
+    return await runOverpassQueryOnce(query);
+  } catch {
+    return await runOverpassQueryOnce(query);
+  }
 }
 
 // Chequea las mismas condiciones que ya usa cada `CATEGORY_META[x].osmQuery`,
@@ -516,6 +532,7 @@ export function PetFriendlyPlacesSection() {
   const [, setLoadingIncubator] = useState(false);
   const [osmPlaces, setOsmPlaces] = useState<OsmPlace[]>([]);
   const [loadingOsm, setLoadingOsm] = useState(false);
+  const [osmError, setOsmError] = useState<string | null>(null);
 
   const [sectionMessage, setSectionMessage] = useState<string | null>(null);
 
@@ -602,12 +619,18 @@ export function PetFriendlyPlacesSection() {
   const loadOsmPlaces = useCallback(async (lat: number, lng: number, category: CategoryFilter) => {
     if (category === 'otro') {
       setOsmPlaces([]);
+      setOsmError(null);
       return;
     }
     setLoadingOsm(true);
     try {
       const results = category === 'todos' ? await fetchNearbyOsmPlacesAll(lat, lng) : await fetchNearbyOsmPlaces(lat, lng, category);
       setOsmPlaces(results);
+      setOsmError(null);
+    } catch {
+      // Un fallo de red/Overpass no debe borrar lugares que ya se estaban
+      // mostrando: se deja el listado anterior y se avisa con un reintento.
+      setOsmError('No pudimos actualizar los lugares de OpenStreetMap.');
     } finally {
       setLoadingOsm(false);
     }
@@ -1462,29 +1485,43 @@ export function PetFriendlyPlacesSection() {
         </div>
       )}
 
-      {osmPlaces.length > 0 && (
+      {(osmPlaces.length > 0 || osmError) && (
         <div>
           <h2 className="mb-2 text-sm font-bold uppercase text-slate-500">Otros lugares pet friendly en la zona (OpenStreetMap)</h2>
-          <div className="space-y-2">
-            {osmPlaces.slice(0, 8).map((place) => {
-              const Icon = CATEGORY_META[place.category].icon;
-              return (
-                <div key={place.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-3 text-sm">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Icon size={14} className="flex-shrink-0 text-sky-600" />
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-700">{place.name}</p>
-                      <p className="truncate text-xs text-slate-500">{place.address}</p>
+          {osmPlaces.length > 0 && (
+            <div className="space-y-2">
+              {osmPlaces.slice(0, 8).map((place) => {
+                const Icon = CATEGORY_META[place.category].icon;
+                return (
+                  <div key={place.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-3 text-sm">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Icon size={14} className="flex-shrink-0 text-sky-600" />
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-700">{place.name}</p>
+                        <p className="truncate text-xs text-slate-500">{place.address}</p>
+                      </div>
                     </div>
+                    <a href={buildExternalMapsUrl(place.name, place.address)} target="_blank" rel="noreferrer" className="flex-shrink-0 text-xs font-semibold text-blue-600">
+                      Google Maps
+                    </a>
                   </div>
-                  <a href={buildExternalMapsUrl(place.name, place.address)} target="_blank" rel="noreferrer" className="flex-shrink-0 text-xs font-semibold text-blue-600">
-                    Google Maps
-                  </a>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
           {loadingOsm && <p className="mt-1 text-xs text-slate-400">Buscando mas lugares...</p>}
+          {osmError && !loadingOsm && (
+            <div className="mt-1 flex items-center gap-2 text-xs text-amber-600">
+              <span>{osmError}</span>
+              <button
+                type="button"
+                onClick={() => location && loadOsmPlaces(location.lat, location.lng, selectedCategory)}
+                className="font-semibold underline"
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
         </div>
       )}
 
