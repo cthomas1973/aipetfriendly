@@ -59,7 +59,10 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 const SEARCH_RADIUS_METERS = 2500;
-const FETCH_TIMEOUT_MS = 8000;
+// Los espejos publicos de Overpass son lentos/inestables desde algunas redes
+// (confirmado: overpass-api.de puede tardar ~8s en responder, los otros 2
+// mirrors a veces ni siquiera conectan); 8s cortaba la request casi siempre.
+const FETCH_TIMEOUT_MS = 20000;
 const FALLBACK_CENTER: [number, number] = [-34.6037, -58.3816];
 
 type CategoryFilter = PetFriendlyPlaceCategory | 'todos';
@@ -211,15 +214,34 @@ async function runOverpassQuery(query: string): Promise<Array<Record<string, unk
   return [];
 }
 
+// Chequea las mismas condiciones que ya usa cada `CATEGORY_META[x].osmQuery`,
+// para poder deducir la categoria de un resultado que vino de una consulta
+// combinada (categoria "todos", ver `fetchNearbyOsmPlacesAll`).
+const CATEGORY_TAG_MATCHERS: Array<{ category: PetFriendlyPlaceCategory; test: (tags: Record<string, string>) => boolean }> = [
+  { category: 'restaurante', test: (tags) => tags.amenity === 'restaurant' },
+  { category: 'hotel_alojamiento', test: (tags) => ['hotel', 'hostel', 'guest_house'].includes(tags.tourism ?? '') },
+  { category: 'playa', test: (tags) => tags.natural === 'beach' },
+  { category: 'tienda', test: (tags) => tags.shop === 'pet' },
+  { category: 'plaza_parque', test: (tags) => tags.leisure === 'park' },
+  { category: 'bar_cafe', test: (tags) => ['bar', 'cafe', 'pub'].includes(tags.amenity ?? '') },
+];
+
+function inferCategoryFromTags(tags: Record<string, string>): PetFriendlyPlaceCategory | null {
+  return CATEGORY_TAG_MATCHERS.find((matcher) => matcher.test(tags))?.category ?? null;
+}
+
 function parseOsmElements(
   elements: Array<Record<string, unknown>>,
   lat: number,
   lng: number,
-  category: PetFriendlyPlaceCategory,
+  resolveCategory: (tags: Record<string, string>) => PetFriendlyPlaceCategory | null,
 ): OsmPlace[] {
   return elements
     .map((element) => {
       const tags = (element.tags as Record<string, string> | undefined) ?? {};
+      const category = resolveCategory(tags);
+      if (!category) return null;
+
       const latValue =
         typeof element.lat === 'number'
           ? element.lat
@@ -262,22 +284,34 @@ async function fetchNearbyOsmPlaces(lat: number, lng: number, category: PetFrien
 out center tags;`;
 
   const elements = await runOverpassQuery(query);
-  return parseOsmElements(elements, lat, lng, category)
+  return parseOsmElements(elements, lat, lng, () => category)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, 20);
 }
 
+// Una sola consulta combinada (en vez de 6 en paralelo, una por categoria):
+// los mirrors publicos de Overpass son lentos/inestables, y 6 requests
+// simultaneas al mismo servidor terminaban en timeout casi siempre.
 async function fetchNearbyOsmPlacesAll(lat: number, lng: number): Promise<OsmPlace[]> {
   const categories = (Object.keys(CATEGORY_META) as PetFriendlyPlaceCategory[]).filter(
     (category) => CATEGORY_META[category].osmQuery,
   );
 
-  const resultsByCategory = await Promise.all(
-    categories.map((category) => fetchNearbyOsmPlaces(lat, lng, category)),
-  );
+  const clauses = categories.flatMap((category) => {
+    const combinedFilter = `${CATEGORY_META[category].osmQuery}${PET_FRIENDLY_TAG_FILTER}`;
+    return [
+      `  node${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});`,
+      `  way${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});`,
+    ];
+  });
+  const query = `[out:json][timeout:25];
+(
+${clauses.join('\n')}
+);
+out center tags;`;
 
-  return resultsByCategory
-    .flat()
+  const elements = await runOverpassQuery(query);
+  return parseOsmElements(elements, lat, lng, inferCategoryFromTags)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, 40);
 }
