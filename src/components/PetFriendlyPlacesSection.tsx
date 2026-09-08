@@ -1,4 +1,5 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   BedDouble,
   Coffee,
@@ -17,14 +18,15 @@ import {
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
-import { MapContainer, Marker, TileLayer } from 'react-leaflet';
-import { divIcon, type LatLngExpression } from 'leaflet';
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
 import { useAppState } from '../context/AppStateContext';
 import {
   claimPetFriendlyPlaceAdminNotification,
   deletePetFriendlyPlaceReview,
+  fetchActivePetFriendlyPlacesByBounds,
   fetchActivePetFriendlyPlacesByZone,
   fetchPetFriendlyPlaceIncubatorByZone,
   fetchPetFriendlyPlaceReviews,
@@ -58,7 +60,7 @@ const OVERPASS_ENDPOINTS = [
 ];
 const SEARCH_RADIUS_METERS = 2500;
 const FETCH_TIMEOUT_MS = 8000;
-const FALLBACK_CENTER: LatLngExpression = [-34.6037, -58.3816];
+const FALLBACK_CENTER: [number, number] = [-34.6037, -58.3816];
 
 type CategoryFilter = PetFriendlyPlaceCategory | 'todos';
 
@@ -72,26 +74,41 @@ const CATEGORY_META: Record<PetFriendlyPlaceCategory, { label: string; icon: typ
   otro: { label: 'Otro', icon: MapPin, osmQuery: null },
 };
 
-const placeMarkerIcon = divIcon({
-  className: '',
-  html: '<div style="width:26px;height:26px;border-radius:999px;background:#059669;border:3px solid #fff;box-shadow:0 6px 16px rgba(5,150,105,.45)"></div>',
-  iconSize: [26, 26],
-  iconAnchor: [13, 13],
-});
-
-const osmMarkerIcon = divIcon({
-  className: '',
-  html: '<div style="width:20px;height:20px;border-radius:999px;background:#94a3b8;border:2px solid #fff;box-shadow:0 4px 10px rgba(100,116,139,.4)"></div>',
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-});
-
 const locationMarkerIcon = divIcon({
   className: '',
   html: '<div style="width:24px;height:24px;border-radius:999px;background:#2563eb;border:3px solid #fff;box-shadow:0 6px 16px rgba(37,99,235,.45)"></div>',
   iconSize: [24, 24],
   iconAnchor: [12, 12],
 });
+
+// Marcadores con el logo de cada categoria (menu) para que se identifique el
+// tipo de lugar de un vistazo. "confirmed" = lugar propio (verificado por la
+// comunidad), "candidate" = resultado de OpenStreetMap (todavia sin cargar
+// en nuestra base).
+const CATEGORY_MARKER_STYLE: Record<'confirmed' | 'candidate', { bg: string; shadow: string; size: number }> = {
+  confirmed: { bg: '#059669', shadow: 'rgba(5,150,105,.45)', size: 30 },
+  candidate: { bg: '#0ea5e9', shadow: 'rgba(14,165,233,.4)', size: 24 },
+};
+
+const categoryMarkerIconCache = new Map<string, ReturnType<typeof divIcon>>();
+
+function getCategoryMarkerIcon(category: PetFriendlyPlaceCategory, variant: 'confirmed' | 'candidate') {
+  const cacheKey = `${category}-${variant}`;
+  const cached = categoryMarkerIconCache.get(cacheKey);
+  if (cached) return cached;
+
+  const Icon = CATEGORY_META[category].icon;
+  const style = CATEGORY_MARKER_STYLE[variant];
+  const iconMarkup = renderToStaticMarkup(<Icon size={Math.round(style.size * 0.5)} color="#fff" strokeWidth={2.5} />);
+  const icon = divIcon({
+    className: '',
+    html: `<div style="width:${style.size}px;height:${style.size}px;border-radius:999px;background:${style.bg};border:3px solid #fff;box-shadow:0 6px 14px ${style.shadow};display:flex;align-items:center;justify-content:center">${iconMarkup}</div>`,
+    iconSize: [style.size, style.size],
+    iconAnchor: [style.size / 2, style.size / 2],
+  });
+  categoryMarkerIconCache.set(cacheKey, icon);
+  return icon;
+}
 
 type OsmPlace = {
   id: string;
@@ -100,7 +117,45 @@ type OsmPlace = {
   lng: number;
   address: string;
   distanceMeters: number;
+  category: PetFriendlyPlaceCategory;
 };
+
+type MapBounds = { minLat: number; maxLat: number; minLng: number; maxLng: number };
+
+// react-leaflet solo aplica el `center` inicial del MapContainer; para que el
+// mapa se mueva de verdad cuando cambia la ubicacion (usar mi ubicacion /
+// buscar destino) hay que forzarlo via `map.setView` (mismo patron que
+// `RecenterMap` en NearbyVetsMapSection.tsx).
+function RecenterMap({ center }: { center: [number, number] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(center, map.getZoom(), { animate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center[0], center[1]]);
+
+  return null;
+}
+
+function MapViewSync({ onChange }: { onChange: (center: { lat: number; lng: number }, bounds: MapBounds) => void }) {
+  useMapEvents({
+    moveend: (event) => {
+      const map = event.target;
+      const center = map.getCenter();
+      const bounds = map.getBounds();
+      onChange(
+        { lat: center.lat, lng: center.lng },
+        {
+          minLat: bounds.getSouth(),
+          maxLat: bounds.getNorth(),
+          minLng: bounds.getWest(),
+          maxLng: bounds.getEast(),
+        },
+      );
+    },
+  });
+  return null;
+}
 
 function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
   const toRad = (v: number) => (v * Math.PI) / 180;
@@ -132,19 +187,12 @@ function buildAddress(tags: Record<string, string> | undefined) {
   return composed || tags.name || 'Direccion no informada';
 }
 
-async function fetchNearbyOsmPlaces(lat: number, lng: number, category: PetFriendlyPlaceCategory): Promise<OsmPlace[]> {
-  const tagFilter = CATEGORY_META[category].osmQuery;
-  if (!tagFilter) {
-    return [];
-  }
+// Tag que usa OpenStreetMap para marcar explicitamente que un lugar admite
+// perros (con o sin correa). Lo combinamos con el filtro de categoria para
+// que solo aparezcan resultados realmente marcados como pet friendly.
+const PET_FRIENDLY_TAG_FILTER = '["dog"~"yes|leashed"]';
 
-  const query = `[out:json][timeout:25];
-(
-  node${tagFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way${tagFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});
-);
-out center tags;`;
-
+async function runOverpassQuery(query: string): Promise<Array<Record<string, unknown>>> {
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
       const response = await fetchWithTimeout(
@@ -155,45 +203,83 @@ out center tags;`;
       if (!response.ok) continue;
 
       const payload = (await response.json()) as { elements?: Array<Record<string, unknown>> };
-      const results = (payload.elements ?? [])
-        .map((element) => {
-          const tags = (element.tags as Record<string, string> | undefined) ?? {};
-          const latValue =
-            typeof element.lat === 'number'
-              ? element.lat
-              : element.center && typeof (element.center as { lat?: unknown }).lat === 'number'
-                ? (element.center as { lat: number }).lat
-                : null;
-          const lngValue =
-            typeof element.lon === 'number'
-              ? element.lon
-              : element.center && typeof (element.center as { lon?: unknown }).lon === 'number'
-                ? (element.center as { lon: number }).lon
-                : null;
-          if (latValue === null || lngValue === null) return null;
-
-          return {
-            id: `${element.type ?? 'item'}-${element.id ?? Math.random()}`,
-            name: tags.name || CATEGORY_META[category].label,
-            lat: latValue,
-            lng: lngValue,
-            address: buildAddress(tags),
-            distanceMeters: haversineDistanceMeters(lat, lng, latValue, lngValue),
-          } as OsmPlace;
-        })
-        .filter((item): item is OsmPlace => item !== null)
-        .sort((a, b) => a.distanceMeters - b.distanceMeters)
-        .slice(0, 20);
-
-      if (results.length > 0) {
-        return results;
-      }
+      return payload.elements ?? [];
     } catch {
       continue;
     }
   }
-
   return [];
+}
+
+function parseOsmElements(
+  elements: Array<Record<string, unknown>>,
+  lat: number,
+  lng: number,
+  category: PetFriendlyPlaceCategory,
+): OsmPlace[] {
+  return elements
+    .map((element) => {
+      const tags = (element.tags as Record<string, string> | undefined) ?? {};
+      const latValue =
+        typeof element.lat === 'number'
+          ? element.lat
+          : element.center && typeof (element.center as { lat?: unknown }).lat === 'number'
+            ? (element.center as { lat: number }).lat
+            : null;
+      const lngValue =
+        typeof element.lon === 'number'
+          ? element.lon
+          : element.center && typeof (element.center as { lon?: unknown }).lon === 'number'
+            ? (element.center as { lon: number }).lon
+            : null;
+      if (latValue === null || lngValue === null) return null;
+
+      return {
+        id: `${element.type ?? 'item'}-${element.id ?? Math.random()}`,
+        name: tags.name || CATEGORY_META[category].label,
+        lat: latValue,
+        lng: lngValue,
+        address: buildAddress(tags),
+        distanceMeters: haversineDistanceMeters(lat, lng, latValue, lngValue),
+        category,
+      } as OsmPlace;
+    })
+    .filter((item): item is OsmPlace => item !== null);
+}
+
+async function fetchNearbyOsmPlaces(lat: number, lng: number, category: PetFriendlyPlaceCategory): Promise<OsmPlace[]> {
+  const tagFilter = CATEGORY_META[category].osmQuery;
+  if (!tagFilter) {
+    return [];
+  }
+
+  const combinedFilter = `${tagFilter}${PET_FRIENDLY_TAG_FILTER}`;
+  const query = `[out:json][timeout:25];
+(
+  node${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  way${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});
+);
+out center tags;`;
+
+  const elements = await runOverpassQuery(query);
+  return parseOsmElements(elements, lat, lng, category)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 20);
+}
+
+async function fetchNearbyOsmPlacesAll(lat: number, lng: number): Promise<OsmPlace[]> {
+  const categories = (Object.keys(CATEGORY_META) as PetFriendlyPlaceCategory[]).filter(
+    (category) => CATEGORY_META[category].osmQuery,
+  );
+
+  const resultsByCategory = await Promise.all(
+    categories.map((category) => fetchNearbyOsmPlaces(lat, lng, category)),
+  );
+
+  return resultsByCategory
+    .flat()
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 40);
 }
 
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
@@ -480,18 +566,54 @@ export function PetFriendlyPlacesSection() {
   );
 
   const loadOsmPlaces = useCallback(async (lat: number, lng: number, category: CategoryFilter) => {
-    if (category === 'todos' || category === 'otro') {
+    if (category === 'otro') {
       setOsmPlaces([]);
       return;
     }
     setLoadingOsm(true);
     try {
-      const results = await fetchNearbyOsmPlaces(lat, lng, category);
+      const results = category === 'todos' ? await fetchNearbyOsmPlacesAll(lat, lng) : await fetchNearbyOsmPlaces(lat, lng, category);
       setOsmPlaces(results);
     } finally {
       setLoadingOsm(false);
     }
   }, []);
+
+  // Ultimos limites visibles del mapa (se actualizan al mover/hacer zoom) para
+  // poder recargar el listado segun el area que esta viendo el usuario.
+  const lastBoundsRef = useRef<MapBounds | null>(null);
+  const moveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadActivePlacesByBounds = useCallback(async (bounds: MapBounds, category: CategoryFilter) => {
+    setLoadingActive(true);
+    try {
+      const places = await fetchActivePetFriendlyPlacesByBounds({
+        minLat: bounds.minLat,
+        maxLat: bounds.maxLat,
+        minLng: bounds.minLng,
+        maxLng: bounds.maxLng,
+        category: category === 'todos' ? undefined : category,
+      });
+      setActivePlaces(places);
+    } finally {
+      setLoadingActive(false);
+    }
+  }, []);
+
+  const handleMapViewChanged = useCallback(
+    (center: { lat: number; lng: number }, bounds: MapBounds) => {
+      lastBoundsRef.current = bounds;
+      if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
+      moveDebounceRef.current = setTimeout(() => {
+        // No se mueve `location` (marcador azul / centrado explicito) para
+        // no crear un loop con RecenterMap; solo se refresca el listado
+        // segun el area que el usuario esta mirando ahora.
+        loadOsmPlaces(center.lat, center.lng, selectedCategory);
+        loadActivePlacesByBounds(bounds, selectedCategory);
+      }, 500);
+    },
+    [loadActivePlacesByBounds, loadOsmPlaces, selectedCategory],
+  );
 
   const applyZoneSelection = useCallback(
     (zone: string) => {
@@ -550,18 +672,44 @@ export function PetFriendlyPlacesSection() {
   const handleCategoryChange = useCallback(
     (category: CategoryFilter) => {
       setSelectedCategory(category);
-      loadActivePlaces(zoneLabel, category);
+      if (lastBoundsRef.current) {
+        loadActivePlacesByBounds(lastBoundsRef.current, category);
+      } else {
+        loadActivePlaces(zoneLabel, category);
+      }
       loadIncubator(zoneLabel, category);
       if (location) {
         loadOsmPlaces(location.lat, location.lng, category);
       }
     },
-    [loadActivePlaces, loadIncubator, loadOsmPlaces, location, zoneLabel],
+    [loadActivePlaces, loadActivePlacesByBounds, loadIncubator, loadOsmPlaces, location, zoneLabel],
   );
 
   useEffect(() => {
-    loadActivePlaces(zoneLabel, selectedCategory);
-    loadIncubator(zoneLabel, selectedCategory);
+    let cancelled = false;
+
+    (async () => {
+      const position = await getCurrentPosition();
+      if (cancelled) return;
+
+      if (!position) {
+        // Sin permiso o sin soporte de geolocalizacion: se mantiene el
+        // comportamiento anterior (listado general + mapa en Buenos Aires).
+        loadActivePlaces(zoneLabel, selectedCategory);
+        loadIncubator(zoneLabel, selectedCategory);
+        return;
+      }
+
+      setLocation(position);
+      loadOsmPlaces(position.lat, position.lng, selectedCategory);
+      const zone = await reverseGeocodeZone(position.lat, position.lng);
+      if (cancelled) return;
+      applyZoneSelection(zone || 'Tu zona');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -886,11 +1034,7 @@ export function PetFriendlyPlacesSection() {
     ],
   );
 
-  const mapCenter: LatLngExpression = location
-    ? [location.lat, location.lng]
-    : activePlaces.find((p) => p.latitude && p.longitude)
-      ? [activePlaces[0].latitude as number, activePlaces[0].longitude as number]
-      : FALLBACK_CENTER;
+  const mapCenter: [number, number] = location ? [location.lat, location.lng] : FALLBACK_CENTER;
 
   if (claimToken) {
     return (
@@ -1103,18 +1247,28 @@ export function PetFriendlyPlacesSection() {
       {locationError && <p className="text-xs text-rose-600">{locationError}</p>}
       {manualError && <p className="text-xs text-rose-600">{manualError}</p>}
       <p className="text-xs text-slate-500">Zona actual: {zoneLabel}</p>
+      <p className="text-[11px] text-slate-400">
+        <span className="mr-2 inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-600" /> Verificados</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-sky-500" /> OpenStreetMap (sin confirmar)</span>
+      </p>
 
       <div className="h-64 overflow-hidden rounded-2xl border border-emerald-100 shadow-sm">
         <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" />
+          <MapViewSync onChange={handleMapViewChanged} />
+          <RecenterMap center={mapCenter} />
           {location && <Marker position={[location.lat, location.lng]} icon={locationMarkerIcon} />}
           {activePlaces
             .filter((p) => typeof p.latitude === 'number' && typeof p.longitude === 'number')
             .map((p) => (
-              <Marker key={p.id} position={[p.latitude as number, p.longitude as number]} icon={placeMarkerIcon} />
+              <Marker
+                key={p.id}
+                position={[p.latitude as number, p.longitude as number]}
+                icon={getCategoryMarkerIcon(p.category, 'confirmed')}
+              />
             ))}
           {osmPlaces.map((p) => (
-            <Marker key={p.id} position={[p.lat, p.lng]} icon={osmMarkerIcon} />
+            <Marker key={p.id} position={[p.lat, p.lng]} icon={getCategoryMarkerIcon(p.category, 'candidate')} />
           ))}
         </MapContainer>
       </div>
@@ -1276,19 +1430,25 @@ export function PetFriendlyPlacesSection() {
 
       {osmPlaces.length > 0 && (
         <div>
-          <h2 className="mb-2 text-sm font-bold uppercase text-slate-500">Otros lugares en la zona (OpenStreetMap)</h2>
+          <h2 className="mb-2 text-sm font-bold uppercase text-slate-500">Otros lugares pet friendly en la zona (OpenStreetMap)</h2>
           <div className="space-y-2">
-            {osmPlaces.slice(0, 8).map((place) => (
-              <div key={place.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-3 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-slate-700">{place.name}</p>
-                  <p className="truncate text-xs text-slate-500">{place.address}</p>
+            {osmPlaces.slice(0, 8).map((place) => {
+              const Icon = CATEGORY_META[place.category].icon;
+              return (
+                <div key={place.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-3 text-sm">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Icon size={14} className="flex-shrink-0 text-sky-600" />
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-700">{place.name}</p>
+                      <p className="truncate text-xs text-slate-500">{place.address}</p>
+                    </div>
+                  </div>
+                  <a href={buildExternalMapsUrl(place.name, place.address)} target="_blank" rel="noreferrer" className="flex-shrink-0 text-xs font-semibold text-blue-600">
+                    Google Maps
+                  </a>
                 </div>
-                <a href={buildExternalMapsUrl(place.name, place.address)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600">
-                  Google Maps
-                </a>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {loadingOsm && <p className="mt-1 text-xs text-slate-400">Buscando mas lugares...</p>}
         </div>

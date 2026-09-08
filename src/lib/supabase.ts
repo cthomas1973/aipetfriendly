@@ -1585,6 +1585,46 @@ export async function fetchActivePetFriendlyPlacesByZone(args: {
   return (data || []).map((row: any) => mapPetFriendlyPlaceRow(row));
 }
 
+export async function fetchActivePetFriendlyPlacesByBounds(args: {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+  category?: PetFriendlyPlaceCategory;
+  limit?: number;
+}): Promise<PetFriendlyPlace[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.min(args.limit ?? 80, 150));
+
+  let query = supabase
+    .from('pet_friendly_places')
+    .select('*')
+    .in('status', ['ACTIVE_FREE', 'ACTIVE_PREMIUM'])
+    .gte('latitude', args.minLat)
+    .lte('latitude', args.maxLat)
+    .gte('longitude', args.minLng)
+    .lte('longitude', args.maxLng);
+
+  if (args.category) {
+    query = query.eq('category', args.category);
+  }
+
+  const { data, error } = await query
+    .order('highlight_priority', { ascending: false })
+    .order('rating_avg', { ascending: false })
+    .limit(safeLimit);
+
+  if (error) {
+    console.error('Error fetching pet friendly places by bounds:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => mapPetFriendlyPlaceRow(row));
+}
+
 export async function validatePetFriendlyPlace(placeId: string): Promise<PetFriendlyPlace | null> {
   if (!isSupabaseConfigured) {
     return null;
