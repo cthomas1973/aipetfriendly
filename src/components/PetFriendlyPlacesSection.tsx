@@ -22,12 +22,14 @@ import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-lea
 import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
+import { DogLoadingOverlay } from './DogLoadingOverlay';
 import { useAppState } from '../context/AppStateContext';
 import {
   claimPetFriendlyPlaceAdminNotification,
   deletePetFriendlyPlaceReview,
   fetchActivePetFriendlyPlacesByBounds,
   fetchActivePetFriendlyPlacesByZone,
+  fetchGooglePlacesByZone,
   fetchPetFriendlyPlaceIncubatorByZone,
   fetchPetFriendlyPlaceReviews,
   getPetFriendlyPlaceClaimLanding,
@@ -87,15 +89,17 @@ const locationMarkerIcon = divIcon({
 // Marcadores con el logo de cada categoria (menu) para que se identifique el
 // tipo de lugar de un vistazo. "confirmed" = lugar propio (verificado por la
 // comunidad), "candidate" = resultado de OpenStreetMap (todavia sin cargar
-// en nuestra base).
-const CATEGORY_MARKER_STYLE: Record<'confirmed' | 'candidate', { bg: string; shadow: string; size: number }> = {
+// en nuestra base), "google" = resultado de Google Places (allowsDogs=true,
+// tampoco cargado en nuestra base todavia).
+const CATEGORY_MARKER_STYLE: Record<'confirmed' | 'candidate' | 'google', { bg: string; shadow: string; size: number }> = {
   confirmed: { bg: '#059669', shadow: 'rgba(5,150,105,.45)', size: 30 },
   candidate: { bg: '#0ea5e9', shadow: 'rgba(14,165,233,.4)', size: 24 },
+  google: { bg: '#4285f4', shadow: 'rgba(66,133,244,.4)', size: 24 },
 };
 
 const categoryMarkerIconCache = new Map<string, ReturnType<typeof divIcon>>();
 
-function getCategoryMarkerIcon(category: PetFriendlyPlaceCategory, variant: 'confirmed' | 'candidate') {
+function getCategoryMarkerIcon(category: PetFriendlyPlaceCategory, variant: 'confirmed' | 'candidate' | 'google') {
   const cacheKey = `${category}-${variant}`;
   const cached = categoryMarkerIconCache.get(cacheKey);
   if (cached) return cached;
@@ -121,7 +125,20 @@ type OsmPlace = {
   address: string;
   distanceMeters: number;
   category: PetFriendlyPlaceCategory;
+  // 'google' = vino de Google Places (allowsDogs=true), 'osm' = OpenStreetMap.
+  source: 'osm' | 'google';
 };
+
+// Categorias con equivalente de tipo en Google Places (New); coincide con
+// PLACE_CATEGORY_TO_GOOGLE_TYPE del lado servidor (search-google-places).
+const GOOGLE_MAPPABLE_CATEGORIES: PetFriendlyPlaceCategory[] = [
+  'restaurante',
+  'hotel_alojamiento',
+  'playa',
+  'tienda',
+  'plaza_parque',
+  'bar_cafe',
+];
 
 type MapBounds = { minLat: number; maxLat: number; minLng: number; maxLng: number };
 
@@ -299,6 +316,7 @@ function parseOsmElements(
         address: buildAddress(tags),
         distanceMeters: haversineDistanceMeters(lat, lng, latValue, lngValue),
         category,
+        source: 'osm',
       } as OsmPlace;
     })
     .filter((item): item is OsmPlace => item !== null);
@@ -349,6 +367,60 @@ out center tags;`;
   return parseOsmElements(elements, lat, lng, inferCategoryFromTags)
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, 40);
+}
+
+// Complementa OSM con lugares de Google Places (allowsDogs=true), cacheados
+// por zona en el servidor (ver search-google-places). Si la categoria no
+// tiene equivalente en Google ("otro") o "todos" no trae nada mapeable, no
+// se hace ninguna llamada.
+async function fetchNearbyGooglePlaces(lat: number, lng: number, category: CategoryFilter): Promise<OsmPlace[]> {
+  const categories: PetFriendlyPlaceCategory[] =
+    category === 'todos' ? GOOGLE_MAPPABLE_CATEGORIES : GOOGLE_MAPPABLE_CATEGORIES.includes(category) ? [category] : [];
+  if (categories.length === 0) return [];
+
+  const results = await Promise.all(
+    categories.map(async (cat) => {
+      const candidates = await fetchGooglePlacesByZone({
+        entityType: 'pet_friendly_place',
+        category: cat,
+        latitude: lat,
+        longitude: lng,
+        radiusMeters: SEARCH_RADIUS_METERS,
+      });
+      return candidates.map((place) => ({
+        id: `google-${place.googlePlaceId}`,
+        name: place.name,
+        lat: place.latitude,
+        lng: place.longitude,
+        address: place.address,
+        distanceMeters: haversineDistanceMeters(lat, lng, place.latitude, place.longitude),
+        category: cat,
+        source: 'google' as const,
+      }));
+    }),
+  );
+
+  // En modo "todos" un mismo lugar puede matchear varios types de Google
+  // (ej. restaurant y cafe) y devolverse una vez por categoria consultada;
+  // se deduplica por id para no romper las keys de React ni repetirlo.
+  const seenIds = new Set<string>();
+  return results.flat().filter((place) => {
+    if (seenIds.has(place.id)) return false;
+    seenIds.add(place.id);
+    return true;
+  });
+}
+
+// Evita mostrar el mismo lugar dos veces cuando aparece tanto en OSM como en
+// Google (posible si OSM ya tiene el tag dog=yes cargado): se descartan los
+// candidatos de Google que caigan a menos de 40m de uno ya presente.
+const DUPLICATE_DISTANCE_METERS = 40;
+
+function mergePlaceSources(osmPlaces: OsmPlace[], googlePlaces: OsmPlace[]): OsmPlace[] {
+  const extra = googlePlaces.filter(
+    (candidate) => !osmPlaces.some((existing) => haversineDistanceMeters(existing.lat, existing.lng, candidate.lat, candidate.lng) < DUPLICATE_DISTANCE_METERS),
+  );
+  return [...osmPlaces, ...extra].sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
 // Cache local (localStorage) del ultimo resultado exitoso de Overpass por
@@ -578,6 +650,8 @@ export function PetFriendlyPlacesSection() {
   const [zoneLabel, setZoneLabel] = useState('Tu zona');
 
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('todos');
+  // Lugar marcado al tocar un pin del mapa, para resaltarlo en el listado.
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
   const [activePlaces, setActivePlaces] = useState<PetFriendlyPlace[]>([]);
   const [loadingActive, setLoadingActive] = useState(false);
@@ -639,6 +713,19 @@ export function PetFriendlyPlacesSection() {
     [incubatorItems],
   );
 
+  // Solo se muestran los primeros 8 en la lista, pero si el lugar
+  // seleccionado en el mapa quedo fuera de ese recorte, se lo antepone para
+  // que siga siendo visible y resaltado.
+  const visibleOsmPlaces = useMemo(() => {
+    const top = osmPlaces.slice(0, 8);
+    if (selectedPlaceId && !top.some((p) => p.id === selectedPlaceId)) {
+      const selected = osmPlaces.find((p) => p.id === selectedPlaceId);
+      if (selected) return [selected, ...top.slice(0, 7)];
+    }
+    return top;
+  }, [osmPlaces, selectedPlaceId]);
+
+
   const loadActivePlaces = useCallback(async (zone: string, category: CategoryFilter) => {
     setLoadingActive(true);
     try {
@@ -676,20 +763,30 @@ export function PetFriendlyPlacesSection() {
       return;
     }
     setLoadingOsm(true);
+    // Google Places es "best effort": si falla no debe tirar abajo el
+    // resultado de OSM (que tiene su propio manejo de errores/cache abajo).
+    const googlePlacesPromise = fetchNearbyGooglePlaces(lat, lng, category).catch(() => [] as OsmPlace[]);
     try {
       const results = category === 'todos' ? await fetchNearbyOsmPlacesAll(lat, lng) : await fetchNearbyOsmPlaces(lat, lng, category);
-      setOsmPlaces(results);
+      const merged = mergePlaceSources(results, await googlePlacesPromise);
+      setOsmPlaces(merged);
       setOsmError(null);
-      writeOsmCache(lat, lng, category, results);
+      writeOsmCache(lat, lng, category, merged);
     } catch {
       // Un fallo de red/Overpass no debe borrar lugares que ya se estaban
       // mostrando: se deja el listado anterior y se avisa con un reintento.
       // Si no hay nada mostrado (p.ej. la pagina se acaba de recargar), se
-      // usa el ultimo resultado guardado en este dispositivo para esa zona.
+      // usa el ultimo resultado guardado en este dispositivo para esa zona,
+      // combinado con lo que haya traido Google.
+      const googlePlaces = await googlePlacesPromise;
       const cached = readOsmCache(lat, lng, category);
       if (cached && cached.length > 0) {
-        setOsmPlaces((current) => (current.length > 0 ? current : cached));
+        const merged = mergePlaceSources(cached, googlePlaces);
+        setOsmPlaces((current) => (current.length > 0 ? current : merged));
         setOsmError('OpenStreetMap no responde ahora mismo. Mostrando el ultimo listado guardado, puede estar desactualizado.');
+      } else if (googlePlaces.length > 0) {
+        setOsmPlaces(googlePlaces);
+        setOsmError('OpenStreetMap no responde ahora mismo. Mostrando solo resultados de Google Maps.');
       } else {
         setOsmError('No pudimos actualizar los lugares de OpenStreetMap.');
       }
@@ -1368,10 +1465,11 @@ export function PetFriendlyPlacesSection() {
       <p className="text-xs text-slate-500">Zona actual: {zoneLabel}</p>
       <p className="text-[11px] text-slate-400">
         <span className="mr-2 inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-600" /> Verificados</span>
-        <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-sky-500" /> OpenStreetMap (sin confirmar)</span>
+        <span className="mr-2 inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-sky-500" /> OpenStreetMap (sin confirmar)</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#4285f4' }} /> Google Maps (sin confirmar)</span>
       </p>
 
-      <div className="h-64 overflow-hidden rounded-2xl border border-emerald-100 shadow-sm">
+      <div className="relative h-64 overflow-hidden rounded-2xl border border-emerald-100 shadow-sm">
         <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" />
           <MapViewSync onChange={handleMapViewChanged} />
@@ -1384,12 +1482,29 @@ export function PetFriendlyPlacesSection() {
                 key={p.id}
                 position={[p.latitude as number, p.longitude as number]}
                 icon={getCategoryMarkerIcon(p.category, 'confirmed')}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedPlaceId(p.id);
+                    document.getElementById(`place-card-${p.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  },
+                }}
               />
             ))}
           {osmPlaces.map((p) => (
-            <Marker key={p.id} position={[p.lat, p.lng]} icon={getCategoryMarkerIcon(p.category, 'candidate')} />
+            <Marker
+              key={p.id}
+              position={[p.lat, p.lng]}
+              icon={getCategoryMarkerIcon(p.category, p.source === 'google' ? 'google' : 'candidate')}
+              eventHandlers={{
+                click: () => {
+                  setSelectedPlaceId(p.id);
+                  document.getElementById(`osm-place-card-${p.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                },
+              }}
+            />
           ))}
         </MapContainer>
+        <DogLoadingOverlay active={loadingOsm} />
       </div>
 
       <AdBanner adSenseSlotId={PLACES_ADSENSE_SLOT_ID} />
@@ -1415,9 +1530,16 @@ export function PetFriendlyPlacesSection() {
               : null;
           const reviews = reviewsByPlace[place.id] || [];
           const isExpanded = expandedPlaceId === place.id;
+          const isSelectedOnMap = selectedPlaceId === place.id;
 
           return (
-            <div key={place.id} className={`rounded-2xl border bg-white p-3 shadow-sm ${place.subscriptionPlan === 'premium' ? 'border-amber-300' : 'border-slate-100'}`}>
+            <div
+              key={place.id}
+              id={`place-card-${place.id}`}
+              className={`rounded-2xl border bg-white p-3 shadow-sm ${
+                isSelectedOnMap ? 'border-emerald-400 ring-2 ring-emerald-300' : place.subscriptionPlan === 'premium' ? 'border-amber-300' : 'border-slate-100'
+              }`}
+            >
               <div className="flex gap-3">
                 {place.imageUrl && (
                   <img src={place.imageUrl} alt={place.name} className="h-20 w-20 flex-shrink-0 rounded-xl object-cover" />
@@ -1549,17 +1671,29 @@ export function PetFriendlyPlacesSection() {
 
       {(osmPlaces.length > 0 || osmError) && (
         <div>
-          <h2 className="mb-2 text-sm font-bold uppercase text-slate-500">Otros lugares pet friendly en la zona (OpenStreetMap)</h2>
+          <h2 className="mb-2 text-sm font-bold uppercase text-slate-500">Otros lugares pet friendly en la zona</h2>
           {osmPlaces.length > 0 && (
             <div className="space-y-2">
-              {osmPlaces.slice(0, 8).map((place) => {
+              {visibleOsmPlaces.map((place) => {
                 const Icon = CATEGORY_META[place.category].icon;
+                const isSelectedOnMap = selectedPlaceId === place.id;
                 return (
-                  <div key={place.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-3 text-sm">
+                  <div
+                    key={place.id}
+                    id={`osm-place-card-${place.id}`}
+                    className={`flex items-center justify-between rounded-xl border p-3 text-sm ${
+                      isSelectedOnMap ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-300' : 'border-slate-100 bg-white'
+                    }`}
+                  >
                     <div className="flex min-w-0 items-center gap-2">
                       <Icon size={14} className="flex-shrink-0 text-sky-600" />
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-700">{place.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate font-semibold text-slate-700">{place.name}</p>
+                          <span className="flex-shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">
+                            {place.source === 'google' ? 'Google' : 'OSM'}
+                          </span>
+                        </div>
                         <p className="truncate text-xs text-slate-500">{place.address}</p>
                       </div>
                     </div>

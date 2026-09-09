@@ -7,10 +7,12 @@ import { Circle, MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { divIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
+import { DogLoadingOverlay } from './DogLoadingOverlay';
 import { useAppState } from '../context/AppStateContext';
 import {
   claimVeterinaryAdminNotification,
   fetchActiveVeterinaryProfilesByZone,
+  fetchGooglePlacesByZone,
   fetchVeterinaryFavorite,
   fetchVeterinaryIncubatorByZone,
   fetchVeterinaryProfileById,
@@ -68,6 +70,8 @@ type NearbyVet = {
   lng: number;
   address: string;
   distanceMeters: number;
+  // 'google' = vino de Google Places (tipo veterinary_care), 'osm' = OpenStreetMap.
+  source: 'osm' | 'google';
 };
 
 const VET_ZONE_FAVORITE_KEY = 'apf_vet_zone_favorite';
@@ -165,6 +169,7 @@ out center tags;`;
         lng: lngValue,
         address: buildAddress(tags),
         distanceMeters: haversineDistanceMeters(lat, lng, latValue, lngValue),
+        source: 'osm',
       } as NearbyVet;
     })
     .filter((item): item is NearbyVet => item !== null)
@@ -227,6 +232,7 @@ out center tags;`;
           lng: placeLng,
           address: place.display_name,
           distanceMeters: haversineDistanceMeters(lat, lng, placeLat, placeLng),
+          source: 'osm',
         } as NearbyVet;
       })
       .filter((item): item is NearbyVet => item !== null)
@@ -237,6 +243,54 @@ out center tags;`;
       throw error instanceof Error ? error : new Error('network-unreachable');
     }
     return [];
+  }
+}
+
+// Evita mostrar la misma veterinaria dos veces cuando aparece tanto en OSM
+// como en Google: se descartan candidatos de Google a menos de 40m de uno ya
+// presente en el listado de OSM.
+const DUPLICATE_VET_DISTANCE_METERS = 40;
+
+function mergeVetSources(osmVets: NearbyVet[], googleVets: NearbyVet[]): NearbyVet[] {
+  const extra = googleVets.filter(
+    (candidate) => !osmVets.some((existing) => haversineDistanceMeters(existing.lat, existing.lng, candidate.lat, candidate.lng) < DUPLICATE_VET_DISTANCE_METERS),
+  );
+  return [...osmVets, ...extra].sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
+// Complementa OSM/Nominatim con veterinarias de Google Places (New, tipo
+// veterinary_care), cacheadas por zona en el servidor (ver
+// search-google-places). Si OSM falla pero Google trae resultados, se
+// devuelven esos en vez de propagar el error de red.
+async function fetchNearbyVetsWithGoogle(lat: number, lng: number): Promise<NearbyVet[]> {
+  const googlePromise = fetchGooglePlacesByZone({
+    entityType: 'veterinary',
+    latitude: lat,
+    longitude: lng,
+    radiusMeters: SEARCH_RADIUS_METERS,
+  })
+    .then((candidates) =>
+      candidates.map((place) => ({
+        id: `google-${place.googlePlaceId}`,
+        name: place.name,
+        lat: place.latitude,
+        lng: place.longitude,
+        address: place.address,
+        distanceMeters: haversineDistanceMeters(lat, lng, place.latitude, place.longitude),
+        source: 'google' as const,
+      })),
+    )
+    .catch(() => [] as NearbyVet[]);
+
+  try {
+    const osmVets = await fetchNearbyVets(lat, lng);
+    return mergeVetSources(osmVets, await googlePromise);
+  } catch (error) {
+    const googleVets = await googlePromise;
+    if (googleVets.length > 0) {
+      return googleVets;
+    }
+    throw error;
   }
 }
 
@@ -524,7 +578,7 @@ export function NearbyVetsMapSection() {
     setVetsError(null);
 
     try {
-      const vets = await fetchNearbyVets(lat, lng);
+      const vets = await fetchNearbyVetsWithGoogle(lat, lng);
       setNearbyVets(vets);
       setSelectedVetId(null);
       if (vets.length === 0) {
@@ -1415,7 +1469,7 @@ export function NearbyVetsMapSection() {
   };
 
   const renderOsmVetCard = (
-    { place, distanceMeters }: { place: { id: string; name: string; address: string; lat?: number; lng?: number }; distanceMeters: number },
+    { place, distanceMeters }: { place: { id: string; name: string; address: string; lat?: number; lng?: number; source?: 'osm' | 'google' }; distanceMeters: number },
     variant: 'favorite' | 'list' = 'list',
   ) => {
     const isFavorite = favoriteOsmPlace?.id === place.id;
@@ -1452,7 +1506,12 @@ export function NearbyVetsMapSection() {
                 Tu veterinaria favorita
               </span>
             )}
-            <p className="font-semibold text-slate-900">{place.name}</p>
+            <p className="flex items-center gap-1.5 font-semibold text-slate-900">
+              {place.name}
+              {place.source === 'google' && (
+                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Google</span>
+              )}
+            </p>
             <p className="text-xs text-slate-600">{place.address}</p>
           </div>
           <button
@@ -1466,6 +1525,7 @@ export function NearbyVetsMapSection() {
                 lat: place.lat ?? 0,
                 lng: place.lng ?? 0,
                 distanceMeters,
+                source: place.source ?? 'osm',
               });
             }}
             disabled={togglingFavoriteVetId === place.id}
@@ -1585,7 +1645,7 @@ export function NearbyVetsMapSection() {
       </div>
 
       <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-emerald-100">
-        <div className="h-[62vh] min-h-[460px] w-full">
+        <div className="relative h-[62vh] min-h-[460px] w-full">
           <MapContainer center={mapCenter} zoom={15} className="h-full w-full" scrollWheelZoom>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -1613,6 +1673,7 @@ export function NearbyVetsMapSection() {
               />
             ))}
           </MapContainer>
+          <DogLoadingOverlay active={loadingVets} />
         </div>
       </div>
 

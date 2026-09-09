@@ -14,6 +14,7 @@ supabase functions deploy admin-reply-inbound-email
 supabase functions deploy send-guide-notifications --no-verify-jwt
 supabase functions deploy send-news-campaigns --no-verify-jwt
 supabase functions deploy send-blog-post-notifications --no-verify-jwt
+supabase functions deploy search-google-places
 ```
 
 ## Variables de entorno
@@ -35,6 +36,16 @@ Configurar en Supabase Dashboard:
 - `GUIDE_NOTIFICATIONS_API_KEY`: clave propia (inventada) que valida el header `x-guide-notifications-key` en `send-guide-notifications`, para que solo el workflow de GitHub Actions pueda dispararla.
 - `NEWS_CAMPAIGNS_API_KEY`: clave propia (inventada) que valida el header `x-news-campaigns-key` en `send-news-campaigns`.
 - `BLOG_NOTIFICATIONS_API_KEY`: clave propia (inventada) que valida el header `x-blog-notifications-key` en `send-blog-post-notifications`, para que solo el workflow de GitHub Actions pueda dispararla.
+- `GOOGLE_PLACES_API_KEY`: API key de Google Cloud con "Places API (New)" habilitada y facturacion activa, usada por `search-google-places` para complementar los resultados de OpenStreetMap. Nunca se expone al frontend (solo vive en este secret de servidor).
+- `GOOGLE_PLACES_MONTHLY_LIMIT` (opcional): cantidad maxima de llamadas reales a Google que hace `search-google-places` por mes calendario, antes de pasar a servir solo cache. Default `1000` (cuota gratis del SKU mas restrictivo que usa la funcion). Subirlo tiene costo real en Google Cloud.
+
+### Lugares y veterinarias via Google Places (`search-google-places`)
+
+- Se invoca desde `PetFriendlyPlacesSection.tsx` y `NearbyVetsMapSection.tsx` (funcion `fetchGooglePlacesByZone` en `src/lib/supabase.ts`) ademas de la consulta a OpenStreetMap/Overpass, para complementar zonas donde OSM tiene poca cobertura.
+- Para `pet_friendly_place` solo se guardan resultados donde Google marca explicitamente `allowsDogs = true` (campo real de Places API New); si Google no tiene ese dato cargado para un lugar, no se muestra.
+- Para `veterinary` se usa el tipo `veterinary_care` sin filtro adicional.
+- Los resultados se cachean por zona (lat/lng redondeados a 2 decimales, ~1km) en `public.external_places_cache` / `public.external_places_cache_zones` (migracion `048_external_places_cache.sql`). Una zona ya consultada no se vuelve a pedir a Google hasta pasados 30 dias, para acotar el costo de la API paga. La escritura la hace unicamente esta funcion (service role); la lectura es publica.
+- Limite de cuota mensual (migracion `049_google_places_usage_limit.sql`): cada llamada real a Google (no cache hit) se cuenta en `public.google_places_api_usage` por mes calendario. Al llegar a `GOOGLE_PLACES_MONTHLY_LIMIT` la funcion deja de llamar a Google hasta el mes siguiente y responde solo con lo que ya haya cacheado. Asi, al principio hay pocas zonas cubiertas, pero a medida que usuarios de distintas zonas van consultando la app el cache se completa solo, y la cuota que sobra cada mes se destina a refrescar zonas ya cacheadas (`public.external_places_cache_zones.query_count` registra que zonas se consultan mas seguido, para priorizarlas a futuro).
 
 ### Campañas de novedades a medida (`send-news-campaigns`)
 

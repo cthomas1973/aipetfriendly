@@ -969,6 +969,57 @@ export async function notifyAdminThreshold(args: {
   return Boolean((data as { sent?: boolean } | null)?.sent);
 }
 
+export type GooglePlaceCandidate = {
+  googlePlaceId: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+};
+
+// Complementa la busqueda de OpenStreetMap/Overpass con resultados de Google
+// Places API (New), cacheados por zona en el servidor (ver edge function
+// `search-google-places` y migracion `048_external_places_cache.sql`). Para
+// `pet_friendly_place` solo llegan lugares con `allowsDogs = true` en Google;
+// para `veterinary` no hay filtro adicional.
+export async function fetchGooglePlacesByZone(args: {
+  entityType: 'veterinary' | 'pet_friendly_place';
+  category?: PetFriendlyPlaceCategory;
+  latitude: number;
+  longitude: number;
+  radiusMeters?: number;
+}): Promise<GooglePlaceCandidate[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
+  const { data, error } = await supabase.functions.invoke('search-google-places', {
+    body: {
+      entityType: args.entityType,
+      category: args.category ?? null,
+      latitude: args.latitude,
+      longitude: args.longitude,
+      radiusMeters: args.radiusMeters ?? null,
+    },
+  });
+
+  if (error) {
+    console.error('Error fetching Google Places:', error);
+    return [];
+  }
+
+  const places = (data as { places?: Array<Record<string, unknown>> } | null)?.places ?? [];
+  return places
+    .map((row) => ({
+      googlePlaceId: String(row.google_place_id ?? ''),
+      name: String(row.name ?? ''),
+      address: String(row.address ?? ''),
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+    }))
+    .filter((place) => place.googlePlaceId.length > 0 && Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+}
+
 export async function fetchVeterinaryIncubatorByZone(args: {
   zoneLabel: string;
   userId?: string;
