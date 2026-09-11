@@ -25,6 +25,13 @@ import { AdBanner } from './AdBanner';
 import { DogLoadingOverlay } from './DogLoadingOverlay';
 import { useAppState } from '../context/AppStateContext';
 import {
+  ADDRESS_INITIAL_RADIUS_METERS,
+  boundsCenter,
+  boundsFromCenterRadius,
+  geocodeZone,
+  radiusFromBounds,
+} from '../lib/mapZoneSearch';
+import {
   claimPetFriendlyPlaceAdminNotification,
   deletePetFriendlyPlaceReview,
   fetchActivePetFriendlyPlacesByBounds,
@@ -53,14 +60,12 @@ import type {
 // que el resto de las secciones).
 const PLACES_ADSENSE_SLOT_ID = '0000000000';
 
-const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.openstreetmap.ru/api/interpreter',
 ];
-const SEARCH_RADIUS_METERS = 2500;
 // Los espejos publicos de Overpass son lentos/inestables desde algunas redes
 // (confirmado: overpass-api.de puede tardar ~8s en responder, los otros 2
 // mirrors a veces ni siquiera conectan); 8s cortaba la request casi siempre.
@@ -144,15 +149,28 @@ type MapBounds = { minLat: number; maxLat: number; minLng: number; maxLng: numbe
 
 // react-leaflet solo aplica el `center` inicial del MapContainer; para que el
 // mapa se mueva de verdad cuando cambia la ubicacion (usar mi ubicacion /
-// buscar destino) hay que forzarlo via `map.setView` (mismo patron que
-// `RecenterMap` en NearbyVetsMapSection.tsx).
-function RecenterMap({ center }: { center: [number, number] }) {
+// buscar destino) hay que forzarlo via `map.setView`/`map.fitBounds` (mismo
+// patron que `RecenterMap` en NearbyVetsMapSection.tsx). Cuando llega un
+// `fitBounds` nuevo (busqueda por ubicacion/direccion/zona), el mapa ajusta
+// el zoom a esa superficie; si no, solo se recentra sin tocar el zoom que el
+// usuario ya eligio.
+function RecenterMap({ center, fitBounds }: { center: [number, number]; fitBounds: MapBounds | null }) {
   const map = useMap();
 
   useEffect(() => {
+    if (fitBounds) {
+      map.fitBounds(
+        [
+          [fitBounds.minLat, fitBounds.minLng],
+          [fitBounds.maxLat, fitBounds.maxLng],
+        ],
+        { animate: true, padding: [24, 24] },
+      );
+      return;
+    }
     map.setView(center, map.getZoom(), { animate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center[0], center[1]]);
+  }, [center[0], center[1], fitBounds]);
 
   return null;
 }
@@ -322,17 +340,18 @@ function parseOsmElements(
     .filter((item): item is OsmPlace => item !== null);
 }
 
-async function fetchNearbyOsmPlaces(lat: number, lng: number, category: PetFriendlyPlaceCategory): Promise<OsmPlace[]> {
+async function fetchNearbyOsmPlaces(lat: number, lng: number, category: PetFriendlyPlaceCategory, bounds: MapBounds): Promise<OsmPlace[]> {
   const tagFilter = CATEGORY_META[category].osmQuery;
   if (!tagFilter) {
     return [];
   }
 
+  const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
   const combinedFilter = `${tagFilter}${PET_FRIENDLY_TAG_FILTER}`;
   const query = `[out:json][timeout:25];
 (
-  node${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  node${combinedFilter}(${bbox});
+  way${combinedFilter}(${bbox});
 );
 out center tags;`;
 
@@ -345,16 +364,17 @@ out center tags;`;
 // Una sola consulta combinada (en vez de 6 en paralelo, una por categoria):
 // los mirrors publicos de Overpass son lentos/inestables, y 6 requests
 // simultaneas al mismo servidor terminaban en timeout casi siempre.
-async function fetchNearbyOsmPlacesAll(lat: number, lng: number): Promise<OsmPlace[]> {
+async function fetchNearbyOsmPlacesAll(lat: number, lng: number, bounds: MapBounds): Promise<OsmPlace[]> {
   const categories = (Object.keys(CATEGORY_META) as PetFriendlyPlaceCategory[]).filter(
     (category) => CATEGORY_META[category].osmQuery,
   );
 
+  const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
   const clauses = categories.flatMap((category) => {
     const combinedFilter = `${CATEGORY_META[category].osmQuery}${PET_FRIENDLY_TAG_FILTER}`;
     return [
-      `  node${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});`,
-      `  way${combinedFilter}(around:${SEARCH_RADIUS_METERS},${lat},${lng});`,
+      `  node${combinedFilter}(${bbox});`,
+      `  way${combinedFilter}(${bbox});`,
     ];
   });
   const query = `[out:json][timeout:25];
@@ -373,11 +393,12 @@ out center tags;`;
 // por zona en el servidor (ver search-google-places). Si la categoria no
 // tiene equivalente en Google ("otro") o "todos" no trae nada mapeable, no
 // se hace ninguna llamada.
-async function fetchNearbyGooglePlaces(lat: number, lng: number, category: CategoryFilter): Promise<OsmPlace[]> {
+async function fetchNearbyGooglePlaces(lat: number, lng: number, category: CategoryFilter, bounds: MapBounds): Promise<OsmPlace[]> {
   const categories: PetFriendlyPlaceCategory[] =
     category === 'todos' ? GOOGLE_MAPPABLE_CATEGORIES : GOOGLE_MAPPABLE_CATEGORIES.includes(category) ? [category] : [];
   if (categories.length === 0) return [];
 
+  const radiusMeters = radiusFromBounds(lat, lng, bounds);
   const results = await Promise.all(
     categories.map(async (cat) => {
       const candidates = await fetchGooglePlacesByZone({
@@ -385,7 +406,7 @@ async function fetchNearbyGooglePlaces(lat: number, lng: number, category: Categ
         category: cat,
         latitude: lat,
         longitude: lng,
-        radiusMeters: SEARCH_RADIUS_METERS,
+        radiusMeters,
       });
       return candidates.map((place) => ({
         id: `google-${place.googlePlaceId}`,
@@ -455,23 +476,6 @@ function writeOsmCache(lat: number, lng: number, category: CategoryFilter, place
   } catch {
     // localStorage puede fallar (modo privado, cuota llena, etc.); no es critico.
   }
-}
-
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  const url = new URL(NOMINATIM_ENDPOINT);
-  url.searchParams.set('q', address);
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '1');
-
-  const response = await fetch(url.toString(), { headers: { 'Accept-Language': 'es' } });
-  if (!response.ok) return null;
-
-  const results = (await response.json()) as Array<{ lat: string; lon: string }>;
-  if (!results.length) return null;
-
-  const lat = Number(results[0].lat);
-  const lng = Number(results[0].lon);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
 async function reverseGeocodeZone(lat: number, lng: number): Promise<string | null> {
@@ -652,6 +656,12 @@ export function PetFriendlyPlacesSection() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('todos');
   // Lugar marcado al tocar un pin del mapa, para resaltarlo en el listado.
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  // Superficie a la que se debe encuadrar el mapa (nueva busqueda por
+  // ubicacion/direccion/zona); null = no forzar zoom, solo recentrar.
+  const [mapFitBounds, setMapFitBounds] = useState<MapBounds | null>(null);
+  // Se muestra el boton "Buscar en esta zona" cuando el usuario mueve o hace
+  // zoom manualmente, para no gastar cuota de Google en cada arrastre.
+  const [canSearchThisArea, setCanSearchThisArea] = useState(false);
 
   const [activePlaces, setActivePlaces] = useState<PetFriendlyPlace[]>([]);
   const [loadingActive, setLoadingActive] = useState(false);
@@ -756,7 +766,7 @@ export function PetFriendlyPlacesSection() {
     [user],
   );
 
-  const loadOsmPlaces = useCallback(async (lat: number, lng: number, category: CategoryFilter) => {
+  const loadOsmPlaces = useCallback(async (lat: number, lng: number, category: CategoryFilter, bounds: MapBounds) => {
     if (category === 'otro') {
       setOsmPlaces([]);
       setOsmError(null);
@@ -765,9 +775,9 @@ export function PetFriendlyPlacesSection() {
     setLoadingOsm(true);
     // Google Places es "best effort": si falla no debe tirar abajo el
     // resultado de OSM (que tiene su propio manejo de errores/cache abajo).
-    const googlePlacesPromise = fetchNearbyGooglePlaces(lat, lng, category).catch(() => [] as OsmPlace[]);
+    const googlePlacesPromise = fetchNearbyGooglePlaces(lat, lng, category, bounds).catch(() => [] as OsmPlace[]);
     try {
-      const results = category === 'todos' ? await fetchNearbyOsmPlacesAll(lat, lng) : await fetchNearbyOsmPlaces(lat, lng, category);
+      const results = category === 'todos' ? await fetchNearbyOsmPlacesAll(lat, lng, bounds) : await fetchNearbyOsmPlaces(lat, lng, category, bounds);
       const merged = mergePlaceSources(results, await googlePlacesPromise);
       setOsmPlaces(merged);
       setOsmError(null);
@@ -798,7 +808,10 @@ export function PetFriendlyPlacesSection() {
   // Ultimos limites visibles del mapa (se actualizan al mover/hacer zoom) para
   // poder recargar el listado segun el area que esta viendo el usuario.
   const lastBoundsRef = useRef<MapBounds | null>(null);
-  const moveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // true mientras el proximo "moveend" es consecuencia de nuestro propio
+  // fitBounds/setView (busqueda por ubicacion/direccion/zona), para no
+  // confundirlo con un arrastre/zoom manual del usuario.
+  const isProgrammaticMoveRef = useRef(false);
 
   const loadActivePlacesByBounds = useCallback(async (bounds: MapBounds, category: CategoryFilter) => {
     setLoadingActive(true);
@@ -816,20 +829,29 @@ export function PetFriendlyPlacesSection() {
     }
   }, []);
 
-  const handleMapViewChanged = useCallback(
-    (center: { lat: number; lng: number }, bounds: MapBounds) => {
-      lastBoundsRef.current = bounds;
-      if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
-      moveDebounceRef.current = setTimeout(() => {
-        // No se mueve `location` (marcador azul / centrado explicito) para
-        // no crear un loop con RecenterMap; solo se refresca el listado
-        // segun el area que el usuario esta mirando ahora.
-        loadOsmPlaces(center.lat, center.lng, selectedCategory);
-        loadActivePlacesByBounds(bounds, selectedCategory);
-      }, 500);
-    },
-    [loadActivePlacesByBounds, loadOsmPlaces, selectedCategory],
-  );
+  const handleMapViewChanged = useCallback((_center: { lat: number; lng: number }, bounds: MapBounds) => {
+    lastBoundsRef.current = bounds;
+    if (isProgrammaticMoveRef.current) {
+      // moveend disparado por nuestro propio fitBounds/setView: la busqueda
+      // para estos bounds ya se disparo al iniciarla, no hace falta ofrecer
+      // "buscar en esta zona".
+      isProgrammaticMoveRef.current = false;
+      setCanSearchThisArea(false);
+      return;
+    }
+    // Gesto manual del usuario (arrastre/zoom): no se busca sola para no
+    // gastar cuota de Google en cada movimiento, se ofrece el boton.
+    setCanSearchThisArea(true);
+  }, []);
+
+  const handleSearchThisArea = useCallback(() => {
+    const bounds = lastBoundsRef.current;
+    if (!bounds) return;
+    const center = boundsCenter(bounds);
+    setCanSearchThisArea(false);
+    loadOsmPlaces(center.lat, center.lng, selectedCategory, bounds);
+    loadActivePlacesByBounds(bounds, selectedCategory);
+  }, [loadActivePlacesByBounds, loadOsmPlaces, selectedCategory]);
 
   const applyZoneSelection = useCallback(
     (zone: string) => {
@@ -853,7 +875,13 @@ export function PetFriendlyPlacesSection() {
     }
 
     setLocation(position);
-    loadOsmPlaces(position.lat, position.lng, selectedCategory);
+    // Ubicacion puntual (GPS): mismo rango inicial acotado que una direccion.
+    const bounds = boundsFromCenterRadius(position.lat, position.lng, ADDRESS_INITIAL_RADIUS_METERS);
+    lastBoundsRef.current = bounds;
+    isProgrammaticMoveRef.current = true;
+    setCanSearchThisArea(false);
+    setMapFitBounds(bounds);
+    loadOsmPlaces(position.lat, position.lng, selectedCategory, bounds);
 
     const zone = await reverseGeocodeZone(position.lat, position.lng);
     applyZoneSelection(zone || 'Tu zona');
@@ -868,13 +896,19 @@ export function PetFriendlyPlacesSection() {
       setManualSearching(true);
       setManualError(null);
       try {
-        const coords = await geocodeAddress(address);
-        if (!coords) {
+        const zone = await geocodeZone(address);
+        if (!zone) {
           setManualError('No pudimos encontrar esa direccion o destino.');
           return;
         }
-        setLocation(coords);
-        loadOsmPlaces(coords.lat, coords.lng, selectedCategory);
+        // Barrio/localidad: se encuadra a toda su superficie (bounds de
+        // Nominatim); direccion puntual: rango fijo de 20 cuadras.
+        setLocation({ lat: zone.lat, lng: zone.lng });
+        lastBoundsRef.current = zone.bounds;
+        isProgrammaticMoveRef.current = true;
+        setCanSearchThisArea(false);
+        setMapFitBounds(zone.bounds);
+        loadOsmPlaces(zone.lat, zone.lng, selectedCategory, zone.bounds);
         applyZoneSelection(address);
       } catch {
         setManualError('No pudimos buscar ese destino en este momento.');
@@ -895,7 +929,7 @@ export function PetFriendlyPlacesSection() {
       }
       loadIncubator(zoneLabel, category);
       if (location) {
-        loadOsmPlaces(location.lat, location.lng, category);
+        loadOsmPlaces(location.lat, location.lng, category, lastBoundsRef.current ?? boundsFromCenterRadius(location.lat, location.lng, ADDRESS_INITIAL_RADIUS_METERS));
       }
     },
     [loadActivePlaces, loadActivePlacesByBounds, loadIncubator, loadOsmPlaces, location, zoneLabel],
@@ -917,7 +951,11 @@ export function PetFriendlyPlacesSection() {
       }
 
       setLocation(position);
-      loadOsmPlaces(position.lat, position.lng, selectedCategory);
+      const bounds = boundsFromCenterRadius(position.lat, position.lng, ADDRESS_INITIAL_RADIUS_METERS);
+      lastBoundsRef.current = bounds;
+      isProgrammaticMoveRef.current = true;
+      setMapFitBounds(bounds);
+      loadOsmPlaces(position.lat, position.lng, selectedCategory, bounds);
       const zone = await reverseGeocodeZone(position.lat, position.lng);
       if (cancelled) return;
       applyZoneSelection(zone || 'Tu zona');
@@ -1473,7 +1511,7 @@ export function PetFriendlyPlacesSection() {
         <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" />
           <MapViewSync onChange={handleMapViewChanged} />
-          <RecenterMap center={mapCenter} />
+          <RecenterMap center={mapCenter} fitBounds={mapFitBounds} />
           {location && <Marker position={[location.lat, location.lng]} icon={locationMarkerIcon} />}
           {activePlaces
             .filter((p) => typeof p.latitude === 'number' && typeof p.longitude === 'number')
@@ -1505,6 +1543,17 @@ export function PetFriendlyPlacesSection() {
           ))}
         </MapContainer>
         <DogLoadingOverlay active={loadingOsm} />
+        {canSearchThisArea && (
+          <div className="pointer-events-none absolute inset-x-0 top-2 z-[1000] flex justify-center px-2">
+            <button
+              type="button"
+              onClick={handleSearchThisArea}
+              className="pointer-events-auto rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white/80"
+            >
+              Buscar en esta zona
+            </button>
+          </div>
+        )}
       </div>
 
       <AdBanner adSenseSlotId={PLACES_ADSENSE_SLOT_ID} />
@@ -1711,7 +1760,15 @@ export function PetFriendlyPlacesSection() {
               <span>{osmError}</span>
               <button
                 type="button"
-                onClick={() => location && loadOsmPlaces(location.lat, location.lng, selectedCategory)}
+                onClick={() =>
+                  location &&
+                  loadOsmPlaces(
+                    location.lat,
+                    location.lng,
+                    selectedCategory,
+                    lastBoundsRef.current ?? boundsFromCenterRadius(location.lat, location.lng, ADDRESS_INITIAL_RADIUS_METERS),
+                  )
+                }
                 className="font-semibold underline"
               >
                 Reintentar

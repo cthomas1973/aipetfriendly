@@ -1,14 +1,15 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Heart, LocateFixed, MapPin, MessageCircleHeart, Navigation, PawPrint, Phone, Search, Star, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { AndroidSettings, IOSSettings, NativeSettings } from 'capacitor-native-settings';
-import { Circle, MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { divIcon, type LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { AdBanner } from './AdBanner';
 import { DogLoadingOverlay } from './DogLoadingOverlay';
 import { useAppState } from '../context/AppStateContext';
+import { ADDRESS_INITIAL_RADIUS_METERS, boundsCenter, boundsFromCenterRadius, geocodeZone, radiusFromBounds, type MapBounds } from '../lib/mapZoneSearch';
 import {
   claimVeterinaryAdminNotification,
   fetchActiveVeterinaryProfilesByZone,
@@ -33,7 +34,6 @@ const MIN_ACCEPTABLE_ACCURACY_METERS = 150;
 const MAX_BROWSER_ACCEPTABLE_ACCURACY_METERS = 3000;
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
-const SEARCH_RADIUS_METERS = 1200;
 const FETCH_TIMEOUT_MS = 8000;
 const FALLBACK_CENTER: LatLngExpression = [-34.6037, -58.3816];
 const OVERPASS_ENDPOINTS = [
@@ -107,16 +107,17 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function fetchNearbyVets(lat: number, lng: number): Promise<NearbyVet[]> {
+async function fetchNearbyVets(lat: number, lng: number, bounds: MapBounds): Promise<NearbyVet[]> {
+  const bbox = `${bounds.minLat},${bounds.minLng},${bounds.maxLat},${bounds.maxLng}`;
   const query = `[out:json][timeout:25];
 (
-  node["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  relation["amenity"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  node["amenity"="veterinary"](${bbox});
+  way["amenity"="veterinary"](${bbox});
+  relation["amenity"="veterinary"](${bbox});
 
-  node["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  way["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
-  relation["healthcare"="veterinary"](around:${SEARCH_RADIUS_METERS},${lat},${lng});
+  node["healthcare"="veterinary"](${bbox});
+  way["healthcare"="veterinary"](${bbox});
+  relation["healthcare"="veterinary"](${bbox});
 );
 out center tags;`;
 
@@ -180,12 +181,12 @@ out center tags;`;
     return overpassResults;
   }
 
-  const latOffset = SEARCH_RADIUS_METERS / 111320;
-  const lngOffset = SEARCH_RADIUS_METERS / (111320 * Math.cos((lat * Math.PI) / 180));
-  const left = lng - lngOffset;
-  const right = lng + lngOffset;
-  const top = lat + latOffset;
-  const bottom = lat - latOffset;
+  const latOffset = bounds.maxLat - bounds.minLat;
+  const lngOffset = bounds.maxLng - bounds.minLng;
+  const left = bounds.minLng - lngOffset / 2;
+  const right = bounds.maxLng + lngOffset / 2;
+  const top = bounds.maxLat + latOffset / 2;
+  const bottom = bounds.minLat - latOffset / 2;
 
   try {
     const nominatimUrl = new URL(NOMINATIM_ENDPOINT);
@@ -262,12 +263,12 @@ function mergeVetSources(osmVets: NearbyVet[], googleVets: NearbyVet[]): NearbyV
 // veterinary_care), cacheadas por zona en el servidor (ver
 // search-google-places). Si OSM falla pero Google trae resultados, se
 // devuelven esos en vez de propagar el error de red.
-async function fetchNearbyVetsWithGoogle(lat: number, lng: number): Promise<NearbyVet[]> {
+async function fetchNearbyVetsWithGoogle(lat: number, lng: number, bounds: MapBounds): Promise<NearbyVet[]> {
   const googlePromise = fetchGooglePlacesByZone({
     entityType: 'veterinary',
     latitude: lat,
     longitude: lng,
-    radiusMeters: SEARCH_RADIUS_METERS,
+    radiusMeters: radiusFromBounds(lat, lng, bounds),
   })
     .then((candidates) =>
       candidates.map((place) => ({
@@ -283,7 +284,7 @@ async function fetchNearbyVetsWithGoogle(lat: number, lng: number): Promise<Near
     .catch(() => [] as NearbyVet[]);
 
   try {
-    const osmVets = await fetchNearbyVets(lat, lng);
+    const osmVets = await fetchNearbyVets(lat, lng, bounds);
     return mergeVetSources(osmVets, await googlePromise);
   } catch (error) {
     const googleVets = await googlePromise;
@@ -312,46 +313,45 @@ function buildExternalMapsUrl(options?: { lat?: number; lng?: number; address?: 
   return url.toString();
 }
 
-function RecenterMap({ center }: { center: LatLngExpression }) {
+function RecenterMap({ center, fitBounds }: { center: LatLngExpression; fitBounds: MapBounds | null }) {
   const map = useMap();
 
   useEffect(() => {
-    map.setView(center, 15, { animate: true });
-  }, [center, map]);
+    if (fitBounds) {
+      map.fitBounds(
+        [
+          [fitBounds.minLat, fitBounds.minLng],
+          [fitBounds.maxLat, fitBounds.maxLng],
+        ],
+        { animate: true, padding: [24, 24] },
+      );
+      return;
+    }
+    map.setView(center, map.getZoom(), { animate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center, fitBounds]);
 
   return null;
 }
 
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  const url = new URL(NOMINATIM_ENDPOINT);
-  url.searchParams.set('q', address);
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '1');
-  url.searchParams.set('addressdetails', '0');
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      'Accept-Language': 'es',
+function MapViewSync({ onChange }: { onChange: (center: { lat: number; lng: number }, bounds: MapBounds) => void }) {
+  useMapEvents({
+    moveend: (event) => {
+      const map = event.target;
+      const center = map.getCenter();
+      const bounds = map.getBounds();
+      onChange(
+        { lat: center.lat, lng: center.lng },
+        {
+          minLat: bounds.getSouth(),
+          maxLat: bounds.getNorth(),
+          minLng: bounds.getWest(),
+          maxLng: bounds.getEast(),
+        },
+      );
     },
   });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const results = (await response.json()) as Array<{ lat: string; lon: string }>;
-  if (!results.length) {
-    return null;
-  }
-
-  const lat = Number(results[0].lat);
-  const lng = Number(results[0].lon);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return null;
-  }
-
-  return { lat, lng };
+  return null;
 }
 
 function inferZoneLabel(address: string) {
@@ -491,6 +491,12 @@ export function NearbyVetsMapSection() {
   const [activeProfiles, setActiveProfiles] = useState<VeterinaryProfile[]>([]);
   const [loadingActiveProfiles, setLoadingActiveProfiles] = useState(false);
   const [activeProfilesError, setActiveProfilesError] = useState<string | null>(null);
+  // Superficie a la que se debe encuadrar el mapa (nueva busqueda por
+  // ubicacion/direccion/zona); null = no forzar zoom, solo recentrar.
+  const [mapFitBounds, setMapFitBounds] = useState<MapBounds | null>(null);
+  // Se muestra el boton "Buscar en esta zona" cuando el usuario mueve o hace
+  // zoom manualmente, para no repetir la busqueda en cada gesto.
+  const [canSearchThisArea, setCanSearchThisArea] = useState(false);
 
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -573,12 +579,20 @@ export function NearbyVetsMapSection() {
     [location],
   );
 
-  const loadNearbyVets = useCallback(async (lat: number, lng: number) => {
+  // Ultimos limites visibles del mapa (se actualizan al mover/hacer zoom) para
+  // poder recargar el listado segun el area que esta viendo el usuario.
+  const lastBoundsRef = useRef<MapBounds | null>(null);
+  // true mientras el proximo "moveend" es consecuencia de nuestro propio
+  // fitBounds/setView (busqueda por ubicacion/direccion/zona), para no
+  // confundirlo con un arrastre/zoom manual del usuario.
+  const isProgrammaticMoveRef = useRef(false);
+
+  const loadNearbyVets = useCallback(async (lat: number, lng: number, bounds: MapBounds) => {
     setLoadingVets(true);
     setVetsError(null);
 
     try {
-      const vets = await fetchNearbyVetsWithGoogle(lat, lng);
+      const vets = await fetchNearbyVetsWithGoogle(lat, lng, bounds);
       setNearbyVets(vets);
       setSelectedVetId(null);
       if (vets.length === 0) {
@@ -597,6 +611,28 @@ export function NearbyVetsMapSection() {
       setLoadingVets(false);
     }
   }, []);
+
+  const handleMapViewChanged = useCallback((_center: { lat: number; lng: number }, bounds: MapBounds) => {
+    lastBoundsRef.current = bounds;
+    if (isProgrammaticMoveRef.current) {
+      // moveend disparado por nuestro propio fitBounds/setView: la busqueda
+      // para estos bounds ya se disparo al iniciarla.
+      isProgrammaticMoveRef.current = false;
+      setCanSearchThisArea(false);
+      return;
+    }
+    // Gesto manual del usuario (arrastre/zoom): se ofrece el boton en vez de
+    // buscar sola en cada movimiento.
+    setCanSearchThisArea(true);
+  }, []);
+
+  const handleSearchThisArea = useCallback(() => {
+    const bounds = lastBoundsRef.current;
+    if (!bounds) return;
+    const center = boundsCenter(bounds);
+    setCanSearchThisArea(false);
+    void loadNearbyVets(center.lat, center.lng, bounds);
+  }, [loadNearbyVets]);
 
   const loadIncubator = useCallback(async (zoneLabel: string) => {
     if (!user || user.isGuest) {
@@ -1196,9 +1232,14 @@ export function NearbyVetsMapSection() {
           applyZoneSelection(detectedZone, true);
         }
 
+        const bounds = boundsFromCenterRadius(nextLocation.lat, nextLocation.lng, ADDRESS_INITIAL_RADIUS_METERS);
+        lastBoundsRef.current = bounds;
+        isProgrammaticMoveRef.current = true;
+        setCanSearchThisArea(false);
+        setMapFitBounds(bounds);
         setLocation(nextLocation);
         setLocationAccuracy(nativeAccuracy);
-        await loadNearbyVets(nextLocation.lat, nextLocation.lng);
+        await loadNearbyVets(nextLocation.lat, nextLocation.lng, bounds);
         return;
       }
 
@@ -1243,9 +1284,14 @@ export function NearbyVetsMapSection() {
         applyZoneSelection(detectedZone, true);
       }
 
+      const bounds = boundsFromCenterRadius(nextLocation.lat, nextLocation.lng, ADDRESS_INITIAL_RADIUS_METERS);
+      lastBoundsRef.current = bounds;
+      isProgrammaticMoveRef.current = true;
+      setCanSearchThisArea(false);
+      setMapFitBounds(bounds);
       setLocation(nextLocation);
       setLocationAccuracy(browserAccuracy);
-      await loadNearbyVets(nextLocation.lat, nextLocation.lng);
+      await loadNearbyVets(nextLocation.lat, nextLocation.lng, bounds);
 
       if (!silent && browserAccuracy > MIN_ACCEPTABLE_ACCURACY_METERS) {
         setLocationError(`Ubicacion aproximada (${Math.round(browserAccuracy)} m). Se centro el mapa con precision reducida.`);
@@ -1294,12 +1340,18 @@ export function NearbyVetsMapSection() {
     setLocationError(null);
 
     try {
-      const point = await geocodeAddress(cleanedAddress);
-      if (point) {
-        setLocation(point);
+      const zone = await geocodeZone(cleanedAddress);
+      if (zone) {
+        // Barrio/localidad: se encuadra a toda su superficie (bounds de
+        // Nominatim); direccion puntual: rango fijo de 20 cuadras.
+        setLocation({ lat: zone.lat, lng: zone.lng });
         setLocationAccuracy(null);
+        lastBoundsRef.current = zone.bounds;
+        isProgrammaticMoveRef.current = true;
+        setCanSearchThisArea(false);
+        setMapFitBounds(zone.bounds);
         applyZoneSelection(inferZoneLabel(cleanedAddress), true);
-        await loadNearbyVets(point.lat, point.lng);
+        await loadNearbyVets(zone.lat, zone.lng, zone.bounds);
         return;
       }
 
@@ -1596,7 +1648,7 @@ export function NearbyVetsMapSection() {
             <Navigation size={13} />
             {location
               ? locationAccuracy
-                ? `Radio 10 cuadras (${Math.round(locationAccuracy)} m de precision)`
+                ? `Ubicacion precisa (${Math.round(locationAccuracy)} m)`
                 : 'Ubicacion manual aplicada'
               : 'Modo busqueda general'}
           </span>
@@ -1651,14 +1703,10 @@ export function NearbyVetsMapSection() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <RecenterMap center={mapCenter} />
+            <MapViewSync onChange={handleMapViewChanged} />
+            <RecenterMap center={mapCenter} fitBounds={mapFitBounds} />
 
-            {location && (
-              <>
-                <Circle center={[location.lat, location.lng]} radius={SEARCH_RADIUS_METERS} pathOptions={{ color: '#10b981' }} />
-                <Marker position={[location.lat, location.lng]} icon={locationMarkerIcon} />
-              </>
-            )}
+            {location && <Marker position={[location.lat, location.lng]} icon={locationMarkerIcon} />}
 
             {nearbyVets.map((vet) => (
               <Marker
@@ -1674,6 +1722,17 @@ export function NearbyVetsMapSection() {
             ))}
           </MapContainer>
           <DogLoadingOverlay active={loadingVets} />
+          {canSearchThisArea && (
+            <div className="pointer-events-none absolute inset-x-0 top-2 z-[1000] flex justify-center px-2">
+              <button
+                type="button"
+                onClick={handleSearchThisArea}
+                className="pointer-events-auto rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white/80"
+              >
+                Buscar en esta zona
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1717,7 +1776,11 @@ export function NearbyVetsMapSection() {
               <button
                 type="button"
                 onClick={() => {
-                  void loadNearbyVets(location.lat, location.lng);
+                  void loadNearbyVets(
+                    location.lat,
+                    location.lng,
+                    lastBoundsRef.current ?? boundsFromCenterRadius(location.lat, location.lng, ADDRESS_INITIAL_RADIUS_METERS),
+                  );
                 }}
                 className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800"
               >
