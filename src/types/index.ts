@@ -478,6 +478,35 @@ export interface DiscountCodeValidation {
   percentOff: number;
 }
 
+// ── Publicaciones en redes sociales (Admin > Publicaciones) ────────────────
+export type SocialPostPlatform = 'facebook' | 'instagram' | 'youtube' | 'tiktok';
+export type SocialPostMediaType = 'image' | 'video';
+export type SocialPostStatus = 'draft' | 'scheduled' | 'processing' | 'done' | 'cancelled';
+export type SocialPostTargetStatus = 'pending' | 'processing' | 'published' | 'failed' | 'skipped';
+
+export interface SocialPostTarget {
+  platform: SocialPostPlatform;
+  status: SocialPostTargetStatus;
+  externalPostId: string | null;
+  error: string | null;
+  publishedAt: string | null;
+}
+
+export interface SocialPost {
+  id: string;
+  mediaUrl: string;
+  mediaType: SocialPostMediaType;
+  caption: string | null;
+  scheduledAt: string | null;
+  status: SocialPostStatus;
+  /** 'blog_auto' cuando lo genero el cron del blog; null/undefined si lo creo un admin a mano. */
+  source: string | null;
+  sourceRefId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  targets: SocialPostTarget[];
+}
+
 export interface PetAiUsageRow {
   petId: string;
   usageCount: number;

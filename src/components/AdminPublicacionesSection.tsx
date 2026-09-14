@@ -1,0 +1,452 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Facebook, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Trash2, X, XCircle, Youtube } from 'lucide-react';
+import {
+  cancelAdminSocialPost,
+  createAdminSocialPost,
+  deleteAdminSocialPost,
+  fetchAdminSocialPosts,
+  updateAdminSocialPost,
+  uploadAdminSocialMedia,
+} from '../lib/supabase';
+import type { SocialPost, SocialPostPlatform, SocialPostTargetStatus } from '../types';
+
+// Etapa 0: solo carga/programacion. La publicacion real hacia cada red (Etapas 1-4)
+// todavia no esta implementada; social_post_targets queda en 'pending' hasta entonces.
+
+const PLATFORM_OPTIONS: { value: SocialPostPlatform; label: string; icon: typeof Facebook }[] = [
+  { value: 'facebook', label: 'Facebook', icon: Facebook },
+  { value: 'instagram', label: 'Instagram', icon: Instagram },
+  { value: 'youtube', label: 'YouTube', icon: Youtube },
+  { value: 'tiktok', label: 'TikTok', icon: Music2 },
+];
+
+const TARGET_STATUS_LABEL: Record<SocialPostTargetStatus, string> = {
+  pending: 'Pendiente',
+  processing: 'Publicando...',
+  published: 'Publicado',
+  failed: 'Error',
+  skipped: 'Omitido',
+};
+
+const TARGET_STATUS_CLASS: Record<SocialPostTargetStatus, string> = {
+  pending: 'bg-slate-100 text-slate-500',
+  processing: 'bg-amber-50 text-amber-600',
+  published: 'bg-emerald-50 text-emerald-600',
+  failed: 'bg-red-50 text-red-600',
+  skipped: 'bg-slate-100 text-slate-400',
+};
+
+const POST_STATUS_LABEL: Record<SocialPost['status'], string> = {
+  draft: 'Borrador (pendiente de revision)',
+  scheduled: 'Programado',
+  processing: 'Publicando',
+  done: 'Finalizado',
+  cancelled: 'Cancelado',
+};
+
+const POST_STATUS_CLASS: Record<SocialPost['status'], string> = {
+  draft: 'bg-purple-50 text-purple-600',
+  scheduled: 'bg-sky-50 text-sky-600',
+  processing: 'bg-amber-50 text-amber-600',
+  done: 'bg-emerald-50 text-emerald-600',
+  cancelled: 'bg-slate-100 text-slate-400',
+};
+
+const EMPTY_FORM = {
+  caption: '',
+  scheduledAt: '',
+  platforms: [] as SocialPostPlatform[],
+};
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function AdminPublicacionesSection() {
+  const [rows, setRows] = useState<SocialPost[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchAdminSocialPosts();
+      setRows(data);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo cargar el listado de publicaciones.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const togglePlatform = (platform: SocialPostPlatform) => {
+    setForm((f) => ({
+      ...f,
+      platforms: f.platforms.includes(platform)
+        ? f.platforms.filter((p) => p !== platform)
+        : [...f.platforms, platform],
+    }));
+  };
+
+  const openCreateForm = () => {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFile(null);
+    setPreviewUrl(null);
+    setShowForm(true);
+    setError(null);
+    setMsg(null);
+  };
+
+  const openEditForm = (row: SocialPost) => {
+    setEditingId(row.id);
+    setForm({
+      caption: row.caption || '',
+      scheduledAt: row.scheduledAt ? toDatetimeLocalValue(row.scheduledAt) : '',
+      platforms: row.targets.map((t) => t.platform),
+    });
+    setFile(null);
+    setPreviewUrl(row.mediaUrl);
+    setShowForm(true);
+    setError(null);
+    setMsg(null);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0] || null;
+    setFile(selected);
+    setPreviewUrl(selected ? URL.createObjectURL(selected) : null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setMsg(null);
+
+    if (!editingId && !file) {
+      setError('Elegi una imagen o video para publicar.');
+      return;
+    }
+
+    if (!form.scheduledAt) {
+      setError('Elegi la fecha y hora de publicacion.');
+      return;
+    }
+
+    if (form.platforms.length === 0) {
+      setError('Elegi al menos una red social.');
+      return;
+    }
+
+    const scheduledAtIso = new Date(form.scheduledAt).toISOString();
+
+    setSaving(true);
+    try {
+      if (editingId) {
+        await updateAdminSocialPost({
+          id: editingId,
+          caption: form.caption.trim() || null,
+          scheduledAt: scheduledAtIso,
+          platforms: form.platforms,
+        });
+        setMsg('Publicacion actualizada correctamente.');
+      } else {
+        const fileDataUrl = await readFileAsDataUrl(file as File);
+        const { mediaUrl, mediaType } = await uploadAdminSocialMedia({ fileDataUrl });
+        await createAdminSocialPost({
+          mediaUrl,
+          mediaType,
+          caption: form.caption.trim() || null,
+          scheduledAt: scheduledAtIso,
+          platforms: form.platforms,
+        });
+        setMsg('Publicacion programada correctamente.');
+      }
+      closeForm();
+      await load();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo guardar la publicacion.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = async (row: SocialPost) => {
+    if (!window.confirm('¿Cancelar esta publicacion programada?')) {
+      return;
+    }
+    try {
+      setError(null);
+      setMsg(null);
+      await cancelAdminSocialPost(row.id);
+      await load();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo cancelar la publicacion.');
+    }
+  };
+
+  const handleDelete = async (row: SocialPost) => {
+    if (!window.confirm('¿Eliminar esta publicacion? Esta accion no se puede deshacer.')) {
+      return;
+    }
+    try {
+      setError(null);
+      setMsg(null);
+      await deleteAdminSocialPost(row.id);
+      setRows((current) => current.filter((r) => r.id !== row.id));
+      setMsg('Publicacion eliminada correctamente.');
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo eliminar la publicacion.');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-bold text-slate-900">Publicaciones en redes sociales</p>
+          <p className="text-xs text-slate-500">
+            Etapa 0: carga y programacion. Todavia no se publica de forma automatica en ninguna red (se suma en etapas siguientes).
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-70"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {loading ? 'Cargando...' : 'Actualizar'}
+          </button>
+          <button
+            type="button"
+            onClick={openCreateForm}
+            className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-sm font-bold text-white"
+          >
+            <Plus size={14} />
+            Nueva publicacion
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {msg && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-600">{msg}</p>}
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-slate-800">{editingId ? 'Editar publicacion' : 'Nueva publicacion'}</p>
+            <button type="button" onClick={closeForm} className="text-slate-400 hover:text-slate-600">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {!editingId && (
+              <label className="sm:col-span-2 text-xs font-semibold text-slate-500">
+                Imagen o video
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm"
+                  onChange={handleFileChange}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+            )}
+
+            {previewUrl && (
+              <div className="sm:col-span-2">
+                {file?.type.startsWith('video/') || (editingId && rows.find((r) => r.id === editingId)?.mediaType === 'video') ? (
+                  <video src={previewUrl} controls className="max-h-48 rounded-xl border border-slate-200" />
+                ) : (
+                  <img src={previewUrl} alt="Vista previa" className="max-h-48 rounded-xl border border-slate-200 object-contain" />
+                )}
+              </div>
+            )}
+
+            <label className="sm:col-span-2 text-xs font-semibold text-slate-500">
+              Texto / caption (opcional)
+              <textarea
+                value={form.caption}
+                onChange={(e) => setForm((f) => ({ ...f, caption: e.target.value }))}
+                rows={3}
+                placeholder="Ej: Consejos para el cuidado dental de tu mascota 🐾"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800"
+              />
+            </label>
+
+            <label className="text-xs font-semibold text-slate-500">
+              Fecha y hora de publicacion
+              <input
+                type="datetime-local"
+                value={form.scheduledAt}
+                onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+                className="mt-1 w-full rounded-full border border-slate-200 px-4 py-2 text-sm font-normal text-slate-800"
+              />
+            </label>
+
+            <div className="text-xs font-semibold text-slate-500">
+              Redes sociales
+              <div className="mt-1 flex flex-wrap gap-2">
+                {PLATFORM_OPTIONS.map(({ value, label, icon: Icon }) => {
+                  const active = form.platforms.includes(value);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => togglePlatform(value)}
+                      className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        active ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500'
+                      }`}
+                    >
+                      <Icon size={14} /> {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-5 py-2 text-sm font-bold text-white disabled:opacity-70"
+          >
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            {editingId ? 'Guardar cambios' : 'Programar publicacion'}
+          </button>
+        </form>
+      )}
+
+      <div className="space-y-3">
+        {rows.length === 0 && !loading && (
+          <p className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+            Todavia no hay publicaciones programadas.
+          </p>
+        )}
+
+        {rows.map((row) => (
+          <div key={row.id} className="rounded-2xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                {row.mediaType === 'video' ? (
+                  <video src={row.mediaUrl} className="h-16 w-16 rounded-xl border border-slate-200 object-cover" />
+                ) : (
+                  <img src={row.mediaUrl} alt="" className="h-16 w-16 rounded-xl border border-slate-200 object-cover" />
+                )}
+                <div>
+                  <p className="text-sm text-slate-700 line-clamp-2">{row.caption || <span className="text-slate-400">Sin texto</span>}</p>
+                  <p className="text-xs text-slate-400">
+                    {row.scheduledAt ? `Programado para ${formatDate(row.scheduledAt)}` : 'Sin fecha de publicacion todavia'}
+                    {row.source === 'blog_auto' && ' · Generado automaticamente desde el blog'}
+                  </p>
+                </div>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${POST_STATUS_CLASS[row.status]}`}>
+                {POST_STATUS_LABEL[row.status]}
+              </span>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {row.targets.map((target) => {
+                const option = PLATFORM_OPTIONS.find((p) => p.value === target.platform);
+                const Icon = option?.icon;
+                return (
+                  <span
+                    key={target.platform}
+                    title={target.error || undefined}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${TARGET_STATUS_CLASS[target.status]}`}
+                  >
+                    {Icon && <Icon size={12} />}
+                    {option?.label || target.platform} · {TARGET_STATUS_LABEL[target.status]}
+                  </span>
+                );
+              })}
+            </div>
+
+            {(row.status === 'scheduled' || row.status === 'draft') && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openEditForm(row)}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                >
+                  <Pencil size={14} /> {row.status === 'draft' ? 'Revisar y programar' : 'Editar'}
+                </button>
+                {row.status === 'scheduled' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCancel(row)}
+                    className="flex items-center gap-1.5 rounded-full border border-amber-200 px-4 py-2 text-xs font-semibold text-amber-600"
+                  >
+                    <XCircle size={14} /> Cancelar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleDelete(row)}
+                  className="flex items-center gap-1.5 rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-600"
+                >
+                  <Trash2 size={14} /> {row.status === 'draft' ? 'Descartar' : 'Eliminar'}
+                </button>
+              </div>
+            )}
+
+            {row.status !== 'scheduled' && row.status !== 'draft' && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => handleDelete(row)}
+                  className="flex items-center gap-1.5 rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-600"
+                >
+                  <Trash2 size={14} /> Eliminar
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

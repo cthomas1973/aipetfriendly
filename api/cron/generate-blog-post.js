@@ -26,10 +26,17 @@
 // mientras se configura, pero se recomienda definir CRON_SECRET en produccion).
 
 import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
 
 // SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
 export const config = { maxDuration: 60 };
+
+// Dominio publico usado para el link al articulo y para descargar el logo
+// que se estampa en la imagen de la publicacion social (ver
+// createSocialDraftFromBlogPost). Mismo default que send-blog-post-notifications.
+const SITE_URL = (process.env.APP_BASE_URL || 'https://www.aipetfriendly.ar').replace(/\/$/, '');
+
 
 // Subtemas fijos entre los que rota la busqueda diaria (1 por dia). Antes
 // eran solo 4 temas muy amplios (rotando por dia-del-anio), lo que hacia que
@@ -97,9 +104,11 @@ function getEnvOrThrow(name) {
   return value;
 }
 
-function getSupabaseAdminClient() {
+export function getSupabaseAdminClient() {
   const supabaseUrl = getEnvOrThrow('SUPABASE_URL');
-  const serviceRoleKey = getEnvOrThrow('SUPABASE_SERVICE_ROLE_KEY');
+  // SUPABASE_SERVICE_KEY es el nombre usado en .env.local/otros scripts locales;
+  // en Vercel la variable esta cargada como SUPABASE_SERVICE_ROLE_KEY.
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || getEnvOrThrow('SUPABASE_SERVICE_KEY');
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
@@ -398,6 +407,122 @@ async function uploadImageToStorage(admin, slug, imageBuffer) {
   return publicUrlData?.publicUrl || null;
 }
 
+// Extrae un parrafo corto en texto plano del articulo para usar como "gancho"
+// en la publicacion social (a falta de un campo de tip dedicado, se reusa el
+// arranque del contenido en vez de sumar otra llamada a la IA solo para esto).
+function buildSocialTipExcerpt(content) {
+  const plain = String(content || '')
+    .replace(/[#*_>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (plain.length <= 220) {
+    return plain;
+  }
+
+  const cut = plain.slice(0, 220);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${cut.slice(0, lastSpace > 100 ? lastSpace : 220)}...`;
+}
+
+// Estampa el logo de AiPetFriendly en la esquina inferior izquierda de la
+// imagen del articulo, para que la publicacion se identifique como propia al
+// compartirse en redes.
+async function buildBrandedSocialImage(articleImageBuffer) {
+  const logoResponse = await fetch(`${SITE_URL}/logo-aipetfriendly.png`);
+  if (!logoResponse.ok) {
+    throw new Error(`No se pudo descargar el logo (status ${logoResponse.status}).`);
+  }
+  const logoBuffer = Buffer.from(await logoResponse.arrayBuffer());
+
+  const baseMeta = await sharp(articleImageBuffer).metadata();
+  const baseWidth = baseMeta.width || 1024;
+  const baseHeight = baseMeta.height || 1024;
+
+  const logoWidth = Math.round(baseWidth * 0.22);
+  const resizedLogo = await sharp(logoBuffer).resize({ width: logoWidth }).png().toBuffer();
+  const logoMeta = await sharp(resizedLogo).metadata();
+  const padding = Math.round(baseWidth * 0.03);
+
+  return sharp(articleImageBuffer)
+    .composite([{
+      input: resizedLogo,
+      left: padding,
+      top: Math.max(baseHeight - (logoMeta.height || 0) - padding, 0),
+    }])
+    .png()
+    .toBuffer();
+}
+
+async function uploadSocialDraftImage(admin, slug, imageBuffer) {
+  const fileName = `blog-${slug}-${Date.now()}.png`;
+  const bucket = 'social-posts-media';
+
+  let { error: uploadError } = await admin.storage.from(bucket).upload(fileName, imageBuffer, {
+    contentType: 'image/png',
+    upsert: false,
+  });
+
+  if (uploadError && /not found|bucket/i.test(uploadError.message || '')) {
+    const { error: createBucketError } = await admin.storage.createBucket(bucket, { public: true });
+    if (createBucketError && !/already exists/i.test(createBucketError.message || '')) {
+      throw new Error(`No se pudo crear el bucket ${bucket}: ${createBucketError.message}`);
+    }
+    const retry = await admin.storage.from(bucket).upload(fileName, imageBuffer, {
+      contentType: 'image/png',
+      upsert: false,
+    });
+    uploadError = retry.error;
+  }
+
+  if (uploadError) {
+    throw new Error(`No se pudo subir la imagen de la publicacion social: ${uploadError.message}`);
+  }
+
+  const { data: publicUrlData } = admin.storage.from(bucket).getPublicUrl(fileName);
+  return publicUrlData?.publicUrl || null;
+}
+
+// Crea el borrador en social_posts (Admin > Publicaciones) con el titulo, la
+// imagen (con el logo estampado), un gancho corto del articulo y el link al
+// post. Queda en status='draft' esperando que un admin elija redes/horario y
+// lo apruebe: no se publica solo (ver admin_update_social_post, migracion 052).
+export async function createSocialDraftFromBlogPost(admin, { blogPost, articleImageBuffer }) {
+  const { data: existing } = await admin
+    .from('social_posts')
+    .select('id')
+    .eq('source', 'blog_auto')
+    .eq('source_ref_id', blogPost.id)
+    .maybeSingle();
+
+  if (existing) {
+    return;
+  }
+
+  const brandedImageBuffer = await buildBrandedSocialImage(articleImageBuffer);
+  const mediaUrl = await uploadSocialDraftImage(admin, blogPost.slug, brandedImageBuffer);
+  if (!mediaUrl) {
+    return;
+  }
+
+  const articleUrl = `${SITE_URL}/blog/${blogPost.slug}`;
+  const tip = buildSocialTipExcerpt(blogPost.content);
+  const caption = `📰 ${blogPost.title}\n\n${tip}\n\nLeé la nota completa 👉 ${articleUrl}\n\n🐾 AiPetFriendly`;
+
+  const { error } = await admin.from('social_posts').insert({
+    media_url: mediaUrl,
+    media_type: 'image',
+    caption,
+    status: 'draft',
+    source: 'blog_auto',
+    source_ref_id: blogPost.id,
+  });
+
+  if (error) {
+    throw new Error(`No se pudo crear el borrador de publicacion social: ${error.message}`);
+  }
+}
+
 async function alreadyHasPostToday(admin) {
   const startOfDayUtc = new Date();
   startOfDayUtc.setUTCHours(0, 0, 0, 0);
@@ -445,8 +570,9 @@ export default async function handler(req, res) {
     const slug = await ensureUniqueSlug(admin, baseSlug);
 
     let imageUrl = null;
+    let imageBuffer = null;
     try {
-      const imageBuffer = await generateArticleImage(article.title, topic, petFocus);
+      imageBuffer = await generateArticleImage(article.title, topic, petFocus);
       imageUrl = await uploadImageToStorage(admin, slug, imageBuffer);
     } catch (imageError) {
       // La imagen es un extra: si falla (por ejemplo, la cuenta de IA no
@@ -473,6 +599,16 @@ export default async function handler(req, res) {
 
     if (insertError) {
       throw new Error(`No se pudo guardar el post: ${insertError.message}`);
+    }
+
+    if (imageBuffer) {
+      try {
+        await createSocialDraftFromBlogPost(admin, { blogPost: inserted, articleImageBuffer: imageBuffer });
+      } catch (socialError) {
+        // Igual que la imagen: el borrador de redes es un extra, no debe tirar
+        // abajo la generacion del post del blog si falla.
+        console.error('No se pudo crear el borrador de publicacion social (se continua igual):', socialError);
+      }
     }
 
     return sendJson(res, 200, {

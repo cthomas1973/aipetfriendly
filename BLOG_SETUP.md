@@ -19,6 +19,15 @@ que genera automaticamente un post nuevo para `/blog`:
    `supabase/migrations/041_blog_posts.sql` y
    `supabase/migrations/050_blog_posts_topic_variety.sql`, esta ultima agrega
    las columnas `topic`/`pet_focus` usadas para chequear el historial).
+5. Si la imagen se genero bien, arma ademas un borrador de publicacion para
+   redes sociales (titulo, imagen con el logo de AiPetFriendly estampado,
+   un extracto del articulo a modo de "tip" y el link a `/blog/{slug}`) y lo
+   inserta en `social_posts` con `status='draft'` y `source='blog_auto'`
+   (migracion `supabase/migrations/052_social_posts_draft_source.sql`). Este
+   borrador NO se publica solo: queda esperando en Admin > Publicaciones para
+   que un admin revise el texto/imagen, elija redes y horario, y lo apruebe.
+   Si falla (falta el logo, error de Storage, etc.) no afecta la generacion
+   del post del blog: solo queda sin borrador de redes para ese post.
 
 Archivos relevantes:
 - `api/cron/generate-blog-post.js` — funcion serverless que corre el pipeline.

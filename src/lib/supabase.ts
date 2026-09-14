@@ -31,6 +31,9 @@ import type {
   ChatMessage,
   AppUser,
   SubscriptionPlan,
+  SocialPost,
+  SocialPostMediaType,
+  SocialPostPlatform,
   UserAccessLevel,
   VeterinaryClaimLanding,
   VeterinaryClaimPreview,
@@ -2372,6 +2375,111 @@ export async function deleteAdminDiscountCode(id: string): Promise<void> {
   if (error) {
     throw new Error(error.message || 'No se pudo eliminar el codigo de descuento.');
   }
+}
+
+// ── Publicaciones en redes sociales (Admin > Publicaciones) ────────────────
+
+export async function fetchAdminSocialPosts(): Promise<SocialPost[]> {
+  const { data, error } = await supabase.rpc('admin_list_social_posts');
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    mediaUrl: row.media_url,
+    mediaType: row.media_type,
+    caption: row.caption || null,
+    scheduledAt: row.scheduled_at || null,
+    status: row.status,
+    source: row.source || null,
+    sourceRefId: row.source_ref_id || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    targets: (row.targets || []).map((t: any) => ({
+      platform: t.platform,
+      status: t.status,
+      externalPostId: t.externalPostId || null,
+      error: t.error || null,
+      publishedAt: t.publishedAt || null,
+    })),
+  }));
+}
+
+export async function createAdminSocialPost(input: {
+  mediaUrl: string;
+  mediaType: SocialPostMediaType;
+  caption?: string | null;
+  scheduledAt: string;
+  platforms: SocialPostPlatform[];
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_create_social_post', {
+    p_media_url: input.mediaUrl,
+    p_media_type: input.mediaType,
+    p_caption: input.caption ?? null,
+    p_scheduled_at: input.scheduledAt,
+    p_platforms: input.platforms,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo crear la publicacion.');
+  }
+
+  return data as string;
+}
+
+export async function updateAdminSocialPost(input: {
+  id: string;
+  caption?: string | null;
+  scheduledAt: string;
+  platforms: SocialPostPlatform[];
+}): Promise<void> {
+  const { error } = await supabase.rpc('admin_update_social_post', {
+    p_id: input.id,
+    p_caption: input.caption ?? null,
+    p_scheduled_at: input.scheduledAt,
+    p_platforms: input.platforms,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo actualizar la publicacion.');
+  }
+}
+
+export async function cancelAdminSocialPost(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_cancel_social_post', { p_id: id });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo cancelar la publicacion.');
+  }
+}
+
+export async function deleteAdminSocialPost(id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_social_post', { p_id: id });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo eliminar la publicacion.');
+  }
+}
+
+export async function uploadAdminSocialMedia(args: {
+  fileDataUrl: string;
+}): Promise<{ mediaUrl: string; mediaType: SocialPostMediaType }> {
+  const { data, error } = await supabase.functions.invoke('admin-upload-social-media', {
+    body: { fileDataUrl: args.fileDataUrl },
+  });
+
+  if (error) {
+    throw new Error(error.message || 'No se pudo subir el archivo.');
+  }
+
+  const payload = (data || {}) as { mediaUrl?: string; mediaType?: SocialPostMediaType };
+  if (!payload.mediaUrl || !payload.mediaType) {
+    throw new Error('Respuesta invalida al subir el archivo.');
+  }
+
+  return { mediaUrl: payload.mediaUrl, mediaType: payload.mediaType };
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
