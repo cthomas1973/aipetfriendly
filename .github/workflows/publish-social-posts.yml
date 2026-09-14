@@ -1,0 +1,26 @@
+name: Publish Social Posts
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  publish-social-posts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Supabase publish-social-posts function
+        env:
+          PUBLISH_SOCIAL_POSTS_API_KEY: ${{ secrets.PUBLISH_SOCIAL_POSTS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PUBLISH_SOCIAL_POSTS_API_KEY}" ]; then
+            echo "PUBLISH_SOCIAL_POSTS_API_KEY is not configured in GitHub Secrets"
+            exit 1
+          fi
+
+          curl -sS -X POST "https://apejkczbthvbxoksmlye.supabase.co/functions/v1/publish-social-posts" \
+            -H "Content-Type: application/json" \
+            -H "x-publish-social-posts-key: ${PUBLISH_SOCIAL_POSTS_API_KEY}" \
+            --fail-with-body

@@ -10,14 +10,16 @@ import {
 } from '../lib/supabase';
 import type { SocialPost, SocialPostPlatform, SocialPostTargetStatus } from '../types';
 
-// Etapa 0: solo carga/programacion. La publicacion real hacia cada red (Etapas 1-4)
-// todavia no esta implementada; social_post_targets queda en 'pending' hasta entonces.
+// Etapa 1: Facebook e Instagram se publican de verdad via el cron
+// publish-social-posts (Edge Function + GitHub Actions cada 15min) cuando
+// scheduled_at vence. YouTube/TikTok todavia no estan soportados (quedan
+// como 'failed' con mensaje explicito) - se suman en una etapa posterior.
 
-const PLATFORM_OPTIONS: { value: SocialPostPlatform; label: string; icon: typeof Facebook }[] = [
-  { value: 'facebook', label: 'Facebook', icon: Facebook },
-  { value: 'instagram', label: 'Instagram', icon: Instagram },
-  { value: 'youtube', label: 'YouTube', icon: Youtube },
-  { value: 'tiktok', label: 'TikTok', icon: Music2 },
+const PLATFORM_OPTIONS: { value: SocialPostPlatform; label: string; icon: typeof Facebook; supported: boolean }[] = [
+  { value: 'facebook', label: 'Facebook', icon: Facebook, supported: true },
+  { value: 'instagram', label: 'Instagram', icon: Instagram, supported: true },
+  { value: 'youtube', label: 'YouTube', icon: Youtube, supported: false },
+  { value: 'tiktok', label: 'TikTok', icon: Music2, supported: false },
 ];
 
 const TARGET_STATUS_LABEL: Record<SocialPostTargetStatus, string> = {
@@ -245,7 +247,7 @@ export function AdminPublicacionesSection() {
         <div>
           <p className="font-bold text-slate-900">Publicaciones en redes sociales</p>
           <p className="text-xs text-slate-500">
-            Etapa 0: carga y programacion. Todavia no se publica de forma automatica en ninguna red (se suma en etapas siguientes).
+            Facebook e Instagram se publican solos al llegar la fecha programada. YouTube y TikTok todavia no estan soportados.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -329,7 +331,7 @@ export function AdminPublicacionesSection() {
             <div className="text-xs font-semibold text-slate-500">
               Redes sociales
               <div className="mt-1 flex flex-wrap gap-2">
-                {PLATFORM_OPTIONS.map(({ value, label, icon: Icon }) => {
+                {PLATFORM_OPTIONS.map(({ value, label, icon: Icon, supported }) => {
                   const active = form.platforms.includes(value);
                   return (
                     <button
@@ -341,6 +343,7 @@ export function AdminPublicacionesSection() {
                       }`}
                     >
                       <Icon size={14} /> {label}
+                      {!supported && <span className="text-[10px] font-normal text-slate-400">(pronto)</span>}
                     </button>
                   );
                 })}
