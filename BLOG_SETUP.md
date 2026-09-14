@@ -5,13 +5,20 @@
 Todos los dias a las 07:00 (hora Argentina, UTC-3) Vercel dispara un Cron Job
 que genera automaticamente un post nuevo para `/blog`:
 
-1. Busca noticias recientes en SerpApi (1 sola busqueda/dia, rotando entre 4
-   temas fijos para no gastar de mas la cuota gratuita mensual).
+1. Busca noticias recientes en SerpApi (1 sola busqueda/dia, eligiendo un
+   subtema entre una lista fija evitando los usados en los ultimos 10 posts,
+   para no repetir siempre el mismo eje -ej. alimentacion- ni gastar de mas
+   la cuota gratuita mensual).
 2. Le pide a la IA (mismo proveedor que el consultorio) que elija la mejor
    noticia y redacte un articulo corto en tono "veterinaria influencer".
-3. Genera una imagen con DALL-E y la sube a Supabase Storage.
-4. Guarda el post en la tabla `blog_posts` (migracion
-   `supabase/migrations/041_blog_posts.sql`).
+3. Genera una imagen con DALL-E y la sube a Supabase Storage. La especie/raza
+   protagonista de la imagen (y, si encaja, del ejemplo del articulo) tambien
+   rota evitando las usadas en los ultimos 10 posts, para que no se repita
+   siempre el mismo tipo de mascota.
+4. Guarda el post en la tabla `blog_posts` (migraciones
+   `supabase/migrations/041_blog_posts.sql` y
+   `supabase/migrations/050_blog_posts_topic_variety.sql`, esta ultima agrega
+   las columnas `topic`/`pet_focus` usadas para chequear el historial).
 
 Archivos relevantes:
 - `api/cron/generate-blog-post.js` — funcion serverless que corre el pipeline.
@@ -50,7 +57,8 @@ mas de una vez el mismo dia).
 
 ## Deploy pendiente
 
-1. Aplicar la migracion: `npx supabase db push --project-ref apejkczbthvbxoksmlye`.
+1. Aplicar la migracion: `npx supabase db push --project-ref apejkczbthvbxoksmlye`
+   (incluye la migracion 050 con las columnas de variedad de tema/mascota).
 2. Cargar las variables de entorno de la tabla de arriba en Vercel.
 3. Redeployar en Vercel para que tome el nuevo `vercel.json` (Cron Job) y la
    nueva funcion `api/cron/generate-blog-post.js`.

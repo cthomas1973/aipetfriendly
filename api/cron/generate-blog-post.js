@@ -2,15 +2,20 @@
 //
 // Vercel Cron Job (ver "crons" en vercel.json) que corre cada 2 dias y
 // genera automaticamente un BORRADOR para el blog "Tips del dia":
-//   1. Busca noticias recientes en SerpApi (Google News) sobre un tema que
-//      rota entre 4 fijos, para no gastar de mas la cuota mensual gratuita.
+//   1. Busca noticias recientes en SerpApi (Google News) sobre un subtema
+//      que rota evitando los usados en los ultimos 10 posts (ver pickTopic),
+//      para no gastar de mas la cuota mensual gratuita ni repetir siempre el
+//      mismo eje (ej. alimentacion).
 //   2. Le pide a la IA (mismo proveedor que el consultorio, ver AI_API_KEY /
 //      AI_MODEL / AI_BASE_URL) que elija la mejor noticia y redacte un
-//      articulo corto en tono "influencer veterinario".
-//   3. Genera una imagen con DALL-E (mismo AI_API_KEY) y la sube a Supabase
-//      Storage (bucket "blog-images", publico).
-//   4. Inserta el post en la tabla blog_posts (ver migracion 041) con
-//      status='draft': NO se publica solo. Un admin lo revisa/edita y lo
+//      articulo corto en tono "influencer veterinario", usando como ejemplo
+//      una especie/raza (ver pickPetFocus) que tampoco se haya repetido en
+//      los ultimos 10 posts.
+//   3. Genera una imagen con DALL-E (mismo AI_API_KEY) protagonizada por esa
+//      misma especie/raza, coherente con el tema del articulo, y la sube a
+//      Supabase Storage (bucket "blog-images", publico).
+//   4. Inserta el post en la tabla blog_posts (ver migraciones 041 y 050)
+//      con status='draft': NO se publica solo. Un admin lo revisa/edita y lo
 //      aprueba desde el panel Admin > Blog (ver migracion 042 y
 //      AdminBlogSection.tsx) antes de que aparezca en /blog.
 //
@@ -26,15 +31,47 @@ import { createClient } from '@supabase/supabase-js';
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
 export const config = { maxDuration: 60 };
 
-// Temas fijos entre los que rota la busqueda diaria (1 por dia, sin repetir
-// el mismo tema 2 dias seguidos gracias al modulo por dia-del-anio). Con 1
-// busqueda/dia esto usa como mucho ~31 llamadas/mes a SerpApi, muy por debajo
-// de la cuota gratuita de 250/mes.
+// Subtemas fijos entre los que rota la busqueda diaria (1 por dia). Antes
+// eran solo 4 temas muy amplios (rotando por dia-del-anio), lo que hacia que
+// el mismo eje (ej. alimentacion) apareciera muy seguido. Con esta lista mas
+// granular + el chequeo de los ultimos 10 posts (ver pickTopic) alcanza para
+// no repetir subtema dentro de esa ventana. Con 1 busqueda/dia esto usa como
+// mucho ~31 llamadas/mes a SerpApi, muy por debajo de la cuota gratuita de
+// 250/mes.
 const TOPICS = [
   'alimentacion y nutricion para perros y gatos',
+  'alimentacion mixta y snacks saludables para mascotas',
   'salud preventiva, vacunas y desparasitacion en mascotas',
-  'comportamiento, adiestramiento y bienestar emocional de perros y gatos',
-  'cuidados generales, higiene y primeros auxilios para mascotas',
+  'chequeos veterinarios y deteccion temprana de enfermedades en mascotas',
+  'comportamiento y adiestramiento de perros y gatos',
+  'bienestar emocional y enriquecimiento ambiental para mascotas',
+  'cuidados generales e higiene para mascotas',
+  'primeros auxilios y emergencias con mascotas',
+  'ejercicio, paseos y actividad fisica para perros y gatos',
+  'cuidado de mascotas segun la edad (cachorros, adultos y mayores)',
+  'convivencia entre mascotas y otros animales o ninos',
+  'cuidado dental en perros y gatos',
+];
+
+// Especies/razas entre las que rota la mascota protagonista de la imagen (y,
+// cuando encaje naturalmente, del ejemplo usado en el articulo), para que no
+// se repita siempre el mismo animal (ver pickPetFocus).
+const PET_FOCUS_OPTIONS = [
+  'perro mestizo',
+  'perro labrador retriever',
+  'perro golden retriever',
+  'perro caniche/poodle',
+  'perro bulldog frances',
+  'perro pastor aleman',
+  'perro chihuahua',
+  'perro border collie',
+  'perro salchicha/dachshund',
+  'gato mestizo domestico',
+  'gato siames',
+  'gato persa',
+  'gato naranja/atigrado',
+  'gato negro',
+  'gato de bengala',
 ];
 
 // Frases cliche de IA que le pedimos explicitamente a el modelo que evite,
@@ -83,10 +120,61 @@ function isAuthorizedCronRequest(req) {
   return authHeader === `Bearer ${secret}`;
 }
 
-function pickTodayTopic() {
-  const startOfYear = Date.UTC(new Date().getUTCFullYear(), 0, 0);
-  const dayOfYear = Math.floor((Date.now() - startOfYear) / (24 * 60 * 60 * 1000));
-  return TOPICS[dayOfYear % TOPICS.length];
+function pickRandom(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+// Trae el valor de `column` de los ultimos `limit` posts (mas recientes
+// primero), para poder excluirlos al elegir el subtema/mascota del post de
+// hoy y asi evitar que se repitan dentro de esa ventana.
+async function fetchRecentValues(admin, column, limit) {
+  const { data, error } = await admin
+    .from('blog_posts')
+    .select(column)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    // No bloqueamos la generacion del post por esto: sin historial reciente
+    // simplemente no se excluye nada.
+    console.error(`No se pudo leer el historial de "${column}" para variedad:`, error);
+    return [];
+  }
+
+  return (data || []).map((row) => row[column]).filter(Boolean);
+}
+
+// Elige el subtema de hoy evitando los usados en los ultimos 10 posts. Si
+// todos los subtemas ya aparecieron en esa ventana (lista corta o racha
+// larga sin cortes), se relaja la exclusion al post mas reciente nomas, para
+// no bloquear la generacion.
+async function pickTopic(admin) {
+  const recentTopics = new Set(await fetchRecentValues(admin, 'topic', 10));
+  let candidates = TOPICS.filter((topic) => !recentTopics.has(topic));
+
+  if (candidates.length === 0) {
+    const lastTopic = [...recentTopics][0] || null;
+    candidates = TOPICS.filter((topic) => topic !== lastTopic);
+  }
+  if (candidates.length === 0) {
+    candidates = TOPICS;
+  }
+
+  return pickRandom(candidates);
+}
+
+// Elige la especie/raza protagonista de la imagen (y, si encaja, del ejemplo
+// del articulo) evitando las usadas en los ultimos 10 posts, para que no se
+// repita siempre el mismo tipo de mascota (ej. varios gatos seguidos).
+async function pickPetFocus(admin) {
+  const recentFocus = new Set(await fetchRecentValues(admin, 'pet_focus', 10));
+  let candidates = PET_FOCUS_OPTIONS.filter((focus) => !recentFocus.has(focus));
+
+  if (candidates.length === 0) {
+    candidates = PET_FOCUS_OPTIONS;
+  }
+
+  return pickRandom(candidates);
 }
 
 function slugify(text) {
@@ -197,7 +285,7 @@ function parseArticleJson(rawText) {
   };
 }
 
-async function generateArticleFromNews(topic, newsItems) {
+async function generateArticleFromNews(topic, newsItems, petFocus) {
   const newsBlock = newsItems
     .map((item, index) => `${index + 1}. Titulo: ${item.title}\n   Resumen: ${item.snippet}\n   Fuente: ${item.source}`)
     .join('\n');
@@ -209,6 +297,7 @@ async function generateArticleFromNews(topic, newsItems) {
     newsBlock,
     '',
     'Escribi un articulo original en espanol de entre 300 y 400 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog).',
+    `Si encaja de forma natural con el tema, usa como ejemplo o protagonista de algun caso a un(a) ${petFocus} (sin forzarlo: si el tema no lo permite, mantene el articulo general para perros y gatos).`,
     'Estructura obligatoria dentro del campo "content":',
     '- Un parrafo de apertura enganchando con el tema.',
     '- Uno o dos parrafos de desarrollo con informacion util y concreta.',
@@ -226,7 +315,7 @@ async function generateArticleFromNews(topic, newsItems) {
   return parseArticleJson(rawResponse);
 }
 
-async function generateArticleImage(title) {
+async function generateArticleImage(title, topic, petFocus) {
   const apiKey = getEnvOrThrow('AI_API_KEY');
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const imageModel = (process.env.AI_IMAGE_MODEL || 'dall-e-3').trim();
@@ -234,8 +323,9 @@ async function generateArticleImage(title) {
 
   const prompt = [
     'Fotografia editorial calida y realista para un blog de cuidado de mascotas.',
-    `Tema: "${title}".`,
-    'Mostra un perro o gato en una situacion cotidiana relacionada al tema, luz natural, composicion profesional, sin texto ni logos en la imagen.',
+    `Tema del articulo: "${title}" (eje general: ${topic}).`,
+    `Protagonista: un(a) ${petFocus}, en una situacion cotidiana coherente con el tema del articulo.`,
+    'La imagen debe ilustrar claramente la escena del tema (por ejemplo, si el tema es alimentacion mostralo comiendo o con su plato; si es adiestramiento mostralo en una sesion de entrenamiento; si es salud/veterinaria mostralo en una revision), luz natural, composicion profesional, sin texto ni logos en la imagen.',
   ].join(' ');
 
   // La API de imagenes de OpenAI ya no acepta "response_format" (rechaza el
@@ -342,20 +432,21 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { skipped: true, reason: 'Ya existe un post generado hoy.' });
     }
 
-    const topic = pickTodayTopic();
+    const topic = await pickTopic(admin);
+    const petFocus = await pickPetFocus(admin);
     const newsItems = await fetchNewsSnippets(topic);
 
     if (newsItems.length === 0) {
       throw new Error(`SerpApi no devolvio noticias para el tema "${topic}".`);
     }
 
-    const article = await generateArticleFromNews(topic, newsItems);
+    const article = await generateArticleFromNews(topic, newsItems, petFocus);
     const baseSlug = slugify(article.title);
     const slug = await ensureUniqueSlug(admin, baseSlug);
 
     let imageUrl = null;
     try {
-      const imageBuffer = await generateArticleImage(article.title);
+      const imageBuffer = await generateArticleImage(article.title, topic, petFocus);
       imageUrl = await uploadImageToStorage(admin, slug, imageBuffer);
     } catch (imageError) {
       // La imagen es un extra: si falla (por ejemplo, la cuenta de IA no
@@ -374,6 +465,8 @@ export default async function handler(req, res) {
         source_name: article.sourceName,
         estimated_reading_time: article.estimatedReadingTime,
         status: 'draft',
+        topic,
+        pet_focus: petFocus,
       })
       .select()
       .single();
@@ -385,6 +478,7 @@ export default async function handler(req, res) {
     return sendJson(res, 200, {
       created: true,
       topic,
+      petFocus,
       post: { id: inserted.id, slug: inserted.slug, title: inserted.title, hasImage: Boolean(imageUrl), status: inserted.status },
     });
   } catch (error) {
