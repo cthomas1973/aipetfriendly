@@ -22,13 +22,13 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const PUBLISH_SOCIAL_POSTS_API_KEY = Deno.env.get('PUBLISH_SOCIAL_POSTS_API_KEY') ?? '';
-const META_PAGE_ID = Deno.env.get('META_PAGE_ID') ?? '';
-const META_PAGE_ACCESS_TOKEN = Deno.env.get('META_PAGE_ACCESS_TOKEN') ?? '';
-const META_IG_BUSINESS_ACCOUNT_ID = Deno.env.get('META_IG_BUSINESS_ACCOUNT_ID') ?? '';
-const META_GRAPH_API_VERSION = Deno.env.get('META_GRAPH_API_VERSION') ?? 'v21.0';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')?.trim() ?? '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim() ?? '';
+const PUBLISH_SOCIAL_POSTS_API_KEY = Deno.env.get('PUBLISH_SOCIAL_POSTS_API_KEY')?.trim() ?? '';
+const META_PAGE_ID = Deno.env.get('META_PAGE_ID')?.trim() ?? '';
+const META_PAGE_ACCESS_TOKEN = Deno.env.get('META_PAGE_ACCESS_TOKEN')?.trim() ?? '';
+const META_IG_BUSINESS_ACCOUNT_ID = Deno.env.get('META_IG_BUSINESS_ACCOUNT_ID')?.trim() ?? '';
+const META_GRAPH_API_VERSION = Deno.env.get('META_GRAPH_API_VERSION')?.trim() || 'v21.0';
 const META_GRAPH_BASE_URL = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 
 const corsHeaders = {
@@ -109,6 +109,11 @@ async function publishToInstagram(args: { mediaUrl: string; mediaType: MediaType
     throw new Error(`Instagram (crear contenedor): ${createData?.error?.message || `HTTP ${createRes.status}`}`);
   }
 
+  // El contenedor tarda un poco en procesarse (descarga/valida la imagen) antes
+  // de poder publicarse. Sin esto, media_publish puede fallar con "Media ID
+  // is not available" si se llama demasiado rapido.
+  await waitForContainerReady(createData.id);
+
   const publishBody = new URLSearchParams({
     creation_id: createData.id,
     access_token: META_PAGE_ACCESS_TOKEN,
@@ -122,6 +127,25 @@ async function publishToInstagram(args: { mediaUrl: string; mediaType: MediaType
     throw new Error(`Instagram (publicar): ${publishData?.error?.message || `HTTP ${publishRes.status}`}`);
   }
   return String(publishData.id);
+}
+
+async function waitForContainerReady(containerId: string): Promise<void> {
+  const maxAttempts = 10;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const statusRes = await fetch(
+      `${META_GRAPH_BASE_URL}/${containerId}?fields=status_code&access_token=${encodeURIComponent(META_PAGE_ACCESS_TOKEN)}`,
+    );
+    const statusData = await statusRes.json().catch(() => ({}));
+    if (!statusRes.ok) {
+      throw new Error(`Instagram (estado del contenedor): ${statusData?.error?.message || `HTTP ${statusRes.status}`}`);
+    }
+    if (statusData.status_code === 'FINISHED') return;
+    if (statusData.status_code === 'ERROR') {
+      throw new Error('Instagram (contenedor): el procesamiento del media termino en error.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error('Instagram (contenedor): tardo demasiado en procesarse (timeout).');
 }
 
 async function publishTarget(post: SocialPostRow, target: SocialPostTargetRow): Promise<string> {

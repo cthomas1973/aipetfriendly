@@ -15,6 +15,7 @@ supabase functions deploy send-guide-notifications --no-verify-jwt
 supabase functions deploy send-news-campaigns --no-verify-jwt
 supabase functions deploy send-blog-post-notifications --no-verify-jwt
 supabase functions deploy search-google-places
+supabase functions deploy publish-social-posts --no-verify-jwt
 ```
 
 ## Variables de entorno
