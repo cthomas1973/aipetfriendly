@@ -148,13 +148,21 @@ async function waitForContainerReady(containerId: string): Promise<void> {
   throw new Error('Instagram (contenedor): tardo demasiado en procesarse (timeout).');
 }
 
+// Instagram nunca hace clicable un link dentro del caption (a diferencia de
+// Facebook), asi que mostrarlo tal cual queda como texto muerto. Lo
+// reemplazamos por un llamado a "link en bio" (el link real debe estar
+// cargado en la bio del perfil de Instagram).
+function buildInstagramCaption(caption: string): string {
+  return caption.replace(/https?:\/\/\S+/g, 'link en bio 🔗');
+}
+
 async function publishTarget(post: SocialPostRow, target: SocialPostTargetRow): Promise<string> {
   const caption = post.caption || '';
   if (target.platform === 'facebook') {
     return publishToFacebookPage({ mediaUrl: post.media_url, mediaType: post.media_type, caption });
   }
   if (target.platform === 'instagram') {
-    return publishToInstagram({ mediaUrl: post.media_url, mediaType: post.media_type, caption });
+    return publishToInstagram({ mediaUrl: post.media_url, mediaType: post.media_type, caption: buildInstagramCaption(caption) });
   }
   throw new Error(`La plataforma "${target.platform}" todavia no esta soportada (queda pendiente para una etapa posterior).`);
 }

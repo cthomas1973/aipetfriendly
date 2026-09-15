@@ -172,15 +172,30 @@ async function pickTopic(admin) {
   return pickRandom(candidates);
 }
 
+function getPetSpecies(focus) {
+  return focus.startsWith('perro') ? 'perro' : 'gato';
+}
+
 // Elige la especie/raza protagonista de la imagen (y, si encaja, del ejemplo
-// del articulo) evitando las usadas en los ultimos 10 posts, para que no se
-// repita siempre el mismo tipo de mascota (ej. varios gatos seguidos).
+// del articulo). Alterna la especie respecto del post inmediatamente
+// anterior (perro <-> gato) para no encadenar varios seguidos de la misma
+// (antes solo se excluia la raza exacta, lo que permitia varias razas de
+// gato distintas seguidas) y, dentro de esa especie, evita las razas usadas
+// en los ultimos 10 posts para tambien variar la raza.
 async function pickPetFocus(admin) {
-  const recentFocus = new Set(await fetchRecentValues(admin, 'pet_focus', 10));
-  let candidates = PET_FOCUS_OPTIONS.filter((focus) => !recentFocus.has(focus));
+  const recentFocus = await fetchRecentValues(admin, 'pet_focus', 10);
+  const lastSpecies = recentFocus.length > 0 ? getPetSpecies(recentFocus[0]) : null;
+  const targetSpecies = lastSpecies === 'perro' ? 'gato' : lastSpecies === 'gato' ? 'perro' : null;
+
+  const pool = targetSpecies
+    ? PET_FOCUS_OPTIONS.filter((focus) => getPetSpecies(focus) === targetSpecies)
+    : PET_FOCUS_OPTIONS;
+
+  const recentFocusSet = new Set(recentFocus);
+  let candidates = pool.filter((focus) => !recentFocusSet.has(focus));
 
   if (candidates.length === 0) {
-    candidates = PET_FOCUS_OPTIONS;
+    candidates = pool;
   }
 
   return pickRandom(candidates);
