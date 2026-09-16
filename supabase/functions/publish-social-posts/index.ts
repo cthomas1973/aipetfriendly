@@ -91,15 +91,22 @@ async function publishToInstagram(args: { mediaUrl: string; mediaType: MediaType
   if (!META_IG_BUSINESS_ACCOUNT_ID || !META_PAGE_ACCESS_TOKEN) {
     throw new Error('Instagram no esta configurado (falta META_IG_BUSINESS_ACCOUNT_ID / META_PAGE_ACCESS_TOKEN).');
   }
-  if (args.mediaType !== 'image') {
-    throw new Error('Instagram: por ahora solo se soporta publicar imagenes (no video).');
-  }
 
+  const isVideo = args.mediaType === 'video';
   const createBody = new URLSearchParams({
-    image_url: args.mediaUrl,
     caption: args.caption,
     access_token: META_PAGE_ACCESS_TOKEN,
   });
+  if (isVideo) {
+    // Se publica como Reel (con share_to_feed para que tambien aparezca en el
+    // feed/grilla normal, no solo en la pestania de Reels).
+    createBody.set('media_type', 'REELS');
+    createBody.set('video_url', args.mediaUrl);
+    createBody.set('share_to_feed', 'true');
+  } else {
+    createBody.set('image_url', args.mediaUrl);
+  }
+
   const createRes = await fetch(`${META_GRAPH_BASE_URL}/${META_IG_BUSINESS_ACCOUNT_ID}/media`, {
     method: 'POST',
     body: createBody,
@@ -109,10 +116,11 @@ async function publishToInstagram(args: { mediaUrl: string; mediaType: MediaType
     throw new Error(`Instagram (crear contenedor): ${createData?.error?.message || `HTTP ${createRes.status}`}`);
   }
 
-  // El contenedor tarda un poco en procesarse (descarga/valida la imagen) antes
+  // El contenedor tarda un poco en procesarse (descarga/valida el media) antes
   // de poder publicarse. Sin esto, media_publish puede fallar con "Media ID
-  // is not available" si se llama demasiado rapido.
-  await waitForContainerReady(createData.id);
+  // is not available" si se llama demasiado rapido. Los videos tardan mas que
+  // las imagenes, asi que se les da mas intentos/tiempo de espera.
+  await waitForContainerReady(createData.id, isVideo ? { maxAttempts: 30, delayMs: 3000 } : undefined);
 
   const publishBody = new URLSearchParams({
     creation_id: createData.id,
@@ -129,8 +137,12 @@ async function publishToInstagram(args: { mediaUrl: string; mediaType: MediaType
   return String(publishData.id);
 }
 
-async function waitForContainerReady(containerId: string): Promise<void> {
-  const maxAttempts = 10;
+async function waitForContainerReady(
+  containerId: string,
+  options?: { maxAttempts?: number; delayMs?: number },
+): Promise<void> {
+  const maxAttempts = options?.maxAttempts ?? 10;
+  const delayMs = options?.delayMs ?? 2000;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const statusRes = await fetch(
       `${META_GRAPH_BASE_URL}/${containerId}?fields=status_code&access_token=${encodeURIComponent(META_PAGE_ACCESS_TOKEN)}`,
@@ -143,7 +155,7 @@ async function waitForContainerReady(containerId: string): Promise<void> {
     if (statusData.status_code === 'ERROR') {
       throw new Error('Instagram (contenedor): el procesamiento del media termino en error.');
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   throw new Error('Instagram (contenedor): tardo demasiado en procesarse (timeout).');
 }

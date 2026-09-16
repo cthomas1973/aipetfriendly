@@ -27,6 +27,14 @@
 
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import ffmpegPath from 'ffmpeg-static';
+
+const execFileAsync = promisify(execFile);
 
 // SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
@@ -469,12 +477,12 @@ async function buildBrandedSocialImage(articleImageBuffer) {
     .toBuffer();
 }
 
-async function uploadSocialDraftImage(admin, slug, imageBuffer) {
-  const fileName = `blog-${slug}-${Date.now()}.png`;
+async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentType }) {
+  const fileName = `blog-${slug}-${Date.now()}.${extension}`;
   const bucket = 'social-posts-media';
 
-  let { error: uploadError } = await admin.storage.from(bucket).upload(fileName, imageBuffer, {
-    contentType: 'image/png',
+  let { error: uploadError } = await admin.storage.from(bucket).upload(fileName, buffer, {
+    contentType,
     upsert: false,
   });
 
@@ -483,19 +491,62 @@ async function uploadSocialDraftImage(admin, slug, imageBuffer) {
     if (createBucketError && !/already exists/i.test(createBucketError.message || '')) {
       throw new Error(`No se pudo crear el bucket ${bucket}: ${createBucketError.message}`);
     }
-    const retry = await admin.storage.from(bucket).upload(fileName, imageBuffer, {
-      contentType: 'image/png',
+    const retry = await admin.storage.from(bucket).upload(fileName, buffer, {
+      contentType,
       upsert: false,
     });
     uploadError = retry.error;
   }
 
   if (uploadError) {
-    throw new Error(`No se pudo subir la imagen de la publicacion social: ${uploadError.message}`);
+    throw new Error(`No se pudo subir la publicacion social: ${uploadError.message}`);
   }
 
   const { data: publicUrlData } = admin.storage.from(bucket).getPublicUrl(fileName);
   return publicUrlData?.publicUrl || null;
+}
+
+// Genera un video corto tipo "Ken Burns" (zoom lento sobre la imagen fija) a
+// partir de la imagen ya brandeada del articulo, para que la publicacion se
+// vea como un Reel/video en vez de una foto estatica. No usa ningun servicio
+// de IA de video (sin costo extra): es pura animacion con ffmpeg sobre la
+// misma imagen. Si algo falla (ej. el binario no esta disponible en el
+// entorno), quien llama debe hacer fallback a publicar la imagen sola.
+async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 5, fps = 25, size = 1080 } = {}) {
+  if (!ffmpegPath) {
+    throw new Error('No se encontro el binario de ffmpeg (ffmpeg-static).');
+  }
+
+  const tmpDir = await mkdtemp(path.join(tmpdir(), 'apf-social-video-'));
+  const inputPath = path.join(tmpDir, 'input.png');
+  const outputPath = path.join(tmpDir, 'output.mp4');
+
+  try {
+    await writeFile(inputPath, imageBuffer);
+
+    const totalFrames = durationSeconds * fps;
+    const filter = [
+      `scale=${size}:${size}`,
+      `zoompan=z='min(zoom+0.0015,1.15)':d=${totalFrames}:s=${size}x${size}:fps=${fps}`,
+      'format=yuv420p',
+    ].join(',');
+
+    await execFileAsync(ffmpegPath, [
+      '-y',
+      '-loop', '1',
+      '-i', inputPath,
+      '-vf', filter,
+      '-t', String(durationSeconds),
+      '-r', String(fps),
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      outputPath,
+    ]);
+
+    return await readFile(outputPath);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 // Crea el borrador en social_posts (Admin > Publicaciones) con el titulo, la
@@ -515,7 +566,22 @@ export async function createSocialDraftFromBlogPost(admin, { blogPost, articleIm
   }
 
   const brandedImageBuffer = await buildBrandedSocialImage(articleImageBuffer);
-  const mediaUrl = await uploadSocialDraftImage(admin, blogPost.slug, brandedImageBuffer);
+
+  let mediaUrl = null;
+  let mediaType = 'image';
+  try {
+    const videoBuffer = await generateKenBurnsVideo(brandedImageBuffer);
+    mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
+    mediaType = 'video';
+  } catch (error) {
+    console.error('No se pudo generar el video de la publicacion social, se usa la imagen fija como respaldo:', error);
+  }
+
+  if (!mediaUrl) {
+    mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, brandedImageBuffer, { extension: 'png', contentType: 'image/png' });
+    mediaType = 'image';
+  }
+
   if (!mediaUrl) {
     return;
   }
@@ -526,7 +592,7 @@ export async function createSocialDraftFromBlogPost(admin, { blogPost, articleIm
 
   const { error } = await admin.from('social_posts').insert({
     media_url: mediaUrl,
-    media_type: 'image',
+    media_type: mediaType,
     caption,
     status: 'draft',
     source: 'blog_auto',
