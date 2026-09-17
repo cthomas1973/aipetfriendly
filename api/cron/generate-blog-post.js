@@ -511,8 +511,10 @@ async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentT
 // vea como un Reel/video en vez de una foto estatica. No usa ningun servicio
 // de IA de video (sin costo extra): es pura animacion con ffmpeg sobre la
 // misma imagen. Si algo falla (ej. el binario no esta disponible en el
-// entorno), quien llama debe hacer fallback a publicar la imagen sola.
-async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 5, fps = 25, size = 1080 } = {}) {
+// entorno, o tarda demasiado), quien llama debe hacer fallback a publicar la
+// imagen sola. `timeoutMs` corta el proceso de ffmpeg si se cuelga, para no
+// arriesgar el limite de 60s de la funcion serverless de Vercel.
+async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 5, fps = 20, size = 1080, timeoutMs = 15000 } = {}) {
   if (!ffmpegPath) {
     throw new Error('No se encontro el binario de ffmpeg (ffmpeg-static).');
   }
@@ -538,10 +540,11 @@ async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 5, fps = 2
       '-vf', filter,
       '-t', String(durationSeconds),
       '-r', String(fps),
+      '-preset', 'ultrafast',
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       outputPath,
-    ]);
+    ], { timeout: timeoutMs });
 
     return await readFile(outputPath);
   } finally {
@@ -550,10 +553,19 @@ async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 5, fps = 2
 }
 
 // Crea el borrador en social_posts (Admin > Publicaciones) con el titulo, la
-// imagen (con el logo estampado), un gancho corto del articulo y el link al
-// post. Queda en status='draft' esperando que un admin elija redes/horario y
-// lo apruebe: no se publica solo (ver admin_update_social_post, migracion 052).
-export async function createSocialDraftFromBlogPost(admin, { blogPost, articleImageBuffer }) {
+// imagen (con el logo estampado) o un mini-video (ver generateKenBurnsVideo),
+// un gancho corto del articulo y el link al post. Queda en status='draft'
+// esperando que un admin elija redes/horario y lo apruebe: no se publica solo
+// (ver admin_update_social_post, migracion 052).
+//
+// `deadlineAt` es un timestamp (Date.now() + margen) hasta el cual todavia
+// vale la pena intentar generar el video: la funcion serverless que llama a
+// esto tiene un limite duro de tiempo (ver maxDuration arriba), y generar el
+// video (ffmpeg) es lo mas pesado del flujo. Si queda poco presupuesto, se
+// salta directo a subir la imagen fija para no arriesgar que Vercel mate la
+// funcion a mitad de camino (lo que dejaria el post del blog creado pero sin
+// ningun borrador social, ni imagen ni video).
+export async function createSocialDraftFromBlogPost(admin, { blogPost, articleImageBuffer, deadlineAt = Infinity }) {
   const { data: existing } = await admin
     .from('social_posts')
     .select('id')
@@ -567,14 +579,19 @@ export async function createSocialDraftFromBlogPost(admin, { blogPost, articleIm
 
   const brandedImageBuffer = await buildBrandedSocialImage(articleImageBuffer);
 
+  const MIN_BUDGET_FOR_VIDEO_MS = 20000;
   let mediaUrl = null;
   let mediaType = 'image';
-  try {
-    const videoBuffer = await generateKenBurnsVideo(brandedImageBuffer);
-    mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
-    mediaType = 'video';
-  } catch (error) {
-    console.error('No se pudo generar el video de la publicacion social, se usa la imagen fija como respaldo:', error);
+  if (deadlineAt - Date.now() >= MIN_BUDGET_FOR_VIDEO_MS) {
+    try {
+      const videoBuffer = await generateKenBurnsVideo(brandedImageBuffer);
+      mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
+      mediaType = 'video';
+    } catch (error) {
+      console.error('No se pudo generar el video de la publicacion social, se usa la imagen fija como respaldo:', error);
+    }
+  } else {
+    console.warn('Poco presupuesto de tiempo restante: se omite el video de la publicacion social y se usa la imagen fija.');
   }
 
   if (!mediaUrl) {
@@ -623,6 +640,12 @@ async function alreadyHasPostToday(admin) {
 }
 
 export default async function handler(req, res) {
+  const startedAt = Date.now();
+  // Deja ~10s de margen contra el limite de la funcion (ver maxDuration) para
+  // que siempre alcance a responder el request en vez de que Vercel la mate a
+  // mitad de camino.
+  const deadlineAt = startedAt + (config.maxDuration - 10) * 1000;
+
   if (req.method !== 'GET' && req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
@@ -684,7 +707,7 @@ export default async function handler(req, res) {
 
     if (imageBuffer) {
       try {
-        await createSocialDraftFromBlogPost(admin, { blogPost: inserted, articleImageBuffer: imageBuffer });
+        await createSocialDraftFromBlogPost(admin, { blogPost: inserted, articleImageBuffer: imageBuffer, deadlineAt });
       } catch (socialError) {
         // Igual que la imagen: el borrador de redes es un extra, no debe tirar
         // abajo la generacion del post del blog si falla.
