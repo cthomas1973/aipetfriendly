@@ -6,12 +6,52 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createClient } from '@supabase/supabase-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const guidesFile = path.join(__dirname, '..', 'src', 'data', 'petGuides.ts');
 const sitemapFile = path.join(__dirname, '..', 'public', 'sitemap.xml');
 const guidesFeedFile = path.join(__dirname, '..', 'public', 'guides-feed.json');
 const SITE_URL = 'https://www.aipetfriendly.ar';
+
+// Trae los slugs de los posts del blog ya publicados (status='published') para
+// incluirlos en el sitemap. Usa la key anonima (misma que el front) via la RPC
+// publica list_blog_posts, asi que no requiere ningun secreto. Si las variables
+// de entorno no estan disponibles (por ejemplo en un build local sin .env) o la
+// consulta falla, se degrada sin romper el build: el sitemap sale sin el blog,
+// igual que antes de este cambio.
+async function fetchPublishedBlogPosts() {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY no configuradas: el sitemap se genera sin el blog.');
+    return [];
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const posts = [];
+  const pageSize = 50;
+  let offset = 0;
+
+  try {
+    // list_blog_posts limita cada pagina a 50 filas (ver migracion 041/042), asi
+    // que paginamos hasta que una pagina vuelva incompleta.
+    for (let page = 0; page < 20; page += 1) {
+      const { data, error } = await supabase.rpc('list_blog_posts', { p_limit: pageSize, p_offset: offset });
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      posts.push(...data);
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+  } catch (err) {
+    console.warn('No se pudieron obtener los posts del blog para el sitemap:', err.message ?? err);
+    return [];
+  }
+
+  return posts;
+}
 
 const source = readFileSync(guidesFile, 'utf8');
 
@@ -84,10 +124,13 @@ for (const guide of pending) {
 }
 
 const publishedGuides = guides.filter((guide) => effectiveReleaseTimes.get(guide.slug) <= now);
+const blogPosts = await fetchPublishedBlogPosts();
 
 const staticUrls = [
   { loc: `${SITE_URL}/`, changefreq: 'weekly', priority: '1.0' },
   { loc: `${SITE_URL}/guias`, changefreq: 'weekly', priority: '0.8' },
+  { loc: `${SITE_URL}/blog`, changefreq: 'daily', priority: '0.8' },
+  { loc: `${SITE_URL}/sobre-nosotros`, changefreq: 'monthly', priority: '0.5' },
   { loc: `${SITE_URL}/privacidad`, changefreq: 'monthly', priority: '0.6' },
   { loc: `${SITE_URL}/terminos`, changefreq: 'monthly', priority: '0.6' },
   { loc: `${SITE_URL}/contacto`, changefreq: 'monthly', priority: '0.6' },
@@ -100,7 +143,14 @@ const guideUrls = publishedGuides.map((guide) => ({
   lastmod: guide.publishedAt,
 }));
 
-const allUrls = [...staticUrls, ...guideUrls];
+const blogUrls = blogPosts.map((post) => ({
+  loc: `${SITE_URL}/blog/${post.slug}`,
+  changefreq: 'monthly',
+  priority: '0.6',
+  lastmod: post.created_at ? String(post.created_at).slice(0, 10) : undefined,
+}));
+
+const allUrls = [...staticUrls, ...guideUrls, ...blogUrls];
 
 const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${allUrls
   .map((url) => {
@@ -110,7 +160,9 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.s
   .join('\n')}\n</urlset>\n`;
 
 writeFileSync(sitemapFile, xml, 'utf8');
-console.log(`sitemap.xml generado con ${allUrls.length} URLs (${publishedGuides.length} de ${guides.length} guias publicadas).`);
+console.log(
+  `sitemap.xml generado con ${allUrls.length} URLs (${publishedGuides.length} de ${guides.length} guias publicadas, ${blogUrls.length} posts de blog).`,
+);
 
 // Genera public/guides-feed.json: listado de guias ya publicadas (con su fecha
 // efectiva de publicacion) para que la funcion edge "send-guide-notifications"

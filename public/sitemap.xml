@@ -11,6 +11,16 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://www.aipetfriendly.ar/blog</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/sobre-nosotros</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://www.aipetfriendly.ar/privacidad</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
@@ -102,5 +112,53 @@
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/convivencia-entre-mascotas-y-ninos-un-vinculo-que-se-debe-cuidar</loc>
+    <lastmod>2026-09-17</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/cuidado-dental-en-perros-y-gatos-una-tarea-esencial-para-su-bienestar</loc>
+    <lastmod>2026-09-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/la-alimentacion-mixta-una-opcion-saludable-para-tu-mascota</loc>
+    <lastmod>2026-09-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/el-estilo-de-crianza-afecta-el-bienestar-de-perros-y-gatos</loc>
+    <lastmod>2026-09-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/alimentacion-y-nutricion-para-nuestros-companeros-peludos</loc>
+    <lastmod>2026-09-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/el-aprendizaje-de-los-perros-en-el-dia-a-dia</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/el-error-de-humanizar-a-nuestras-mascotas-y-como-evitarlo</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.aipetfriendly.ar/blog/salud-preventiva-en-mascotas-vacunacion-y-desparasitacion</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
 </urlset>
