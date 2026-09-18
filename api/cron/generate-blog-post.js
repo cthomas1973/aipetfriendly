@@ -180,6 +180,42 @@ async function pickTopic(admin) {
   return pickRandom(candidates);
 }
 
+// Guias ya publicadas (ver public/guides-feed.json, generado en cada build
+// por scripts/generate-sitemap.mjs a partir de src/data/petGuides.ts). Se
+// trae por HTTP en vez de importar el .ts directamente porque esta funcion
+// corre como JS plano en Vercel, sin paso de compilacion de TypeScript.
+async function fetchPublishedGuides() {
+  try {
+    const response = await fetch(`${SITE_URL}/guides-feed.json`);
+    if (!response.ok) {
+      console.warn(`No se pudo traer guides-feed.json (status ${response.status}).`);
+      return [];
+    }
+    const guides = await response.json();
+    return Array.isArray(guides) ? guides : [];
+  } catch (err) {
+    console.warn('No se pudo traer guides-feed.json:', err.message ?? err);
+    return [];
+  }
+}
+
+// Elige una guia para enlazar desde el post de hoy (enlace interno real
+// blog->guias, ver migracion 053), evitando las usadas en los ultimos 8
+// posts para que no se repita siempre la misma. Devuelve null si no hay
+// guias publicadas o si fallo la consulta (el post se genera igual, sin
+// guia relacionada).
+async function pickRelatedGuide(admin) {
+  const guides = await fetchPublishedGuides();
+  if (guides.length === 0) {
+    return null;
+  }
+
+  const recentSlugs = new Set(await fetchRecentValues(admin, 'related_guide_slug', 8));
+  const candidates = guides.filter((guide) => !recentSlugs.has(guide.slug));
+
+  return pickRandom(candidates.length > 0 ? candidates : guides);
+}
+
 function getPetSpecies(focus) {
   return focus.startsWith('perro') ? 'perro' : 'gato';
 }
@@ -317,10 +353,14 @@ function parseArticleJson(rawText) {
   };
 }
 
-async function generateArticleFromNews(topic, newsItems, petFocus) {
+async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide) {
   const newsBlock = newsItems
     .map((item, index) => `${index + 1}. Titulo: ${item.title}\n   Resumen: ${item.snippet}\n   Fuente: ${item.source}`)
     .join('\n');
+
+  const relatedGuideInstruction = relatedGuide
+    ? `Tenemos una guia propia relacionada llamada "${relatedGuide.title}". En el ultimo parrafo, despues del consejo practico, sumá una recomendacion natural y breve invitando a leerla completa en AiPetFriendly (mencionando su titulo tal cual, sin inventar un link).`
+    : '';
 
   const prompt = [
     'Sos una veterinaria influencer que escribe para el blog de AiPetFriendly, una app de cuidado de mascotas.',
@@ -328,12 +368,14 @@ async function generateArticleFromNews(topic, newsItems, petFocus) {
     'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos (no tiene que ser literalmente sobre la noticia, podes usarla como disparador de un consejo practico).',
     newsBlock,
     '',
-    'Escribi un articulo original en espanol de entre 300 y 400 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog).',
+    'Escribi un articulo original en espanol de entre 650 y 850 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Tiene que aportar informacion realmente util y especifica, no relleno.',
     `Si encaja de forma natural con el tema, usa como ejemplo o protagonista de algun caso a un(a) ${petFocus} (sin forzarlo: si el tema no lo permite, mantene el articulo general para perros y gatos).`,
-    'Estructura obligatoria dentro del campo "content":',
+    'Estructura obligatoria dentro del campo "content" (parrafos separados por linea en blanco, sin markdown ni titulos con #):',
     '- Un parrafo de apertura enganchando con el tema.',
-    '- Uno o dos parrafos de desarrollo con informacion util y concreta.',
-    '- Un parrafo final que empiece exactamente con "💡 Consejo practico:" seguido de un consejo accionable.',
+    '- Dos o tres parrafos de desarrollo con contexto e informacion util y concreta (podes basarte en la noticia elegida).',
+    '- Tres parrafos cortos de consejos practicos y accionables, cada uno empezando exactamente con "Consejo 1:", "Consejo 2:" y "Consejo 3:" respectivamente, con un consejo distinto y especifico en cada uno (no repitas la misma idea con otras palabras).',
+    '- Un parrafo final que empiece exactamente con "💡 Para cerrar:" con una reflexion breve que cierre el tema.',
+    relatedGuideInstruction,
     'NO incluyas el titulo ni una linea de "Visto en" dentro de "content" (eso se muestra aparte).',
     `Evita por completo estas frases cliche: ${BANNED_CLICHES.join(', ')}.`,
     'Separa los parrafos de "content" con una linea en blanco.',
@@ -341,7 +383,9 @@ async function generateArticleFromNews(topic, newsItems, petFocus) {
     'Respondé UNICAMENTE con un JSON valido (sin texto extra antes ni despues), con esta forma exacta:',
     '{"title": "...", "content": "...", "source_name": "...", "estimated_reading_time": 2}',
     'Donde "source_name" es el medio de la noticia que elegiste (una de las 10 de arriba) y "estimated_reading_time" es un numero entero de minutos de lectura.',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const rawResponse = await callAiTextModel(prompt);
   return parseArticleJson(rawResponse);
@@ -663,13 +707,14 @@ export default async function handler(req, res) {
 
     const topic = await pickTopic(admin);
     const petFocus = await pickPetFocus(admin);
+    const relatedGuide = await pickRelatedGuide(admin);
     const newsItems = await fetchNewsSnippets(topic);
 
     if (newsItems.length === 0) {
       throw new Error(`SerpApi no devolvio noticias para el tema "${topic}".`);
     }
 
-    const article = await generateArticleFromNews(topic, newsItems, petFocus);
+    const article = await generateArticleFromNews(topic, newsItems, petFocus, relatedGuide);
     const baseSlug = slugify(article.title);
     const slug = await ensureUniqueSlug(admin, baseSlug);
 
@@ -697,6 +742,7 @@ export default async function handler(req, res) {
         status: 'draft',
         topic,
         pet_focus: petFocus,
+        related_guide_slug: relatedGuide?.slug || null,
       })
       .select()
       .single();

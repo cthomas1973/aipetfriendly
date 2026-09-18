@@ -2721,6 +2721,7 @@ function mapBlogPostRow(row: any): BlogPost {
     estimatedReadingTime: row.estimated_reading_time,
     createdAt: row.created_at,
     status: row.status === 'published' ? 'published' : 'draft',
+    relatedGuideSlug: row.related_guide_slug || undefined,
   };
 }
 

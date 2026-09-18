@@ -192,6 +192,7 @@ export interface BlogPost {
   estimatedReadingTime: number;
   createdAt: string;
   status: 'draft' | 'published';
+  relatedGuideSlug?: string;
 }
 
 
