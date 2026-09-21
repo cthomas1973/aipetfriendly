@@ -8,6 +8,7 @@ import {
   Target,
 } from 'lucide-react';
 import { AdBanner } from './AdBanner';
+import { RelatedLinksBlock } from './RelatedLinksBlock';
 import { useAppState } from '../context/AppStateContext';
 import {
   PET_GUIDE_CATEGORY_LABELS,
@@ -281,6 +282,13 @@ function GuideDetail({ slug }: { slug: string }) {
           </div>
         ))}
       </article>
+
+      <RelatedLinksBlock
+        relatedGuideSlug={guide.relatedGuideSlug}
+        relatedBlogSlug={guide.relatedBlogSlug}
+        relatedProductId={guide.relatedProductId}
+        isAdmin={isAdmin}
+      />
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
         Esta guía es orientativa y no reemplaza una consulta veterinaria. Ante dudas puntuales

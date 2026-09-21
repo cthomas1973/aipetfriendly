@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, Pencil, RefreshCw, Trash2, Undo2, X } from 'lucide-react';
-import { deleteAdminBlogPost, fetchAdminBlogPosts, updateAdminBlogPost } from '../lib/supabase';
-import type { BlogPost } from '../types';
+import { deleteAdminBlogPost, fetchAdminBlogPosts, fetchAllBeneficiosProductos, updateAdminBlogPost } from '../lib/supabase';
+import { getGuidesSortedByDate } from '../data/petGuides';
+import type { BeneficioProducto, BlogPost } from '../types';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
@@ -16,6 +17,17 @@ export function AdminBlogSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [editRelatedGuideSlug, setEditRelatedGuideSlug] = useState('');
+  const [editRelatedBlogSlug, setEditRelatedBlogSlug] = useState('');
+  const [editRelatedProductId, setEditRelatedProductId] = useState('');
+  const [products, setProducts] = useState<BeneficioProducto[]>([]);
+  const guides = getGuidesSortedByDate(true);
+
+  useEffect(() => {
+    fetchAllBeneficiosProductos()
+      .then((data) => setProducts(data.filter((p) => p.active)))
+      .catch(() => setProducts([]));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -38,6 +50,9 @@ export function AdminBlogSection() {
     setEditingId(row.id);
     setEditTitle(row.title);
     setEditContent(row.content);
+    setEditRelatedGuideSlug(row.relatedGuideSlug || '');
+    setEditRelatedBlogSlug(row.relatedBlogSlug || '');
+    setEditRelatedProductId(row.relatedProductId || '');
     setError(null);
     setMsg(null);
   };
@@ -46,6 +61,9 @@ export function AdminBlogSection() {
     setEditingId(null);
     setEditTitle('');
     setEditContent('');
+    setEditRelatedGuideSlug('');
+    setEditRelatedBlogSlug('');
+    setEditRelatedProductId('');
   };
 
   const persistChange = async (row: BlogPost, status: 'draft' | 'published', useEditedText: boolean) => {
@@ -58,6 +76,9 @@ export function AdminBlogSection() {
         title: useEditedText ? editTitle : row.title,
         content: useEditedText ? editContent : row.content,
         status,
+        relatedGuideSlug: useEditedText ? editRelatedGuideSlug : row.relatedGuideSlug,
+        relatedBlogSlug: useEditedText ? editRelatedBlogSlug : row.relatedBlogSlug,
+        relatedProductId: useEditedText ? editRelatedProductId : row.relatedProductId,
       });
       setRows((current) => current.map((r) => (r.id === row.id ? updated : r)));
       setMsg(status === 'published' ? 'Post publicado correctamente.' : 'Post pasado a borrador.');
@@ -118,6 +139,55 @@ export function AdminBlogSection() {
               rows={8}
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
             />
+            <div className="grid gap-2 md:grid-cols-3">
+              <label className="text-xs font-semibold text-slate-500">
+                Guía relacionada
+                <select
+                  value={editRelatedGuideSlug}
+                  onChange={(e) => setEditRelatedGuideSlug(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-2 py-2 text-xs text-slate-700"
+                >
+                  <option value="">— Sin guía —</option>
+                  {guides.map((g) => (
+                    <option key={g.slug} value={g.slug}>
+                      {g.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">
+                Post relacionado
+                <select
+                  value={editRelatedBlogSlug}
+                  onChange={(e) => setEditRelatedBlogSlug(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-2 py-2 text-xs text-slate-700"
+                >
+                  <option value="">— Sin post —</option>
+                  {rows
+                    .filter((p) => p.status === 'published' && p.id !== row.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.slug}>
+                        {p.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">
+                Producto sugerido (tienda)
+                <select
+                  value={editRelatedProductId}
+                  onChange={(e) => setEditRelatedProductId(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-2 py-2 text-xs text-slate-700"
+                >
+                  <option value="">— Sin producto —</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"

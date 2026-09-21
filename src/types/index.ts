@@ -193,6 +193,8 @@ export interface BlogPost {
   createdAt: string;
   status: 'draft' | 'published';
   relatedGuideSlug?: string;
+  relatedBlogSlug?: string;
+  relatedProductId?: string;
 }
 
 

@@ -25,6 +25,13 @@ export interface PetGuide {
   readingTime: string;
   coverImage?: PetGuideImage;
   sections: PetGuideSection[];
+  // Enlazado interno "relacionado" (ver AGENTS.md/repo memory): al publicar
+  // una guia nueva, revisar si hay otra guia, un post del blog o un producto
+  // de la tienda (beneficios_productos) sobre el mismo tema y completar el
+  // campo correspondiente para que se muestre un link al final del articulo.
+  relatedGuideSlug?: string;
+  relatedBlogSlug?: string;
+  relatedProductId?: string;
 }
 
 export const PET_GUIDE_CATEGORY_LABELS: Record<PetGuideCategory, string> = {

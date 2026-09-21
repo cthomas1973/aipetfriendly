@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, ChevronLeft, Clock, Newspaper } from 'lucide-react';
+import { ChevronLeft, Clock, Newspaper } from 'lucide-react';
 import { AdBanner } from './AdBanner';
 import { PublicFooter } from './PublicLegalPages';
+import { RelatedLinksBlock } from './RelatedLinksBlock';
+import { useAppState } from '../context/AppStateContext';
 import { fetchBlogPostBySlug, fetchBlogPosts } from '../lib/supabase';
-import { getPetGuideBySlug } from '../data/petGuides';
 import type { BlogPost } from '../types';
 
 const SITE_DESCRIPTION_DEFAULT =
@@ -159,6 +160,8 @@ function BlogList() {
 }
 
 function BlogDetail({ slug }: { slug: string }) {
+  const { user } = useAppState();
+  const isAdmin = Boolean(user?.isAdmin);
   const [post, setPost] = useState<BlogPost | null | undefined>(undefined);
 
   useEffect(() => {
@@ -236,26 +239,12 @@ function BlogDetail({ slug }: { slug: string }) {
         {renderContentParagraphs(post.content)}
       </article>
 
-      {post.relatedGuideSlug && (() => {
-        const relatedGuide = getPetGuideBySlug(post.relatedGuideSlug!, false);
-        if (!relatedGuide) return null;
-        return (
-          <a
-            href={`/guias/${relatedGuide.slug}`}
-            className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 transition hover:bg-emerald-100"
-          >
-            <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
-              <BookOpen size={18} />
-            </span>
-            <span>
-              <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                Guía relacionada
-              </span>
-              <span className="block font-bold text-slate-900">{relatedGuide.title}</span>
-            </span>
-          </a>
-        );
-      })()}
+      <RelatedLinksBlock
+        relatedGuideSlug={post.relatedGuideSlug}
+        relatedBlogSlug={post.relatedBlogSlug}
+        relatedProductId={post.relatedProductId}
+        isAdmin={isAdmin}
+      />
 
       {post.sourceName && (
         <p className="text-center text-xs font-semibold text-slate-400">Visto en: {post.sourceName}</p>

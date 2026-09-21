@@ -2722,6 +2722,8 @@ function mapBlogPostRow(row: any): BlogPost {
     createdAt: row.created_at,
     status: row.status === 'published' ? 'published' : 'draft',
     relatedGuideSlug: row.related_guide_slug || undefined,
+    relatedBlogSlug: row.related_blog_slug || undefined,
+    relatedProductId: row.related_product_id || undefined,
   };
 }
 
@@ -2769,12 +2771,18 @@ export async function updateAdminBlogPost(input: {
   title: string;
   content: string;
   status: 'draft' | 'published';
+  relatedGuideSlug?: string | null;
+  relatedBlogSlug?: string | null;
+  relatedProductId?: string | null;
 }): Promise<BlogPost> {
   const { data, error } = await supabase.rpc('admin_update_blog_post', {
     p_id: input.id,
     p_title: input.title,
     p_content: input.content,
     p_status: input.status,
+    p_related_guide_slug: input.relatedGuideSlug || null,
+    p_related_blog_slug: input.relatedBlogSlug || null,
+    p_related_product_id: input.relatedProductId || null,
   });
 
   if (error) {
@@ -2963,6 +2971,26 @@ export async function fetchAllBeneficiosProductos(): Promise<import('../types').
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as import('../types').BeneficioProducto[];
+}
+
+// Producto puntual para el link "articulo sugerido" en guias/blog (ver
+// RelatedLinksBlock.tsx). Solo devuelve el producto si esta activo (misma
+// policy RLS de lectura publica que fetchBeneficiosProductos), asi que si el
+// admin lo desactiva el link deja de mostrarse solo.
+export async function fetchBeneficioProductoById(
+  id: string,
+): Promise<import('../types').BeneficioProducto | null> {
+  const { data, error } = await supabase
+    .from('beneficios_productos')
+    .select('*')
+    .eq('id', id)
+    .eq('active', true)
+    .maybeSingle();
+  if (error) {
+    console.error('Error fetching beneficio producto by id:', error);
+    return null;
+  }
+  return (data as import('../types').BeneficioProducto) ?? null;
 }
 
 export async function insertBeneficioProducto(
