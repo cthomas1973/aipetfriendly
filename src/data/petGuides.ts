@@ -867,6 +867,117 @@ export const PET_GUIDES: PetGuide[] = [
         },
       },
     ],
+    relatedGuideSlug: 'como-ensenar-a-tu-mascota-el-comando-soltar',
+  },
+  {
+    slug: 'como-ensenar-a-tu-mascota-el-comando-soltar',
+    title: 'Cómo enseñar a tu mascota el comando "Soltar"',
+    category: 'adiestramiento',
+    petTypes: ['perro'],
+    publishedAt: '2026-09-21',
+    summary:
+      'Enseñarle a tu mascota a soltar lo que tiene en la boca es mucho más que un truco: puede evitar que trague algo peligroso. Guía paso a paso basada en el "Gran Intercambio" para lograrlo sin forcejeos, gritos ni persecuciones.',
+    readingTime: '6 min',
+    coverImage: {
+      src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/portada.jpg',
+      alt: 'Mujer indicándole a su perro que suelte un objeto mientras le ofrece un premio',
+    },
+    sections: [
+      {
+        heading: 'El concepto clave: "El Gran Intercambio"',
+        paragraphs: [
+          'Enseñarle a una mascota a soltar un objeto cuando se lo indicás no es solo un truco divertido: es una herramienta de seguridad fundamental que puede salvarle la vida si recoge algo peligroso del suelo.',
+          'La clave de este entrenamiento se basa en el intercambio positivo: enseñarle al animal que dejar ir algo bueno siempre se traduce en obtener algo mucho mejor.',
+          'Para una mascota, si le quitás un objeto a la fuerza, va a aprender a esconderse, a tragárselo más rápido o a protegerlo (agresión por recursos). El objetivo de las siguientes sugerencias es lograr que el animal elija voluntariamente abrir la boca porque confía en que va a salir ganando.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/2.jpg',
+          alt: 'Mujer agachada ofreciendo un premio mientras el perro sostiene una cuerda en la boca',
+        },
+      },
+      {
+        heading: 'Lo que vas a necesitar',
+        paragraphs: [
+          'El objeto de nivel bajo: un juguete que le guste, pero que no sea su favorito absoluto (por ejemplo, una cuerda o un mordillo común).',
+          'El premio de nivel alto (el "súper premio"): trozos muy pequeños de comida de alto valor que le encanten y huelan fuerte (como cubitos de pollo cocido, queso o snacks húmedos).',
+          'Un entorno tranquilo: un lugar sin distracciones dentro de la casa para las primeras sesiones.',
+        ],
+      },
+      {
+        heading: 'Paso 1: iniciar el juego',
+        paragraphs: [
+          'Se sugiere comenzar a jugar con el objeto de nivel bajo (el juguete común).',
+          'Permití que la mascota lo muerda, lo zamarree y se divierta de forma activa durante unos segundos, para que quede concentrada en el objeto.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/Paso1.jpg',
+          alt: 'Mujer jugando a tirar de la cuerda con su perro en el patio',
+        },
+      },
+      {
+        heading: 'Paso 2: presentar el intercambio (sin hablar)',
+        paragraphs: [
+          'Detené el movimiento del juego por completo, para que el juguete pierda interés.',
+          'Acercá el "súper premio" directamente a su nariz.',
+          'En el momento exacto en que la mascota abra la boca para oler o comer el premio y deje caer el juguete, decí una palabra de aprobación corta (como "¡Muy bien!" o usá un clicker) y dale la comida.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/Paso2.jpg',
+          alt: 'Mujer dándole un premio a su perro mientras el juguete de cuerda queda en el piso',
+        },
+      },
+      {
+        heading: 'Paso 3: introducir la palabra del comando ("Soltar")',
+        paragraphs: [
+          'Repetí el Paso 2 varias veces. Cuando notes que la mascota ya anticipa el intercambio y abre la boca apenas acercás la mano con comida, es momento de nombrar la acción.',
+          'Justo un segundo antes de que deje caer el objeto, pronunciá el comando de forma clara y en tono firme pero amable: "Soltar" (o "Dejá").',
+          'En cuanto lo suelte, premiala inmediatamente con la comida de alto valor.',
+        ],
+      },
+      {
+        heading: 'Paso 4: devolver el juguete original',
+        paragraphs: [
+          'Una vez que la mascota se coma el premio, invitala a volver a jugar con el juguete que acaba de soltar.',
+          'Este paso es crucial: le demuestra que "soltar" no significa que el juego se termina para siempre, sino todo lo contrario.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/Paso4.jpg',
+          alt: 'Mujer lanzando la cuerda hacia el perro, que salta para atraparla en el patio',
+        },
+      },
+      {
+        heading: 'Paso 5: aumentar la dificultad gradualmente',
+        paragraphs: [
+          'Con juguetes más deseados: practicá el mismo ejercicio utilizando su juguete favorito.',
+          'Aumentando la distancia: pedile el comando alejándote un par de pasos.',
+          'En diferentes entornos: trasladá las sesiones de práctica al patio, a la casa de un familiar y finalmente a los paseos por la calle, donde abundan las distracciones.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/Paso5.jpg',
+          alt: 'Mujer practicando el comando "soltar" a mayor distancia con su perro en un espacio abierto',
+        },
+      },
+      {
+        heading: 'Qué NO hacer durante el entrenamiento',
+        paragraphs: [
+          'No perseguir a la mascota: si el animal toma un objeto y corrés detrás de él, va a pensar que es un juego de atrapadas y se va a alejar más.',
+          'No forcejear ni abrirle la boca a la fuerza: esto genera estrés y puede provocar que la mascota intente tragarse el objeto rápidamente para que no se lo quites.',
+          'No gritar ni castigar: si asocia el comando con un regaño, va a esconder los objetos debajo de los muebles o va a evitar acercarse a vos cuando tenga algo en la boca.',
+        ],
+        image: {
+          src: '/guides/como-ensenar-a-tu-mascota-el-comando-soltar/final.jpg',
+          alt: 'Mujer con gesto de enojo mientras su perro se aleja con la cuerda en la boca',
+        },
+      },
+      {
+        heading: 'Duración y constancia sugeridas',
+        paragraphs: [
+          'Las mascotas tienen períodos de atención cortos. Se sugiere realizar sesiones muy breves (de 3 a 5 minutos) una o dos veces al día.',
+          'Terminar siempre la sesión de forma positiva, con un acierto y muchos mimos, va a mantener a la mascota motivada para la siguiente práctica.',
+        ],
+      },
+    ],
+    relatedGuideSlug: 'que-hacer-si-tu-mascota-se-atraganta',
   },
 ];
 
