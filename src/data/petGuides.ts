@@ -764,6 +764,103 @@ export const PET_GUIDES: PetGuide[] = [
       },
     ],
   },
+  {
+    slug: 'que-hacer-si-tu-mascota-se-atraganta',
+    title: 'Primeros auxilios: qué hacer si tu mascota se atraganta',
+    category: 'salud',
+    petTypes: ['perro', 'gato'],
+    publishedAt: '2026-09-28',
+    summary:
+      'El atragantamiento con objetos como juguetes, huesos o piedras es una emergencia hogareña que exige actuar rápido. Guía paso a paso para identificarlo, actuar con seguridad y saber qué nunca hay que hacer.',
+    readingTime: '5 min',
+    coverImage: {
+      src: '/guides/que-hacer-si-tu-mascota-se-atraganta/portada.jpg',
+      alt: 'Perro llevándose la pata a la boca, una señal típica de atragantamiento',
+    },
+    sections: [
+      {
+        heading: 'Señales de alerta: cómo identificar un atragantamiento',
+        paragraphs: [
+          'El atragantamiento por objetos extraños (juguetes pequeños, huesos, piedras o trozos de madera) es una de las emergencias hogareñas más estresantes para cualquier tutor. Saber identificar el problema y actuar rápido, sin perder la calma, puede marcar la diferencia mientras buscás asistencia profesional.',
+          'Las mascotas entran en pánico rápidamente cuando su vía aérea se obstruye. Estas son las señales más frecuentes a las que hay que prestar atención:',
+          'Gestos desesperados: la mascota se lleva las patas a la boca o al cuello de forma repetitiva.',
+          'Tos o arcadas violentas: intenta vomitar o expulsar algo sin éxito.',
+          'Dificultad respiratoria: hace ruidos extraños, silbidos al inhalar o muestra asfixia evidente.',
+          'Cambio de color: las encías y la lengua comienzan a tornarse de un color azulado, grisáceo o morado (cianosis) por la falta de oxígeno.',
+          'Pérdida de conciencia: en casos graves, el animal se desploma o se desmaya debido a la hipoxia.',
+        ],
+      },
+      {
+        heading: 'Paso 1: mantené la calma y revisá la boca',
+        paragraphs: [
+          'Sujetá firmemente a la mascota para evitar que se mueva bruscamente. Cuidado: un animal asustado puede morder por puro instinto de supervivencia.',
+          'Abrí el hocico con cuidado y mirá el interior, ayudándote con una linterna si es necesario.',
+          'Solo si el objeto es visible y fácil de agarrar, intentá retirarlo con los dedos en forma de gancho (desde atrás hacia adelante) o con unas pinzas. Si no se ve claramente, es mejor no introducir nada en la garganta.',
+        ],
+        image: {
+          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-1-revisar-la-boca.jpg',
+          alt: 'Persona revisando con una linterna el interior de la boca de un perro',
+        },
+      },
+      {
+        heading: 'Paso 2: la gravedad a tu favor',
+        paragraphs: [
+          'Si revisar la boca no resolvió el problema, podés usar la gravedad para ayudar a que el objeto se suelte, según el tamaño de tu mascota.',
+          'Mascotas pequeñas o gatos: levantalos suavemente por las patas traseras o los muslos (con la cabeza hacia abajo) y hacé pequeños movimientos o sacudidas suaves para que la gravedad ayude a soltar el objeto.',
+          'Mascotas grandes: elevá sus patas traseras manteniendo las delanteras apoyadas en el suelo (posición tipo "carretilla") para inclinar el cuerpo hacia adelante. Se pueden dar hasta 5 palmadas firmes entre los omóplatos.',
+        ],
+        image: {
+          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-2-gravedad-a-favor.jpg',
+          alt: 'Persona elevando las patas traseras de un perro grande en posición de carretilla',
+        },
+      },
+      {
+        heading: 'Paso 3: la maniobra de Heimlich en mascotas',
+        paragraphs: [
+          'Si lo anterior no da resultado y el animal sigue sin poder respirar, el siguiente paso son las compresiones abdominales, adaptadas según el tamaño del animal.',
+          'Mascotas medianas y grandes: parate detrás de tu mascota, rodeá su abdomen con ambas manos justo debajo de las últimas costillas y aplicá compresiones firmes y rápidas hacia arriba y adelante, como dibujando un signo de interrogación. Repetí hasta 5 veces.',
+          'Mascotas pequeñas y gatos: sostenelas con la espalda apoyada contra tu pecho o abdomen, y con dos dedos o la palma de la mano aplicá compresiones suaves pero firmes justo detrás de las últimas costillas, hacia adentro y arriba. Repetí hasta 5 veces.',
+          'Revisá la boca después de cada ciclo de compresiones para comprobar si el objeto salió.',
+        ],
+        image: {
+          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-3-maniobra-heimlich.jpg',
+          alt: 'Persona rodeando con ambas manos el abdomen de un perro para aplicar compresiones',
+        },
+      },
+      {
+        heading: 'Qué NO hacer bajo ninguna circunstancia',
+        paragraphs: [
+          'No hagas barridos a ciegas: meter los dedos en la garganta sin ver qué hay adentro suele empujar el objeto más profundo, empeorando la obstrucción.',
+          'No metas pinzas a ciegas: podés causar desgarros severos en el tejido de la tráquea o el esófago.',
+          'No intentes sacar objetos con puntas: si identificás que es un hueso astillado, una aguja o un anzuelo, las maniobras de arrastre pueden perforar los órganos internos. En estos casos, se sugiere el traslado veterinario inmediato.',
+        ],
+      },
+      {
+        heading: 'Seguimiento veterinario después del episodio',
+        paragraphs: [
+          'Incluso si lográs extraer el objeto con éxito y tu mascota vuelve a respirar con normalidad, se sugiere una visita inmediata al veterinario, por estas razones:',
+          'Lesiones internas: el objeto o la propia fuerza de la maniobra de Heimlich pueden causar hematomas, fisuras o inflamación en las vías respiratorias.',
+          'Hipoxia residual: el profesional debe evaluar los niveles de oxígeno y asegurarse de que no haya fluido atrapado en los pulmones por el esfuerzo (edema pulmonar no cardiogénico).',
+        ],
+        image: {
+          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/seguimiento-veterinario.jpg',
+          alt: 'Veterinaria revisando el cuello de un perro junto a su dueña en el consultorio',
+        },
+      },
+      {
+        heading: 'Sugerencias preventivas para evitar accidentes',
+        paragraphs: [
+          'Juguetes adecuados: asegurate de que las pelotas y mordillos correspondan al tamaño de tu mascota; un juguete para un chihuahua puede ser mortal para un ovejero alemán.',
+          'Evitá los huesos cocidos: los huesos de pollo, asado o cerdo se astillan fácilmente al morderse.',
+          'Monitoreo en los paseos: entrená el comando de "soltar" para evitar que tu mascota trague piedras, carozos de frutas o basura de la calle.',
+        ],
+        image: {
+          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/prevencion.jpg',
+          alt: 'Persona entrenando a su perro a soltar un objeto durante un paseo',
+        },
+      },
+    ],
+  },
 ];
 
 export const PET_GUIDE_TYPE_LABELS: Record<PetGuidePetType, string> = {
