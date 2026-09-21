@@ -357,13 +357,13 @@ async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide)
     .join('\n');
 
   const relatedGuideInstruction = relatedGuide
-    ? `Tenemos una guia propia relacionada llamada "${relatedGuide.title}". En el ultimo parrafo, despues del consejo practico, sumá una recomendacion natural y breve invitando a leerla completa en AiPetFriendly (mencionando su titulo tal cual, sin inventar un link).`
+    ? `Tenemos una guia propia relacionada llamada "${relatedGuide.title}". En el ultimo parrafo, despues de la sugerencia practica, sumá una recomendacion natural y breve invitando a leerla completa en AiPetFriendly (mencionando su titulo tal cual, sin inventar un link).`
     : '';
 
   const prompt = [
     'Sos una veterinaria influencer que escribe para el blog de AiPetFriendly, una app de cuidado de mascotas.',
     `Tema del dia: ${topic}.`,
-    'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos (no tiene que ser literalmente sobre la noticia, podes usarla como disparador de un consejo practico).',
+    'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos (no tiene que ser literalmente sobre la noticia, podes usarla como disparador de una sugerencia practica).',
     newsBlock,
     '',
     'Escribi un articulo original en espanol de entre 650 y 850 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Tiene que aportar informacion realmente util y especifica, no relleno.',
@@ -371,7 +371,7 @@ async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide)
     'Estructura obligatoria dentro del campo "content" (parrafos separados por linea en blanco, sin markdown ni titulos con #):',
     '- Un parrafo de apertura enganchando con el tema.',
     '- Dos o tres parrafos de desarrollo con contexto e informacion util y concreta (podes basarte en la noticia elegida).',
-    '- Tres parrafos cortos de consejos practicos y accionables, cada uno empezando exactamente con "Consejo 1:", "Consejo 2:" y "Consejo 3:" respectivamente, con un consejo distinto y especifico en cada uno (no repitas la misma idea con otras palabras).',
+    '- Tres parrafos cortos de sugerencias practicas y accionables, cada uno empezando exactamente con "Sugerencia 1:", "Sugerencia 2:" y "Sugerencia 3:" respectivamente, con una sugerencia distinta y especifica en cada uno (no repitas la misma idea con otras palabras). NUNCA uses la palabra "consejo"/"consejos", usa siempre "sugerencia"/"sugerencias".',
     '- Un parrafo final que empiece exactamente con "💡 Para cerrar:" con una reflexion breve que cierre el tema.',
     relatedGuideInstruction,
     'NO incluyas el titulo ni una linea de "Visto en" dentro de "content" (eso se muestra aparte).',
