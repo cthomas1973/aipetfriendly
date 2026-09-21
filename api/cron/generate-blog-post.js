@@ -18,6 +18,10 @@
 //      con status='draft': NO se publica solo. Un admin lo revisa/edita y lo
 //      aprueba desde el panel Admin > Blog (ver migracion 042 y
 //      AdminBlogSection.tsx) antes de que aparezca en /blog.
+//   5. Crea el borrador de publicacion social (Admin > Publicaciones) con la
+//      imagen ya brandeada. El video Ken Burns NO se genera aca (necesita
+//      mucho tiempo y este cron ya gasta su presupuesto en SerpApi/IA texto/
+//      IA imagen): lo genera un segundo cron, ver generate-blog-social-video.js.
 //
 // Seguridad: si existe la variable de entorno CRON_SECRET, se exige el header
 // "Authorization: Bearer <CRON_SECRET>" (Vercel Cron lo envia automaticamente
@@ -27,14 +31,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
-import ffmpegPath from 'ffmpeg-static';
-
-const execFileAsync = promisify(execFile);
+import { fileURLToPath } from 'node:url';
 
 // SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
@@ -120,11 +118,11 @@ export function getSupabaseAdminClient() {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
-function sendJson(res, status, payload) {
+export function sendJson(res, status, payload) {
   res.status(status).json(payload);
 }
 
-function isAuthorizedCronRequest(req) {
+export function isAuthorizedCronRequest(req) {
   const secret = process.env.CRON_SECRET || '';
   if (!secret) {
     // Sin CRON_SECRET configurado no podemos validar el origen: se permite
@@ -492,36 +490,186 @@ function buildSocialTipExcerpt(content) {
   return `${cut.slice(0, lastSpace > 100 ? lastSpace : 220)}...`;
 }
 
-// Estampa el logo de AiPetFriendly en la esquina inferior izquierda de la
-// imagen del articulo, para que la publicacion se identifique como propia al
-// compartirse en redes.
-async function buildBrandedSocialImage(articleImageBuffer) {
+// El archivo del logo (public/logo-aipetfriendly.png) tiene un fondo solido
+// color crema (no un PNG con canal alpha real), asi que al estamparlo se veia
+// como un sello rectangular invasivo. Esto le quita ese fondo con un
+// chroma-key simple: toma el color de la esquina superior izquierda como
+// "fondo" y vuelve transparente cualquier pixel lo bastante parecido a ese
+// color, con un borde suave (feather) para que el contorno del icono no
+// quede dentado. El resto del logo (verde/gris) queda intacto porque su
+// distancia de color al crema es grande.
+async function removeLogoBackground(logoBuffer) {
+  const { data, info } = await sharp(logoBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  const bg = [data[0], data[1], data[2]];
+  const THRESHOLD = 45;
+  const FEATHER = 25;
+
+  for (let i = 0; i < data.length; i += channels) {
+    const dr = data[i] - bg[0];
+    const dg = data[i + 1] - bg[1];
+    const db = data[i + 2] - bg[2];
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+
+    if (distance <= THRESHOLD) {
+      data[i + 3] = 0;
+    } else if (distance <= THRESHOLD + FEATHER) {
+      data[i + 3] = Math.round(data[i + 3] * ((distance - THRESHOLD) / FEATHER));
+    }
+  }
+
+  return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
+}
+
+// Fuente usada para el titulo estampado sobre la imagen. Se bundlea junto a
+// esta funcion (ver api/cron/assets/) para no depender de fuentes del
+// sistema operativo, que no existen en el runtime serverless de Vercel.
+// Baloo 2 es una tipografia redondeada y descontracturada (menos formal que
+// una geometrica clasica), acorde al tono amigable de la marca.
+const TITLE_FONT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets', 'Baloo2-Bold.ttf');
+const TITLE_FONT_FAMILY = 'Baloo 2';
+
+function escapePangoMarkup(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Renderiza el titulo como texto (blanco, negrita) con sharp+pango, probando
+// tamanos de fuente de mayor a menor hasta que el bloque de texto entre en
+// una altura razonable (para no terminar con un banner gigante en titulos
+// muy largos). Devuelve el buffer RGBA crudo mas sus dimensiones.
+async function renderTitleText(title, maxTextWidth, maxTextHeight) {
+  const markup = `<span foreground="#ffffff" font_weight="bold">${escapePangoMarkup(title)}</span>`;
+  const fontSizes = [
+    Math.round(maxTextWidth * 0.056),
+    Math.round(maxTextWidth * 0.048),
+    Math.round(maxTextWidth * 0.041),
+    Math.round(maxTextWidth * 0.035),
+  ];
+
+  let last = null;
+  for (const fontSize of fontSizes) {
+    const rendered = await sharp({
+      text: {
+        text: markup,
+        font: `${TITLE_FONT_FAMILY} ${fontSize}`,
+        fontfile: TITLE_FONT_PATH,
+        width: maxTextWidth,
+        rgba: true,
+        align: 'left',
+        wrap: 'word',
+        spacing: Math.round(fontSize * 0.15),
+      },
+    })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    last = rendered;
+    if (rendered.info.height <= maxTextHeight) {
+      return rendered;
+    }
+  }
+  return last;
+}
+
+// Construye el banner superior: en vez de un rectangulo solido, el fondo es
+// un recorte con blur de la propia foto (efecto "vidrio esmerilado"), con un
+// tinte semitransparente en los colores de marca (emerald-600 -> emerald-900)
+// encima para que el texto blanco siga siendo legible sin importar los
+// colores de la imagen, y una linea de acento en amarillo. El titulo del
+// articulo se renderiza en blanco encima. Se ubica arriba de todo para no
+// tapar el sujeto principal de la foto (que suele estar centrado o hacia
+// abajo).
+async function buildTitleBanner(title, baseWidth, baseHeight, sourceImageBuffer) {
+  const paddingX = Math.round(baseWidth * 0.045);
+  const paddingY = Math.round(baseWidth * 0.028);
+  const maxTextWidth = baseWidth - paddingX * 2;
+  const maxTextHeight = Math.round(baseWidth * 0.3);
+
+  const { data, info } = await renderTitleText(title, maxTextWidth, maxTextHeight);
+  const bannerHeight = info.height + paddingY * 2;
+  const accentHeight = Math.max(4, Math.round(baseWidth * 0.005));
+  const blurSigma = Math.max(12, Math.round(baseWidth * 0.03));
+
+  const cropHeight = Math.min(bannerHeight, baseHeight);
+  const blurredBackground = await sharp(sourceImageBuffer)
+    .extract({ left: 0, top: 0, width: baseWidth, height: cropHeight })
+    .blur(blurSigma)
+    .resize({ width: baseWidth, height: bannerHeight, fit: 'fill' })
+    .toBuffer();
+
+  const tintSvg = `
+    <svg width="${baseWidth}" height="${bannerHeight}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="t" x1="0" y1="0" x2="${baseWidth}" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#059669" stop-opacity="0.6" />
+          <stop offset="1" stop-color="#022c22" stop-opacity="0.68" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="${baseWidth}" height="${bannerHeight}" fill="url(#t)" />
+      <rect x="0" y="${bannerHeight - accentHeight}" width="${baseWidth}" height="${accentHeight}" fill="#fbbf24" />
+    </svg>
+  `;
+
+  const textPng = await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } })
+    .png()
+    .toBuffer();
+
+  return sharp(blurredBackground)
+    .composite([
+      { input: Buffer.from(tintSvg), left: 0, top: 0 },
+      { input: textPng, left: paddingX, top: paddingY },
+    ])
+    .png()
+    .toBuffer();
+}
+
+// Estampa el titulo del articulo arriba (banner con degrade + tipografia
+// clara) y el logo de AiPetFriendly (con el fondo ya removido, ver
+// removeLogoBackground) en la esquina inferior izquierda de la imagen del
+// articulo, para que la publicacion se identifique como propia y comunique
+// el titulo de un vistazo al compartirse en redes, sin tapar la foto.
+async function buildBrandedSocialImage(articleImageBuffer, title) {
   const logoResponse = await fetch(`${SITE_URL}/logo-aipetfriendly.png`);
   if (!logoResponse.ok) {
     throw new Error(`No se pudo descargar el logo (status ${logoResponse.status}).`);
   }
   const logoBuffer = Buffer.from(await logoResponse.arrayBuffer());
+  const transparentLogo = await removeLogoBackground(logoBuffer);
 
   const baseMeta = await sharp(articleImageBuffer).metadata();
   const baseWidth = baseMeta.width || 1024;
   const baseHeight = baseMeta.height || 1024;
 
   const logoWidth = Math.round(baseWidth * 0.22);
-  const resizedLogo = await sharp(logoBuffer).resize({ width: logoWidth }).png().toBuffer();
+  const resizedLogo = await sharp(transparentLogo).resize({ width: logoWidth }).png().toBuffer();
   const logoMeta = await sharp(resizedLogo).metadata();
   const padding = Math.round(baseWidth * 0.03);
 
+  const composites = [{
+    input: resizedLogo,
+    left: padding,
+    top: Math.max(baseHeight - (logoMeta.height || 0) - padding, 0),
+  }];
+
+  if (title && title.trim()) {
+    const banner = await buildTitleBanner(title.trim(), baseWidth, baseHeight, articleImageBuffer);
+    composites.unshift({ input: banner, left: 0, top: 0 });
+  }
+
   return sharp(articleImageBuffer)
-    .composite([{
-      input: resizedLogo,
-      left: padding,
-      top: Math.max(baseHeight - (logoMeta.height || 0) - padding, 0),
-    }])
+    .composite(composites)
     .png()
     .toBuffer();
 }
 
-async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentType }) {
+export async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentType }) {
   const fileName = `blog-${slug}-${Date.now()}.${extension}`;
   const bucket = 'social-posts-media';
 
@@ -550,66 +698,14 @@ async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentT
   return publicUrlData?.publicUrl || null;
 }
 
-// Genera un video corto tipo "Ken Burns" (zoom lento sobre la imagen fija) a
-// partir de la imagen ya brandeada del articulo, para que la publicacion se
-// vea como un Reel/video en vez de una foto estatica. No usa ningun servicio
-// de IA de video (sin costo extra): es pura animacion con ffmpeg sobre la
-// misma imagen. Si algo falla (ej. el binario no esta disponible en el
-// entorno, o tarda demasiado), quien llama debe hacer fallback a publicar la
-// imagen sola. `timeoutMs` corta el proceso de ffmpeg si se cuelga, para no
-// arriesgar el limite de 60s de la funcion serverless de Vercel.
-async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 5, fps = 20, size = 1080, timeoutMs = 15000 } = {}) {
-  if (!ffmpegPath) {
-    throw new Error('No se encontro el binario de ffmpeg (ffmpeg-static).');
-  }
-
-  const tmpDir = await mkdtemp(path.join(tmpdir(), 'apf-social-video-'));
-  const inputPath = path.join(tmpDir, 'input.png');
-  const outputPath = path.join(tmpDir, 'output.mp4');
-
-  try {
-    await writeFile(inputPath, imageBuffer);
-
-    const totalFrames = durationSeconds * fps;
-    const filter = [
-      `scale=${size}:${size}`,
-      `zoompan=z='min(zoom+0.0015,1.15)':d=${totalFrames}:s=${size}x${size}:fps=${fps}`,
-      'format=yuv420p',
-    ].join(',');
-
-    await execFileAsync(ffmpegPath, [
-      '-y',
-      '-loop', '1',
-      '-i', inputPath,
-      '-vf', filter,
-      '-t', String(durationSeconds),
-      '-r', String(fps),
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      outputPath,
-    ], { timeout: timeoutMs });
-
-    return await readFile(outputPath);
-  } finally {
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
 // Crea el borrador en social_posts (Admin > Publicaciones) con el titulo, la
-// imagen (con el logo estampado) o un mini-video (ver generateKenBurnsVideo),
-// un gancho corto del articulo y el link al post. Queda en status='draft'
-// esperando que un admin elija redes/horario y lo apruebe: no se publica solo
-// (ver admin_update_social_post, migracion 052).
-//
-// `deadlineAt` es un timestamp (Date.now() + margen) hasta el cual todavia
-// vale la pena intentar generar el video: la funcion serverless que llama a
-// esto tiene un limite duro de tiempo (ver maxDuration arriba), y generar el
-// video (ffmpeg) es lo mas pesado del flujo. Si queda poco presupuesto, se
-// salta directo a subir la imagen fija para no arriesgar que Vercel mate la
-// funcion a mitad de camino (lo que dejaria el post del blog creado pero sin
-// ningun borrador social, ni imagen ni video).
-export async function createSocialDraftFromBlogPost(admin, { blogPost, articleImageBuffer, deadlineAt = Infinity }) {
+// imagen (con el logo estampado, fondo removido) y el link al post. Queda en
+// status='draft' esperando que un admin elija redes/horario y lo apruebe
+// (ver admin_update_social_post, migracion 052). El video Ken Burns se
+// genera despues, en un segundo cron con presupuesto de tiempo propio (ver
+// api/cron/generate-blog-social-video.js), que actualiza este mismo registro
+// cuando el video queda listo en vez de crear uno nuevo.
+export async function createSocialDraftFromBlogPost(admin, { blogPost, articleImageBuffer }) {
   const { data: existing } = await admin
     .from('social_posts')
     .select('id')
@@ -621,27 +717,8 @@ export async function createSocialDraftFromBlogPost(admin, { blogPost, articleIm
     return;
   }
 
-  const brandedImageBuffer = await buildBrandedSocialImage(articleImageBuffer);
-
-  const MIN_BUDGET_FOR_VIDEO_MS = 20000;
-  let mediaUrl = null;
-  let mediaType = 'image';
-  if (deadlineAt - Date.now() >= MIN_BUDGET_FOR_VIDEO_MS) {
-    try {
-      const videoBuffer = await generateKenBurnsVideo(brandedImageBuffer);
-      mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
-      mediaType = 'video';
-    } catch (error) {
-      console.error('No se pudo generar el video de la publicacion social, se usa la imagen fija como respaldo:', error);
-    }
-  } else {
-    console.warn('Poco presupuesto de tiempo restante: se omite el video de la publicacion social y se usa la imagen fija.');
-  }
-
-  if (!mediaUrl) {
-    mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, brandedImageBuffer, { extension: 'png', contentType: 'image/png' });
-    mediaType = 'image';
-  }
+  const brandedImageBuffer = await buildBrandedSocialImage(articleImageBuffer, blogPost.title);
+  const mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, brandedImageBuffer, { extension: 'png', contentType: 'image/png' });
 
   if (!mediaUrl) {
     return;
@@ -653,7 +730,7 @@ export async function createSocialDraftFromBlogPost(admin, { blogPost, articleIm
 
   const { error } = await admin.from('social_posts').insert({
     media_url: mediaUrl,
-    media_type: mediaType,
+    media_type: 'image',
     caption,
     status: 'draft',
     source: 'blog_auto',
@@ -684,12 +761,6 @@ async function alreadyHasPostToday(admin) {
 }
 
 export default async function handler(req, res) {
-  const startedAt = Date.now();
-  // Deja ~10s de margen contra el limite de la funcion (ver maxDuration) para
-  // que siempre alcance a responder el request en vez de que Vercel la mate a
-  // mitad de camino.
-  const deadlineAt = startedAt + (config.maxDuration - 10) * 1000;
-
   if (req.method !== 'GET' && req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
@@ -753,7 +824,7 @@ export default async function handler(req, res) {
 
     if (imageBuffer) {
       try {
-        await createSocialDraftFromBlogPost(admin, { blogPost: inserted, articleImageBuffer: imageBuffer, deadlineAt });
+        await createSocialDraftFromBlogPost(admin, { blogPost: inserted, articleImageBuffer: imageBuffer });
       } catch (socialError) {
         // Igual que la imagen: el borrador de redes es un extra, no debe tirar
         // abajo la generacion del post del blog si falla.
