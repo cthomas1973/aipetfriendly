@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Facebook, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Trash2, X, XCircle, Youtube } from 'lucide-react';
+import { Facebook, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle, Youtube } from 'lucide-react';
 import {
   cancelAdminSocialPost,
   createAdminSocialPost,
   deleteAdminSocialPost,
   fetchAdminSocialPosts,
+  generateGuideSocialReel,
   updateAdminSocialPost,
   uploadAdminSocialMedia,
 } from '../lib/supabase';
@@ -91,6 +92,9 @@ export function AdminPublicacionesSection() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [guideOptions, setGuideOptions] = useState<{ slug: string; title: string }[]>([]);
+  const [selectedGuideSlug, setSelectedGuideSlug] = useState('');
+  const [generatingGuideReel, setGeneratingGuideReel] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -108,6 +112,38 @@ export function AdminPublicacionesSection() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    fetch('/guides-feed.json')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: { slug: string; title: string }[]) => {
+        setGuideOptions(Array.isArray(data) ? data : []);
+      })
+      .catch(() => setGuideOptions([]));
+  }, []);
+
+  const handleGenerateGuideReel = async () => {
+    if (!selectedGuideSlug) {
+      setError('Elegi una guia primero.');
+      return;
+    }
+    setError(null);
+    setMsg(null);
+    setGeneratingGuideReel(true);
+    try {
+      const { hasAudio } = await generateGuideSocialReel(selectedGuideSlug);
+      setMsg(
+        hasAudio
+          ? 'Reel de la guia generado con voz en off y subtitulos. Quedo como borrador para revisar.'
+          : 'Reel de la guia generado (video mudo, fallo el audio/subtitulos). Quedo como borrador para revisar.',
+      );
+      await load();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo generar el reel de la guia.');
+    } finally {
+      setGeneratingGuideReel(false);
+    }
+  };
 
   const togglePlatform = (platform: SocialPostPlatform) => {
     setForm((f) => ({
@@ -273,6 +309,32 @@ export function AdminPublicacionesSection() {
 
       {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
       {msg && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-600">{msg}</p>}
+
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 p-4">
+        <Sparkles size={16} className="shrink-0 text-emerald-500" />
+        <p className="mr-2 text-sm font-semibold text-slate-700">Generar reel para una guia:</p>
+        <select
+          value={selectedGuideSlug}
+          onChange={(e) => setSelectedGuideSlug(e.target.value)}
+          className="min-w-[220px] flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
+        >
+          <option value="">Elegi una guia...</option>
+          {guideOptions.map((g) => (
+            <option key={g.slug} value={g.slug}>
+              {g.title}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleGenerateGuideReel}
+          disabled={generatingGuideReel || !selectedGuideSlug}
+          className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+        >
+          {generatingGuideReel ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {generatingGuideReel ? 'Generando...' : 'Generar reel'}
+        </button>
+      </div>
 
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-slate-200 p-4">

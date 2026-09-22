@@ -42,6 +42,7 @@ export const config = { maxDuration: 60 };
 // que se estampa en la imagen de la publicacion social (ver
 // createSocialDraftFromBlogPost). Mismo default que send-blog-post-notifications.
 const SITE_URL = (process.env.APP_BASE_URL || 'https://www.aipetfriendly.ar').replace(/\/$/, '');
+export { SITE_URL };
 
 
 // Subtemas fijos entre los que rota la busqueda diaria (1 por dia). Antes
@@ -109,6 +110,8 @@ function getEnvOrThrow(name) {
   }
   return value;
 }
+
+export { getEnvOrThrow };
 
 export function getSupabaseAdminClient() {
   const supabaseUrl = getEnvOrThrow('SUPABASE_URL');
@@ -302,7 +305,7 @@ async function fetchNewsSnippets(topic) {
   }));
 }
 
-async function callAiTextModel(prompt) {
+export async function callAiTextModel(prompt) {
   const apiKey = getEnvOrThrow('AI_API_KEY');
   const model = process.env.AI_MODEL || 'gpt-4o-mini';
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
@@ -532,6 +535,7 @@ async function removeLogoBackground(logoBuffer) {
 // una geometrica clasica), acorde al tono amigable de la marca.
 const TITLE_FONT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets', 'Baloo2-Bold.ttf');
 const TITLE_FONT_FAMILY = 'Baloo 2';
+export { TITLE_FONT_PATH, TITLE_FONT_FAMILY };
 
 function escapePangoMarkup(value) {
   return String(value)
@@ -630,12 +634,14 @@ async function buildTitleBanner(title, baseWidth, baseHeight, sourceImageBuffer)
     .toBuffer();
 }
 
-// Estampa el titulo del articulo arriba (banner con degrade + tipografia
-// clara) y el logo de AiPetFriendly (con el fondo ya removido, ver
-// removeLogoBackground) en la esquina inferior izquierda de la imagen del
-// articulo, para que la publicacion se identifique como propia y comunique
-// el titulo de un vistazo al compartirse en redes, sin tapar la foto.
-async function buildBrandedSocialImage(articleImageBuffer, title) {
+// Calcula las 2 capas de branding (banner de titulo + logo) que se estampan
+// sobre la imagen del articulo, SIN aplicarlas todavia. Se separo de
+// buildBrandedSocialImage para poder reusar el mismo calculo de tamanios/
+// posiciones tanto en la imagen fija (compuesta ahi mismo) como en el video
+// Ken Burns (ver generate-blog-social-video.js), donde el banner y el logo
+// se overlayan FIJOS encima del video ya animado en vez de zoomearse junto
+// con el fondo.
+export async function buildBrandingLayers(articleImageBuffer, title) {
   const logoResponse = await fetch(`${SITE_URL}/logo-aipetfriendly.png`);
   if (!logoResponse.ok) {
     throw new Error(`No se pudo descargar el logo (status ${logoResponse.status}).`);
@@ -652,15 +658,41 @@ async function buildBrandedSocialImage(articleImageBuffer, title) {
   const logoMeta = await sharp(resizedLogo).metadata();
   const padding = Math.round(baseWidth * 0.03);
 
-  const composites = [{
-    input: resizedLogo,
+  const logoLayer = {
+    buffer: resizedLogo,
+    width: logoMeta.width || logoWidth,
+    height: logoMeta.height || 0,
     left: padding,
     top: Math.max(baseHeight - (logoMeta.height || 0) - padding, 0),
-  }];
+  };
 
+  let bannerLayer = null;
   if (title && title.trim()) {
-    const banner = await buildTitleBanner(title.trim(), baseWidth, baseHeight, articleImageBuffer);
-    composites.unshift({ input: banner, left: 0, top: 0 });
+    const bannerBuffer = await buildTitleBanner(title.trim(), baseWidth, baseHeight, articleImageBuffer);
+    const bannerMeta = await sharp(bannerBuffer).metadata();
+    bannerLayer = {
+      buffer: bannerBuffer,
+      width: bannerMeta.width || baseWidth,
+      height: bannerMeta.height || 0,
+      left: 0,
+      top: 0,
+    };
+  }
+
+  return { baseWidth, baseHeight, logoLayer, bannerLayer };
+}
+
+// Estampa el titulo del articulo arriba (banner con degrade + tipografia
+// clara) y el logo de AiPetFriendly (con el fondo ya removido, ver
+// removeLogoBackground) en la esquina inferior izquierda de la imagen del
+// articulo, para que la publicacion se identifique como propia y comunique
+// el titulo de un vistazo al compartirse en redes, sin tapar la foto.
+async function buildBrandedSocialImage(articleImageBuffer, title) {
+  const { logoLayer, bannerLayer } = await buildBrandingLayers(articleImageBuffer, title);
+
+  const composites = [{ input: logoLayer.buffer, left: logoLayer.left, top: logoLayer.top }];
+  if (bannerLayer) {
+    composites.unshift({ input: bannerLayer.buffer, left: bannerLayer.left, top: bannerLayer.top });
   }
 
   return sharp(articleImageBuffer)
@@ -669,8 +701,8 @@ async function buildBrandedSocialImage(articleImageBuffer, title) {
     .toBuffer();
 }
 
-export async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentType }) {
-  const fileName = `blog-${slug}-${Date.now()}.${extension}`;
+export async function uploadSocialDraftMedia(admin, slug, buffer, { extension, contentType, prefix = 'blog' }) {
+  const fileName = `${prefix}-${slug}-${Date.now()}.${extension}`;
   const bucket = 'social-posts-media';
 
   let { error: uploadError } = await admin.storage.from(bucket).upload(fileName, buffer, {

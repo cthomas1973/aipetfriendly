@@ -4,6 +4,7 @@
     "title": "Cómo enseñar a tu mascota el comando \"Soltar\"",
     "category": "adiestramiento",
     "summary": "Enseñarle a tu mascota a soltar lo que tiene en la boca es mucho más que un truco: puede evitar que trague algo peligroso. Guía paso a paso basada en el \"Gran Intercambio\" para lograrlo sin forcejeos, gritos ni persecuciones.",
+    "coverImageSrc": "/guides/como-ensenar-a-tu-mascota-el-comando-soltar/portada.jpg",
     "effectiveReleaseDate": "2026-09-21"
   },
   {
@@ -11,6 +12,7 @@
     "title": "Cómo enseñar a tu perro a echarse: la postura de descanso total",
     "category": "adiestramiento",
     "summary": "Enseñá a tu perro a adoptar una postura de descanso y calma total a tu señal: la guía paso a paso para lograr un \"echate\" confiable partiendo de \"sentado\".",
+    "coverImageSrc": "/guides/como-ensenar-a-tu-perro-a-echarse/portada.jpg",
     "effectiveReleaseDate": "2026-09-01"
   },
   {
@@ -18,6 +20,7 @@
     "title": "El llamado confiable: cómo lograr que tu perro acuda siempre",
     "category": "adiestramiento",
     "summary": "Enseñale a tu perro a acudir alegremente a tu lado en cualquier situación y entorno. Guía paso a paso para construir un llamado confiable, con correa larga y sin regaños.",
+    "coverImageSrc": "/guides/llamado-confiable-en-perros/portada.jpg",
     "effectiveReleaseDate": "2026-08-21"
   },
   {
@@ -25,6 +28,7 @@
     "title": "Paseo con correa sin tirones: guía para caminatas relajadas",
     "category": "adiestramiento",
     "summary": "Disfrutá de paseos relajados y conectados en armonía con tu perro. Guía paso a paso para que aprenda a caminar con la correa floja, sin tirones.",
+    "coverImageSrc": "/guides/paseo-con-correa-sin-tirones/portada.jpg",
     "effectiveReleaseDate": "2026-08-14"
   },
   {
@@ -32,6 +36,7 @@
     "title": "Cómo enseñar a tu perro a sentarse: el truco base",
     "category": "adiestramiento",
     "summary": "Enseñar \"sentado\" no es solo un truco vistoso: es la base de toda la educación del perro y una forma clara de comunicarse con él. Cómo enseñarlo paso a paso con refuerzo positivo.",
+    "coverImageSrc": "/guides/como-ensenar-a-tu-perro-a-sentarse/paso-2.jpg",
     "effectiveReleaseDate": "2026-08-07"
   },
   {
@@ -39,6 +44,7 @@
     "title": "Cómo enseñar a tu perro a dar la pata: el saludo clásico",
     "category": "adiestramiento",
     "summary": "Dar la pata es uno de los trucos más simpáticos y también ayuda a que el perro use sus patas delanteras con delicadeza. Cómo enseñarlo paso a paso partiendo de \"sentado\".",
+    "coverImageSrc": "/guides/como-ensenar-a-tu-perro-a-dar-la-pata/portada.jpg",
     "effectiveReleaseDate": "2026-08-07"
   },
   {
@@ -46,6 +52,7 @@
     "title": "Vacunas y desparasitación: guía para no perderte ninguna dosis",
     "category": "salud",
     "summary": "Cumplir el calendario de vacunas y desparasitaciones es una de las formas más simples y efectivas de prevenir enfermedades graves. Cómo organizarlo sin olvidos.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-08-04"
   },
   {
@@ -53,6 +60,7 @@
     "title": "Primeros auxilios básicos para mascotas: qué hacer mientras llegás al veterinario",
     "category": "salud",
     "summary": "Ante una urgencia, los primeros minutos importan. Estas son pautas generales de primeros auxilios, que nunca reemplazan la atención veterinaria.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-07-28"
   },
   {
@@ -60,6 +68,7 @@
     "title": "Destructividad y ladridos excesivos: por qué pasan y cómo abordarlos",
     "category": "conducta",
     "summary": "Antes de pensar en \"corregir\" estos comportamientos, hay que entender qué necesidad está cubriendo el perro. Guía para identificar la causa y trabajarla.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-07-21"
   },
   {
@@ -67,6 +76,7 @@
     "title": "Cómo prevenir el estrés en viajes y mudanzas",
     "category": "ansiedad",
     "summary": "Viajar en auto, mudarse de casa o cambiar de rutina puede ser muy estresante para una mascota. Tips prácticos para que la transición sea más tranquila.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-07-14"
   },
   {
@@ -74,6 +84,7 @@
     "title": "Ansiedad en gatos: señales que pasan desapercibidas",
     "category": "ansiedad",
     "summary": "Los gatos expresan el estrés de forma mucho más sutil que los perros. Aprendé a reconocer las señales tempranas y cómo mejorar su entorno.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-07-07"
   },
   {
@@ -81,6 +92,7 @@
     "title": "Adiestramiento en positivo: los comandos básicos para empezar",
     "category": "adiestramiento",
     "summary": "Sentado, quieto, ven y junto: cómo enseñar los comandos fundamentales usando refuerzo positivo, sin gritos ni castigos.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-06-30"
   },
   {
@@ -88,6 +100,7 @@
     "title": "Cómo socializar a un cachorro correctamente",
     "category": "adiestramiento",
     "summary": "Las primeras 16 semanas de vida son claves para formar un perro adulto seguro y equilibrado. Guía práctica de socialización, paso a paso y sin sobreexponer al cachorro.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-06-23"
   },
   {
@@ -95,6 +108,7 @@
     "title": "Ansiedad por separación en perros: cómo identificarla y tratarla",
     "category": "ansiedad",
     "summary": "Ladridos, destrozos y accidentes cuando el perro se queda solo pueden ser señales de ansiedad por separación. Te contamos cómo reconocerla y un plan de trabajo gradual para mejorarla.",
+    "coverImageSrc": null,
     "effectiveReleaseDate": "2026-06-16"
   }
 ]

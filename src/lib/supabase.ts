@@ -2482,6 +2482,31 @@ export async function uploadAdminSocialMedia(args: {
   return { mediaUrl: payload.mediaUrl, mediaType: payload.mediaType };
 }
 
+// Dispara la generacion "a demanda" (guion-gancho + voz en off + subtitulos +
+// banner/logo + zoom Ken Burns) del reel de una guia puntual, via el endpoint
+// serverless (necesita ffmpeg/sharp, no puede ser una Edge Function de
+// Supabase). El backend valida que quien llama sea admin (tabla admin_users).
+export async function generateGuideSocialReel(slug: string): Promise<{ socialPostId: string; hasAudio: boolean }> {
+  const token = await getAuthTokenOrThrow();
+
+  const response = await fetch('/api/admin/generate-guide-reel', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ slug }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof body?.error === 'string' ? body.error : '';
+    throw new Error(detail || 'No se pudo generar el reel de la guia.');
+  }
+
+  return { socialPostId: body.socialPostId, hasAudio: Boolean(body.hasAudio) };
+}
+
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
   const { data, error } = await supabase.rpc('admin_list_user_access');
 

@@ -6,8 +6,26 @@
 // social_posts SOLO con la imagen brandeada (media_type='image'). Este cron
 // corre unos minutos despues (ver "crons" en vercel.json) con un presupuesto
 // de tiempo propio y completo, dedicado unicamente a convertir esa imagen en
-// un video "Ken Burns" (zoom lento) para que la publicacion se vea como un
-// Reel en vez de una foto estatica.
+// un video "Ken Burns" (zoom/paneo lento) para que la publicacion se vea
+// como un Reel en vez de una foto estatica.
+//
+// El zoom/paneo se aplica sobre la FOTO ORIGINAL del articulo (blog_posts.
+// image_url), no sobre la imagen ya brandeada: el banner de titulo y el logo
+// se overlayan FIJOS encima del video con ffmpeg (ver
+// generateKenBurnsVideoWithBranding), asi no se mueven ni se deforman con el
+// zoom. Si por algun motivo no se puede reconstruir esa foto original (post
+// no encontrado, imagen no descargable, etc.), cae a un fallback que zoomea
+// la imagen ya brandeada completa (comportamiento anterior, ver
+// generateKenBurnsVideo) para que el pipeline nunca se rompa.
+//
+// Ademas, si se pudo reconstruir la foto original, se intenta primero la
+// version con voz en off (guion-gancho generado por IA) + subtitulos
+// quemados sincronizados (ver social-video-audio-captions.js). Si CUALQUIER
+// paso de ese pipeline extra falla (falta AI_API_KEY, la API de TTS o de
+// transcripcion no responde, etc.) se cae al video mudo de siempre
+// (generateKenBurnsVideoWithBranding), para que el pipeline nunca se rompa
+// por esto. Este agregado SI tiene costo (TTS + transcripcion), a diferencia
+// del resto del pipeline que es solo ffmpeg/sharp.
 //
 // Busca el borrador de blog_auto mas reciente que siga en status='draft' y
 // media_type='image' (es decir, uno que el admin todavia no aprobo/programo),
@@ -24,7 +42,15 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
-import { getSupabaseAdminClient, sendJson, isAuthorizedCronRequest, uploadSocialDraftMedia } from './generate-blog-post.js';
+import sharp from 'sharp';
+import { getSupabaseAdminClient, sendJson, isAuthorizedCronRequest, uploadSocialDraftMedia, buildBrandingLayers } from './generate-blog-post.js';
+import { pickKenBurnsEffect, buildKenBurnsBackgroundFilter } from './ken-burns-effects.js';
+import {
+  generateReelHookScript,
+  generateVoiceOverAudio,
+  transcribeAudioWithWordTimestamps,
+  generateReelVideoWithAudioAndCaptions,
+} from './social-video-audio-captions.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -39,56 +65,12 @@ export const config = { maxDuration: 60 };
 // reviso/publico de otra forma, o el articulo perdio actualidad).
 const MAX_CANDIDATE_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
-// Variantes de movimiento para el efecto "Ken Burns". Antes siempre era el
-// mismo zoom-in sin x/y explicito (que en ffmpeg equivale a esquina superior
-// izquierda, no al centro). Ahora hay 4 variantes -tres zoom centrado/mitad
-// inferior + dos paneos laterales- para que los videos no se vean todos
-// iguales. Se elige una por publicacion de forma deterministica en base al
-// id del borrador (no al azar), asi corridas repetidas del cron dan el mismo
-// resultado para un mismo post. Cero costo extra: sigue siendo solo ffmpeg.
-function pickKenBurnsEffect(seed, totalFrames) {
-  const effects = [
-    {
-      name: 'zoom-in-centro',
-      zoomExpr: 'min(zoom+0.0015,1.15)',
-      x: 'iw/2-(iw/zoom/2)',
-      y: 'ih/2-(ih/zoom/2)',
-    },
-    {
-      // Centrado en la mitad inferior de la imagen: evita "comerse" el
-      // banner de titulo (que va arriba) a medida que avanza el zoom.
-      name: 'zoom-in-mitad-inferior',
-      zoomExpr: 'min(zoom+0.0015,1.15)',
-      x: 'iw/2-(iw/zoom/2)',
-      y: 'ih-(ih/zoom)',
-    },
-    {
-      name: 'paneo-izquierda-derecha',
-      zoomExpr: 'min(zoom+0.0012,1.12)',
-      x: `(iw-iw/zoom)*(on/${totalFrames})`,
-      y: 'ih/2-(ih/zoom/2)',
-    },
-    {
-      name: 'paneo-derecha-izquierda',
-      zoomExpr: 'min(zoom+0.0012,1.12)',
-      x: `(iw-iw/zoom)*(1-on/${totalFrames})`,
-      y: 'ih/2-(ih/zoom/2)',
-    },
-  ];
-
-  let hash = 0;
-  for (const char of String(seed)) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return effects[hash % effects.length];
-}
-
 // Genera un video corto tipo "Ken Burns" (zoom/paneo lento sobre la imagen
 // fija) a partir de la imagen ya brandeada del articulo. No usa ningun
 // servicio de IA de video (sin costo extra): es pura animacion con ffmpeg,
 // con una leve vineta para un acabado mas prolijo. `timeoutMs` corta el
 // proceso si se cuelga, para no arriesgar el limite de la funcion.
-async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 25, size = 1080, timeoutMs = 45000, seed = '' } = {}) {
+export async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 25, size = 1080, timeoutMs = 45000, seed = '' } = {}) {
   if (!ffmpegPath) {
     throw new Error('No se encontro el binario de ffmpeg (ffmpeg-static).');
   }
@@ -103,9 +85,7 @@ async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 2
     const totalFrames = durationSeconds * fps;
     const effect = pickKenBurnsEffect(seed, totalFrames);
     const filter = [
-      `scale=${size}:${size}`,
-      `zoompan=z='${effect.zoomExpr}':x='${effect.x}':y='${effect.y}':d=${totalFrames}:s=${size}x${size}:fps=${fps}`,
-      'vignette=PI/6',
+      buildKenBurnsBackgroundFilter(effect, { size, totalFrames, fps }),
       'format=yuv420p',
     ].join(',');
 
@@ -137,7 +117,7 @@ async function findPendingImageDraft(admin) {
 
   const { data, error } = await admin
     .from('social_posts')
-    .select('id, media_url, caption, created_at')
+    .select('id, media_url, caption, created_at, source_ref_id')
     .eq('source', 'blog_auto')
     .eq('status', 'draft')
     .eq('media_type', 'image')
@@ -151,6 +131,117 @@ async function findPendingImageDraft(admin) {
   }
 
   return data;
+}
+
+// Prepara la foto original del articulo (SIN el banner de titulo/logo
+// horneados) + las capas de branding por separado, para poder overlayarlas
+// FIJAS encima del video ya animado (ver generateKenBurnsVideoWithBranding)
+// en vez de zoomearlas junto con el fondo. Si algo falla (el post no tiene
+// source_ref_id, no se encuentra en blog_posts, o no se puede descargar la
+// imagen original) devuelve null y el caller cae al fallback anterior
+// (zoom sobre la imagen ya brandeada completa), para que el pipeline nunca
+// se rompa por esto.
+export async function tryBuildBrandingFromBlogPost(admin, draft) {
+  if (!draft.source_ref_id) {
+    return null;
+  }
+
+  try {
+    const { data: blogPost, error } = await admin
+      .from('blog_posts')
+      .select('image_url, title, content')
+      .eq('id', draft.source_ref_id)
+      .maybeSingle();
+
+    if (error || !blogPost?.image_url) {
+      return null;
+    }
+
+    const rawResponse = await fetch(blogPost.image_url);
+    if (!rawResponse.ok) {
+      return null;
+    }
+    const rawOriginal = Buffer.from(await rawResponse.arrayBuffer());
+
+    // Mismo tamanio final que el video (1080x1080), asi las posiciones del
+    // banner/logo calculadas por buildBrandingLayers coinciden con el frame
+    // que arma ffmpeg (que tambien escala a 1080x1080).
+    const size = 1080;
+    const rawImageBuffer = await sharp(rawOriginal).resize(size, size, { fit: 'cover' }).png().toBuffer();
+    const { bannerLayer, logoLayer } = await buildBrandingLayers(rawImageBuffer, blogPost.title);
+
+    return { rawImageBuffer, bannerLayer, logoLayer, title: blogPost.title, content: blogPost.content };
+  } catch (error) {
+    console.warn('No se pudo preparar el branding separado del video, se usa el fallback (zoom sobre la imagen ya brandeada):', error);
+    return null;
+  }
+}
+
+// Igual que generateKenBurnsVideo, pero el zoom/paneo se aplica SOLO a la
+// foto original (sin banner ni logo), y el banner de titulo + el logo se
+// overlayan FIJOS encima con ffmpeg (no se mueven ni se zoomean), para que
+// el texto del titulo quede siempre legible en su lugar mientras el fondo
+// se anima. Sigue sin usar ningun servicio de IA de video.
+export async function generateKenBurnsVideoWithBranding(rawImageBuffer, { bannerLayer, logoLayer, durationSeconds = 6, fps = 25, size = 1080, timeoutMs = 45000, seed = '' } = {}) {
+  if (!ffmpegPath) {
+    throw new Error('No se encontro el binario de ffmpeg (ffmpeg-static).');
+  }
+
+  const tmpDir = await mkdtemp(path.join(tmpdir(), 'apf-social-video-'));
+  const outputPath = path.join(tmpDir, 'output.mp4');
+
+  try {
+    const bgPath = path.join(tmpDir, 'bg.png');
+    await writeFile(bgPath, rawImageBuffer);
+
+    const totalFrames = durationSeconds * fps;
+    const effect = pickKenBurnsEffect(seed, totalFrames);
+    const bgFilter = buildKenBurnsBackgroundFilter(effect, { size, totalFrames, fps });
+
+    const inputArgs = ['-loop', '1', '-framerate', String(fps), '-i', bgPath];
+    const filterSteps = [`[0:v]${bgFilter}[bg]`];
+    let lastLabel = 'bg';
+    let nextInputIndex = 1;
+
+    if (bannerLayer) {
+      const bannerPath = path.join(tmpDir, 'banner.png');
+      await writeFile(bannerPath, bannerLayer.buffer);
+      inputArgs.push('-loop', '1', '-framerate', String(fps), '-i', bannerPath);
+      const label = `b${nextInputIndex}`;
+      filterSteps.push(`[${lastLabel}][${nextInputIndex}:v]overlay=${bannerLayer.left}:${bannerLayer.top}[${label}]`);
+      lastLabel = label;
+      nextInputIndex += 1;
+    }
+
+    if (logoLayer) {
+      const logoPath = path.join(tmpDir, 'logo.png');
+      await writeFile(logoPath, logoLayer.buffer);
+      inputArgs.push('-loop', '1', '-framerate', String(fps), '-i', logoPath);
+      const label = `l${nextInputIndex}`;
+      filterSteps.push(`[${lastLabel}][${nextInputIndex}:v]overlay=${logoLayer.left}:${logoLayer.top}[${label}]`);
+      lastLabel = label;
+      nextInputIndex += 1;
+    }
+
+    filterSteps.push(`[${lastLabel}]format=yuv420p[outv]`);
+
+    await execFileAsync(ffmpegPath, [
+      '-y',
+      ...inputArgs,
+      '-filter_complex', filterSteps.join(';'),
+      '-map', '[outv]',
+      '-t', String(durationSeconds),
+      '-r', String(fps),
+      '-preset', 'fast',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      outputPath,
+    ], { timeout: timeoutMs });
+
+    return { buffer: await readFile(outputPath), effectName: effect.name };
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 export default async function handler(req, res) {
@@ -170,13 +261,52 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { skipped: true, reason: 'No hay borradores de publicacion social pendientes de video.' });
     }
 
-    const imageResponse = await fetch(draft.media_url);
-    if (!imageResponse.ok) {
-      throw new Error(`No se pudo descargar la imagen del borrador (status ${imageResponse.status}).`);
-    }
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    const branding = await tryBuildBrandingFromBlogPost(admin, draft);
 
-    const { buffer: videoBuffer, effectName } = await generateKenBurnsVideo(imageBuffer, { seed: draft.id });
+    let videoBuffer;
+    let effectName;
+    let hasAudio = false;
+
+    if (branding) {
+      // Primero se intenta la version completa (guion-gancho + voz en off +
+      // subtitulos quemados). Si CUALQUIER paso de ese pipeline falla (falta
+      // AI_API_KEY, la API de TTS/transcripcion no responde, etc.) se cae al
+      // video mudo de siempre, para que el pipeline nunca se rompa por esto.
+      try {
+        const script = await generateReelHookScript({ title: branding.title, content: branding.content });
+        const audioBuffer = await generateVoiceOverAudio(script);
+        const words = await transcribeAudioWithWordTimestamps(audioBuffer);
+        const result = await generateReelVideoWithAudioAndCaptions(branding.rawImageBuffer, {
+          bannerLayer: branding.bannerLayer,
+          logoLayer: branding.logoLayer,
+          audioBuffer,
+          words,
+          seed: draft.id,
+        });
+        videoBuffer = result.buffer;
+        effectName = result.effectName;
+        hasAudio = true;
+      } catch (audioError) {
+        console.warn('Fallo el pipeline de audio+subtitulos, se usa el fallback mudo:', audioError);
+        const result = await generateKenBurnsVideoWithBranding(branding.rawImageBuffer, {
+          bannerLayer: branding.bannerLayer,
+          logoLayer: branding.logoLayer,
+          seed: draft.id,
+        });
+        videoBuffer = result.buffer;
+        effectName = result.effectName;
+      }
+    } else {
+      const imageResponse = await fetch(draft.media_url);
+      if (!imageResponse.ok) {
+        throw new Error(`No se pudo descargar la imagen del borrador (status ${imageResponse.status}).`);
+      }
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      const result = await generateKenBurnsVideo(imageBuffer, { seed: draft.id });
+      videoBuffer = result.buffer;
+      effectName = result.effectName;
+    }
+
     const slugGuess = draft.id;
     const videoUrl = await uploadSocialDraftMedia(admin, slugGuess, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
 
@@ -206,7 +336,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return sendJson(res, 200, { upgraded: true, socialPostId: draft.id, effect: effectName });
+    return sendJson(res, 200, { upgraded: true, socialPostId: draft.id, effect: effectName, hasAudio });
   } catch (error) {
     console.error('Error generando el video de la publicacion social del blog:', error);
     return sendJson(res, 500, { error: error instanceof Error ? error.message : 'Unknown error' });

@@ -55,17 +55,18 @@ async function fetchPublishedBlogPosts() {
 
 const source = readFileSync(guidesFile, 'utf8');
 
-// Extrae cada objeto de guia buscando slug/title/category/publishedAt/summary dentro
-// del array PET_GUIDES (los campos siempre aparecen en ese orden en cada guia). Se
-// usa regex (no import directo) porque este script corre con Node sobre un .ts.
+// Extrae cada objeto de guia buscando slug/title/category/publishedAt/summary
+// (+ coverImage.src si existe) dentro del array PET_GUIDES (los campos siempre
+// aparecen en ese orden en cada guia). Se usa regex (no import directo) porque
+// este script corre con Node sobre un .ts.
 const guideBlockRegex =
-  /slug:\s*'([^']+)'[\s\S]*?title:\s*'([^']+)'[\s\S]*?category:\s*'([^']+)'[\s\S]*?publishedAt:\s*'([^']+)'[\s\S]*?summary:\s*\n?\s*'([^']+)'/g;
+  /slug:\s*'([^']+)'[\s\S]*?title:\s*'([^']+)'[\s\S]*?category:\s*'([^']+)'[\s\S]*?publishedAt:\s*'([^']+)'[\s\S]*?summary:\s*\n?\s*'([^']+)'(?:(?:(?!slug:)[\s\S])*?coverImage:\s*\{\s*src:\s*'([^']+)')?/g;
 
 const guides = [];
 let match;
 while ((match = guideBlockRegex.exec(source)) !== null) {
-  const [, slug, title, category, publishedAt, summary] = match;
-  guides.push({ slug, title, category, publishedAt, summary });
+  const [, slug, title, category, publishedAt, summary, coverImageSrc] = match;
+  guides.push({ slug, title, category, publishedAt, summary, coverImageSrc: coverImageSrc || null });
 }
 
 if (guides.length === 0) {
@@ -166,13 +167,16 @@ console.log(
 
 // Genera public/guides-feed.json: listado de guias ya publicadas (con su fecha
 // efectiva de publicacion) para que la funcion edge "send-guide-notifications"
-// pueda detectar guias nuevas y avisar por email a quienes dieron consentimiento,
-// sin tener que duplicar la logica de liberacion (7 dias entre guias) en Deno.
+// pueda detectar guias nuevas y avisar por email a quienes dieron consentimiento
+// (sin tener que duplicar la logica de liberacion de 7 dias en Deno), y para que
+// api/admin/generate-guide-reel.js pueda armar el reel social de una guia sin
+// tener que parsear el .ts (ver coverImageSrc, usado como imagen base del video).
 const guidesFeed = publishedGuides.map((guide) => ({
   slug: guide.slug,
   title: guide.title,
   category: guide.category,
   summary: guide.summary,
+  coverImageSrc: guide.coverImageSrc,
   effectiveReleaseDate: new Date(effectiveReleaseTimes.get(guide.slug)).toISOString().slice(0, 10),
 }));
 
