@@ -39,11 +39,56 @@ export const config = { maxDuration: 60 };
 // reviso/publico de otra forma, o el articulo perdio actualidad).
 const MAX_CANDIDATE_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
-// Genera un video corto tipo "Ken Burns" (zoom lento sobre la imagen fija) a
-// partir de la imagen ya brandeada del articulo. No usa ningun servicio de
-// IA de video (sin costo extra): es pura animacion con ffmpeg. `timeoutMs`
-// corta el proceso si se cuelga, para no arriesgar el limite de la funcion.
-async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 25, size = 1080, timeoutMs = 45000 } = {}) {
+// Variantes de movimiento para el efecto "Ken Burns". Antes siempre era el
+// mismo zoom-in sin x/y explicito (que en ffmpeg equivale a esquina superior
+// izquierda, no al centro). Ahora hay 4 variantes -tres zoom centrado/mitad
+// inferior + dos paneos laterales- para que los videos no se vean todos
+// iguales. Se elige una por publicacion de forma deterministica en base al
+// id del borrador (no al azar), asi corridas repetidas del cron dan el mismo
+// resultado para un mismo post. Cero costo extra: sigue siendo solo ffmpeg.
+function pickKenBurnsEffect(seed, totalFrames) {
+  const effects = [
+    {
+      name: 'zoom-in-centro',
+      zoomExpr: 'min(zoom+0.0015,1.15)',
+      x: 'iw/2-(iw/zoom/2)',
+      y: 'ih/2-(ih/zoom/2)',
+    },
+    {
+      // Centrado en la mitad inferior de la imagen: evita "comerse" el
+      // banner de titulo (que va arriba) a medida que avanza el zoom.
+      name: 'zoom-in-mitad-inferior',
+      zoomExpr: 'min(zoom+0.0015,1.15)',
+      x: 'iw/2-(iw/zoom/2)',
+      y: 'ih-(ih/zoom)',
+    },
+    {
+      name: 'paneo-izquierda-derecha',
+      zoomExpr: 'min(zoom+0.0012,1.12)',
+      x: `(iw-iw/zoom)*(on/${totalFrames})`,
+      y: 'ih/2-(ih/zoom/2)',
+    },
+    {
+      name: 'paneo-derecha-izquierda',
+      zoomExpr: 'min(zoom+0.0012,1.12)',
+      x: `(iw-iw/zoom)*(1-on/${totalFrames})`,
+      y: 'ih/2-(ih/zoom/2)',
+    },
+  ];
+
+  let hash = 0;
+  for (const char of String(seed)) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return effects[hash % effects.length];
+}
+
+// Genera un video corto tipo "Ken Burns" (zoom/paneo lento sobre la imagen
+// fija) a partir de la imagen ya brandeada del articulo. No usa ningun
+// servicio de IA de video (sin costo extra): es pura animacion con ffmpeg,
+// con una leve vineta para un acabado mas prolijo. `timeoutMs` corta el
+// proceso si se cuelga, para no arriesgar el limite de la funcion.
+async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 25, size = 1080, timeoutMs = 45000, seed = '' } = {}) {
   if (!ffmpegPath) {
     throw new Error('No se encontro el binario de ffmpeg (ffmpeg-static).');
   }
@@ -56,9 +101,11 @@ async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 2
     await writeFile(inputPath, imageBuffer);
 
     const totalFrames = durationSeconds * fps;
+    const effect = pickKenBurnsEffect(seed, totalFrames);
     const filter = [
       `scale=${size}:${size}`,
-      `zoompan=z='min(zoom+0.0015,1.15)':d=${totalFrames}:s=${size}x${size}:fps=${fps}`,
+      `zoompan=z='${effect.zoomExpr}':x='${effect.x}':y='${effect.y}':d=${totalFrames}:s=${size}x${size}:fps=${fps}`,
+      'vignette=PI/6',
       'format=yuv420p',
     ].join(',');
 
@@ -77,7 +124,7 @@ async function generateKenBurnsVideo(imageBuffer, { durationSeconds = 6, fps = 2
       outputPath,
     ], { timeout: timeoutMs });
 
-    return await readFile(outputPath);
+    return { buffer: await readFile(outputPath), effectName: effect.name };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
@@ -129,7 +176,7 @@ export default async function handler(req, res) {
     }
     const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-    const videoBuffer = await generateKenBurnsVideo(imageBuffer);
+    const { buffer: videoBuffer, effectName } = await generateKenBurnsVideo(imageBuffer, { seed: draft.id });
     const slugGuess = draft.id;
     const videoUrl = await uploadSocialDraftMedia(admin, slugGuess, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
 
@@ -159,7 +206,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return sendJson(res, 200, { upgraded: true, socialPostId: draft.id });
+    return sendJson(res, 200, { upgraded: true, socialPostId: draft.id, effect: effectName });
   } catch (error) {
     console.error('Error generando el video de la publicacion social del blog:', error);
     return sendJson(res, 500, { error: error instanceof Error ? error.message : 'Unknown error' });
