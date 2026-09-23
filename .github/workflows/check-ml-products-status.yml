@@ -8,6 +8,11 @@ name: Check ML Products Status
 # inactivos y el listado de los inactivos) usando Resend, si estan
 # configurados los secrets RESEND_API_KEY y ADMIN_NOTIFICATION_EMAIL.
 #
+# Ademas, si un producto desactivado estaba sugerido ("articulo en promocion")
+# en algun articulo de blog, lo reemplaza automaticamente por otro producto
+# activo similar (mismo grupo + tipo de mascota); si estaba sugerido en una
+# guia (contenido estatico), lo reporta en el email para editarlo a mano.
+#
 # Nota: si ML bloquea las consultas (403) para mas del 50% de los productos,
 # el script no desactiva nada para evitar apagar el catalogo entero por un
 # bloqueo temporal de IP — revisar el log del job si eso ocurre.

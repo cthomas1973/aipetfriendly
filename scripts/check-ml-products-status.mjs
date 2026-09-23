@@ -28,6 +28,14 @@
  * (403/error de red/timeout), el script NO desactiva nada (para evitar apagar
  * todo el catalogo por un bloqueo temporal de IP) y termina con error para
  * que se note en el historial de Actions.
+ *
+ * Ademas, cada producto que se desactiva se busca en el resto del contenido
+ * (articulos de blog y guias) que lo tuvieran como "articulo sugerido en
+ * promocion" (ver RelatedLinksBlock.tsx): en blog_posts se reemplaza
+ * automaticamente por otro producto activo similar (mismo grupo + pet_type en
+ * comun), y si no hay uno similar se quita el link. Las guias son contenido
+ * estatico (src/data/petGuides.ts) y no se pueden editar desde este script:
+ * solo se reportan en el log/email para actualizarlas a mano.
  */
 
 import { readFileSync } from 'node:fs';
@@ -103,7 +111,16 @@ function escapeHtml(input) {
     .replaceAll("'", '&#39;');
 }
 
-async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCount, inactiveProducts, aborted }) {
+async function sendSummaryEmail({
+  total,
+  activeCount,
+  inactiveCount,
+  blockedCount,
+  inactiveProducts,
+  aborted,
+  blogUpdates = [],
+  guideWarnings = [],
+}) {
   const { RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL } = process.env;
 
   if (!RESEND_API_KEY || !ADMIN_NOTIFICATION_EMAIL) {
@@ -124,6 +141,14 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
     ? `<ul>${inactiveProducts.map((p) => `<li><strong>${escapeHtml(p.mla_id)}</strong> - ${escapeHtml(String(p.title || '').slice(0, 80))}</li>`).join('')}</ul>`
     : '<p>Ninguno.</p>';
 
+  const blogUpdatesHtml = blogUpdates.length > 0
+    ? `<ul>${blogUpdates.map((u) => `<li>Post <strong>${escapeHtml(u.slug)}</strong>: "${escapeHtml(u.oldProduct.mla_id)}" ${u.newProduct ? `reemplazado por "${escapeHtml(u.newProduct.mla_id)}"` : 'quitado (sin reemplazo similar disponible)'}</li>`).join('')}</ul>`
+    : '';
+
+  const guideWarningsHtml = guideWarnings.length > 0
+    ? `<ul>${guideWarnings.map((g) => `<li>Guia <strong>${escapeHtml(g.slug)}</strong>: producto "${escapeHtml(g.oldProduct.mla_id)}" inactivo${g.newProduct ? ` — sugerencia de reemplazo: "${escapeHtml(g.newProduct.mla_id)}"` : ', sin reemplazo similar disponible'}. Editar a mano <code>src/data/petGuides.ts</code>.</li>`).join('')}</ul>`
+    : '';
+
   const html = `
 <!doctype html>
 <html lang="es">
@@ -136,6 +161,8 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
     <p><strong>Sin verificar (bloqueados/error):</strong> ${blockedCount}</p>
     <h3>Productos marcados como inactivos</h3>
     ${inactiveListHtml}
+    ${blogUpdatesHtml ? `<h3>Articulos de blog con producto sugerido reemplazado</h3>${blogUpdatesHtml}` : ''}
+    ${guideWarningsHtml ? `<h3>Guias que requieren revision manual (producto sugerido inactivo)</h3>${guideWarningsHtml}` : ''}
     <p style="margin-top:20px;font-size:12px;color:#64748b;">Este email se envia automaticamente en cada ejecucion del workflow "Check ML Products Status".</p>
   </body>
 </html>`;
@@ -169,7 +196,7 @@ async function sendSummaryEmail({ total, activeCount, inactiveCount, blockedCoun
 
 async function fetchAllActiveProducts(supabaseUrl, supabaseKey) {
   const params = new URLSearchParams({
-    select: 'id,mla_id,title,permalink',
+    select: 'id,mla_id,title,permalink,grupo,pet_types',
     active: 'eq.true',
     order: 'updated_at.asc',
   });
@@ -192,6 +219,124 @@ async function deactivateProduct(supabaseUrl, supabaseKey, id) {
     body: JSON.stringify({ active: false, updated_at: new Date().toISOString() }),
   });
   if (!res.ok) throw new Error(`Error desactivando ${id}: ${res.status} ${await res.text()}`);
+}
+
+// ── Reemplazo de "producto sugerido" en blog/guias cuando se desactiva uno ────
+// Cuando un producto se desactiva por dejar de existir en ML, cualquier
+// articulo de blog o guia que lo tuviera como "articulo sugerido en promocion"
+// (RelatedLinksBlock.tsx) quedaria mostrando un link roto/oculto sin aviso. En
+// vez de eso, se busca otro producto activo similar (mismo grupo + al menos un
+// pet_type en comun) y se reemplaza automaticamente en blog_posts (tabla, se
+// puede escribir con service role). Las guias son contenido estatico en
+// src/data/petGuides.ts, asi que no se pueden editar desde este script: solo
+// se reporta el caso (con la sugerencia de reemplazo) para que un humano lo
+// actualice a mano.
+
+async function fetchBlogPostsByRelatedProduct(supabaseUrl, supabaseKey, productId) {
+  const params = new URLSearchParams({
+    select: 'id,slug,related_product_id',
+    related_product_id: `eq.${productId}`,
+  });
+  const res = await fetch(`${supabaseUrl}/rest/v1/blog_posts?${params.toString()}`, {
+    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Error buscando posts con producto relacionado: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function updateBlogPostRelatedProduct(supabaseUrl, supabaseKey, postId, newProductId) {
+  const res = await fetch(`${supabaseUrl}/rest/v1/blog_posts?id=eq.${postId}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({ related_product_id: newProductId }),
+  });
+  if (!res.ok) throw new Error(`Error actualizando producto relacionado del post ${postId}: ${res.status} ${await res.text()}`);
+}
+
+// Busca un producto activo del mismo grupo que comparta al menos un pet_type,
+// excluyendo el producto original y cualquier otro que se este desactivando en
+// esta misma corrida (para no sugerir un reemplazo que tambien va a quedar
+// inactivo en el mismo chequeo).
+async function findSimilarActiveProduct(supabaseUrl, supabaseKey, product, excludeIds) {
+  const params = new URLSearchParams({
+    select: 'id,mla_id,title,permalink,pet_types',
+    active: 'eq.true',
+    grupo: `eq.${product.grupo}`,
+    order: 'created_at.desc',
+  });
+  const res = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?${params.toString()}`, {
+    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Error buscando productos similares: ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  const productPetTypes = new Set(product.pet_types || []);
+  return rows.find((row) => {
+    if (excludeIds.has(row.id)) return false;
+    if (productPetTypes.size === 0) return true;
+    return (row.pet_types || []).some((type) => productPetTypes.has(type));
+  }) || null;
+}
+
+// Trae public/guides-feed.json del sitio real (incluye relatedProductId desde
+// scripts/generate-sitemap.mjs) para poder avisar si una guia estatica quedo
+// sugiriendo un producto inactivo.
+async function fetchGuidesFeed() {
+  const SITE_URL = 'https://www.aipetfriendly.ar';
+  try {
+    const res = await fetch(`${SITE_URL}/guides-feed.json`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) {
+      console.warn(`No se pudo traer guides-feed.json (status ${res.status}), no se revisan guias.`);
+      return [];
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('No se pudo traer guides-feed.json, no se revisan guias:', err.message ?? err);
+    return [];
+  }
+}
+
+// Para un producto recien desactivado, reasigna automaticamente su lugar en
+// los articulos de blog que lo sugerian, y arma la lista de guias que
+// requieren revision manual. Devuelve { blogUpdates, guideWarnings } para el
+// resumen por email.
+async function reassignRelatedProductReferences(supabaseUrl, supabaseKey, product, excludeIds, guidesFeed) {
+  const blogUpdates = [];
+  const guideWarnings = [];
+
+  const referencingPosts = await fetchBlogPostsByRelatedProduct(supabaseUrl, supabaseKey, product.id);
+  const referencingGuides = guidesFeed.filter((guide) => guide.relatedProductId === product.id);
+
+  if (referencingPosts.length === 0 && referencingGuides.length === 0) {
+    return { blogUpdates, guideWarnings };
+  }
+
+  const replacement = await findSimilarActiveProduct(supabaseUrl, supabaseKey, product, excludeIds);
+
+  for (const post of referencingPosts) {
+    await updateBlogPostRelatedProduct(supabaseUrl, supabaseKey, post.id, replacement?.id ?? null);
+    blogUpdates.push({ slug: post.slug, oldProduct: product, newProduct: replacement });
+    console.log(
+      replacement
+        ? `  ↻ Blog "${post.slug}": producto sugerido reemplazado por "${replacement.mla_id}" (${String(replacement.title || '').slice(0, 50)})`
+        : `  ⚠ Blog "${post.slug}": sin reemplazo similar disponible, se quito el producto sugerido`,
+    );
+  }
+
+  for (const guide of referencingGuides) {
+    guideWarnings.push({ slug: guide.slug, oldProduct: product, newProduct: replacement });
+    console.log(
+      replacement
+        ? `  ⚠ Guia "${guide.slug}": producto sugerido inactivo, revisar a mano src/data/petGuides.ts (sugerencia: ${replacement.mla_id})`
+        : `  ⚠ Guia "${guide.slug}": producto sugerido inactivo y sin reemplazo similar, revisar a mano src/data/petGuides.ts`,
+    );
+  }
+
+  return { blogUpdates, guideWarnings };
 }
 
 // Resultado posible por producto: 'active' | 'inactive' | 'blocked' (no se pudo verificar)
@@ -306,10 +451,25 @@ async function main() {
   }
 
   console.log(`\nDesactivando ${toDeactivate.length} productos...`);
+  const excludeIds = new Set(toDeactivate.map((p) => p.id));
+  const guidesFeed = await fetchGuidesFeed();
+  const allBlogUpdates = [];
+  const allGuideWarnings = [];
+
   for (const product of toDeactivate) {
     try {
       await deactivateProduct(supabaseUrl, SUPABASE_SERVICE_KEY, product.id);
       console.log(`  ✓ Desactivado: ${product.mla_id}`);
+
+      const { blogUpdates, guideWarnings } = await reassignRelatedProductReferences(
+        supabaseUrl,
+        SUPABASE_SERVICE_KEY,
+        product,
+        excludeIds,
+        guidesFeed,
+      );
+      allBlogUpdates.push(...blogUpdates);
+      allGuideWarnings.push(...guideWarnings);
     } catch (err) {
       console.error(`  ✗ Error desactivando ${product.mla_id}: ${err.message}`);
     }
@@ -321,6 +481,8 @@ async function main() {
     inactiveCount,
     blockedCount,
     inactiveProducts: toDeactivate,
+    blogUpdates: allBlogUpdates,
+    guideWarnings: allGuideWarnings,
     aborted: false,
   });
 
