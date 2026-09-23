@@ -544,12 +544,34 @@ function escapePangoMarkup(value) {
     .replace(/>/g, '&gt;');
 }
 
-// Renderiza el titulo como texto (blanco, negrita) con sharp+pango, probando
-// tamanos de fuente de mayor a menor hasta que el bloque de texto entre en
-// una altura razonable (para no terminar con un banner gigante en titulos
-// muy largos). Devuelve el buffer RGBA crudo mas sus dimensiones.
+// Renderiza el titulo con sharp+pango en el color pedido, a un tamano de
+// fuente fijo. Interlineado ajustado (antes 0.15) para que bloques de texto
+// de 2+ lineas no inflen tanto el banner.
+async function renderTitleTextAtSize(title, maxTextWidth, fontSize, color) {
+  const markup = `<span foreground="${color}" font_weight="bold">${escapePangoMarkup(title)}</span>`;
+  return sharp({
+    text: {
+      text: markup,
+      font: `${TITLE_FONT_FAMILY} ${fontSize}`,
+      fontfile: TITLE_FONT_PATH,
+      width: maxTextWidth,
+      rgba: true,
+      align: 'left',
+      wrap: 'word',
+      spacing: Math.round(fontSize * 0.06),
+    },
+  })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+}
+
+// Prueba tamanos de fuente de mayor a menor hasta que el bloque de texto
+// entre en una altura razonable (para no terminar con un banner gigante en
+// titulos muy largos), luego renderiza el relleno blanco y un borde negro
+// (mismo criterio que los subtitulos del video) y los compone en una sola
+// capa. El borde se logra estampando la version negra en varios angulos
+// alrededor del relleno blanco, como un "text-stroke" manual.
 async function renderTitleText(title, maxTextWidth, maxTextHeight) {
-  const markup = `<span foreground="#ffffff" font_weight="bold">${escapePangoMarkup(title)}</span>`;
   const fontSizes = [
     Math.round(maxTextWidth * 0.056),
     Math.round(maxTextWidth * 0.048),
@@ -557,48 +579,72 @@ async function renderTitleText(title, maxTextWidth, maxTextHeight) {
     Math.round(maxTextWidth * 0.035),
   ];
 
-  let last = null;
-  for (const fontSize of fontSizes) {
-    const rendered = await sharp({
-      text: {
-        text: markup,
-        font: `${TITLE_FONT_FAMILY} ${fontSize}`,
-        fontfile: TITLE_FONT_PATH,
-        width: maxTextWidth,
-        rgba: true,
-        align: 'left',
-        wrap: 'word',
-        spacing: Math.round(fontSize * 0.15),
-      },
-    })
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-
-    last = rendered;
-    if (rendered.info.height <= maxTextHeight) {
-      return rendered;
+  let fontSize = fontSizes[fontSizes.length - 1];
+  for (const size of fontSizes) {
+    const probe = await renderTitleTextAtSize(title, maxTextWidth, size, '#ffffff');
+    fontSize = size;
+    if (probe.info.height <= maxTextHeight) {
+      break;
     }
   }
-  return last;
+
+  const [fill, stroke] = await Promise.all([
+    renderTitleTextAtSize(title, maxTextWidth, fontSize, '#ffffff'),
+    renderTitleTextAtSize(title, maxTextWidth, fontSize, '#000000'),
+  ]);
+
+  const fillPng = await sharp(fill.data, { raw: { width: fill.info.width, height: fill.info.height, channels: fill.info.channels } })
+    .png()
+    .toBuffer();
+  const strokePng = await sharp(stroke.data, { raw: { width: stroke.info.width, height: stroke.info.height, channels: stroke.info.channels } })
+    .png()
+    .toBuffer();
+
+  const strokeWidth = Math.max(2, Math.round(fontSize * 0.07));
+  const canvasWidth = fill.info.width + strokeWidth * 2;
+  const canvasHeight = fill.info.height + strokeWidth * 2;
+
+  const angleSteps = 16;
+  const seen = new Set();
+  const strokeComposites = [];
+  for (let i = 0; i < angleSteps; i += 1) {
+    const angle = (i / angleSteps) * Math.PI * 2;
+    const dx = Math.round(Math.cos(angle) * strokeWidth);
+    const dy = Math.round(Math.sin(angle) * strokeWidth);
+    if (dx === 0 && dy === 0) continue;
+    const key = `${dx},${dy}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    strokeComposites.push({ input: strokePng, left: strokeWidth + dx, top: strokeWidth + dy });
+  }
+
+  const buffer = await sharp({
+    create: { width: canvasWidth, height: canvasHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([...strokeComposites, { input: fillPng, left: strokeWidth, top: strokeWidth }])
+    .png()
+    .toBuffer();
+
+  return { width: canvasWidth, height: canvasHeight, buffer };
 }
 
 // Construye el banner superior: en vez de un rectangulo solido, el fondo es
 // un recorte con blur de la propia foto (efecto "vidrio esmerilado"), con un
 // tinte semitransparente en los colores de marca (emerald-600 -> emerald-900)
 // encima para que el texto blanco siga siendo legible sin importar los
-// colores de la imagen, y una linea de acento en amarillo. El titulo del
-// articulo se renderiza en blanco encima. Se ubica arriba de todo para no
-// tapar el sujeto principal de la foto (que suele estar centrado o hacia
-// abajo).
+// colores de la imagen. El titulo del articulo se renderiza en blanco con
+// borde negro (ver renderTitleText) encima, sin ningun tinte ni linea
+// adicional, para que se vea la foto lo mas transparente posible. Se ubica
+// arriba de todo para no tapar el sujeto principal de la foto (que suele
+// estar centrado o hacia abajo).
 async function buildTitleBanner(title, baseWidth, baseHeight, sourceImageBuffer) {
   const paddingX = Math.round(baseWidth * 0.045);
-  const paddingY = Math.round(baseWidth * 0.028);
+  const paddingY = Math.round(baseWidth * 0.016);
   const maxTextWidth = baseWidth - paddingX * 2;
   const maxTextHeight = Math.round(baseWidth * 0.3);
 
-  const { data, info } = await renderTitleText(title, maxTextWidth, maxTextHeight);
-  const bannerHeight = info.height + paddingY * 2;
-  const accentHeight = Math.max(4, Math.round(baseWidth * 0.005));
+  const { buffer: textPng, width: textWidth, height: textHeight } = await renderTitleText(title, maxTextWidth, maxTextHeight);
+  const bannerHeight = textHeight + paddingY * 2;
   const blurSigma = Math.max(12, Math.round(baseWidth * 0.03));
 
   const cropHeight = Math.min(bannerHeight, baseHeight);
@@ -608,27 +654,9 @@ async function buildTitleBanner(title, baseWidth, baseHeight, sourceImageBuffer)
     .resize({ width: baseWidth, height: bannerHeight, fit: 'fill' })
     .toBuffer();
 
-  const tintSvg = `
-    <svg width="${baseWidth}" height="${bannerHeight}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="t" x1="0" y1="0" x2="${baseWidth}" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stop-color="#059669" stop-opacity="0.6" />
-          <stop offset="1" stop-color="#022c22" stop-opacity="0.68" />
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="${baseWidth}" height="${bannerHeight}" fill="url(#t)" />
-      <rect x="0" y="${bannerHeight - accentHeight}" width="${baseWidth}" height="${accentHeight}" fill="#fbbf24" />
-    </svg>
-  `;
-
-  const textPng = await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } })
-    .png()
-    .toBuffer();
-
   return sharp(blurredBackground)
     .composite([
-      { input: Buffer.from(tintSvg), left: 0, top: 0 },
-      { input: textPng, left: paddingX, top: paddingY },
+      { input: textPng, left: Math.max(0, paddingX - Math.round((textWidth - maxTextWidth) / 2)), top: paddingY },
     ])
     .png()
     .toBuffer();
