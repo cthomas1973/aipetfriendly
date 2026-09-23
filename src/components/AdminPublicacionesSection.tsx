@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Facebook, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle, Youtube } from 'lucide-react';
+import { AlertTriangle, Facebook, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle, Youtube } from 'lucide-react';
 import {
   cancelAdminSocialPost,
   createAdminSocialPost,
@@ -63,6 +63,17 @@ const EMPTY_FORM = {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+// El cron generate-blog-social-video corre ~30min despues de creado el
+// borrador para reemplazar la imagen fija por un video con voz y subtitulos.
+// Le damos un margen extra por si tarda en generarse; pasada esta ventana
+// asumimos que ya no va a llegar el upgrade y dejamos de avisar.
+const VIDEO_UPGRADE_WINDOW_MS = 45 * 60 * 1000;
+
+function isPendingVideoUpgrade(row: SocialPost): boolean {
+  if (row.source !== 'blog_auto' || row.mediaType !== 'image' || row.status !== 'draft') return false;
+  return Date.now() - new Date(row.createdAt).getTime() < VIDEO_UPGRADE_WINDOW_MS;
 }
 
 function toDatetimeLocalValue(iso: string): string {
@@ -165,6 +176,12 @@ export function AdminPublicacionesSection() {
   };
 
   const openEditForm = (row: SocialPost) => {
+    if (isPendingVideoUpgrade(row)) {
+      const proceed = window.confirm(
+        'Este borrador todavia puede recibir el video automatico con voz y subtitulos en los proximos minutos. ¿Programar igual con la imagen fija?'
+      );
+      if (!proceed) return;
+    }
     setEditingId(row.id);
     setForm({
       caption: row.caption || '',
@@ -469,6 +486,16 @@ export function AdminPublicacionesSection() {
                 );
               })}
             </div>
+
+            {isPendingVideoUpgrade(row) && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-700">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  Todavia puede llegar la version en video con voz y subtitulos (se genera automaticamente hasta ~45 min despues de creado el borrador).
+                  Espera un rato antes de programarlo para no quedarte con la imagen fija.
+                </span>
+              </div>
+            )}
 
             {(row.status === 'scheduled' || row.status === 'draft') && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
