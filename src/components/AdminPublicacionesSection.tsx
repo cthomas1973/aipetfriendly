@@ -82,15 +82,6 @@ function toDatetimeLocalValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo.'));
-    reader.readAsDataURL(file);
-  });
-}
-
 export function AdminPublicacionesSection() {
   const [rows, setRows] = useState<SocialPost[]>([]);
   const [loading, setLoading] = useState(false);
@@ -245,8 +236,7 @@ export function AdminPublicacionesSection() {
         });
         setMsg('Publicacion actualizada correctamente.');
       } else {
-        const fileDataUrl = await readFileAsDataUrl(file as File);
-        const { mediaUrl, mediaType } = await uploadAdminSocialMedia({ fileDataUrl });
+        const { mediaUrl, mediaType } = await uploadAdminSocialMedia({ file: file as File });
         await createAdminSocialPost({
           mediaUrl,
           mediaType,

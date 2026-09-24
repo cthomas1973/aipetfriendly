@@ -16,8 +16,16 @@ const corsHeaders = {
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const BUCKET = 'social-posts-media';
-const DATA_URL_PATTERN = /^data:(image\/(?:png|jpe?g|webp)|video\/(?:mp4|quicktime|webm));base64,([a-z0-9+/=]+)$/i;
-const MAX_BASE64_LENGTH = 60_000_000; // ~45MB de archivo real, suficiente para clips cortos.
+const ALLOWED_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+]);
+const MAX_FILE_BYTES = 45 * 1024 * 1024; // suficiente para clips cortos.
 
 function jsonResponse(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload), {
@@ -65,32 +73,35 @@ Deno.serve(async (req) => {
     return jsonResponse(403, { error: 'not_authorized' });
   }
 
-  let body: { fileDataUrl?: unknown };
+  let formData: FormData;
   try {
-    body = await req.json();
+    formData = await req.formData();
   } catch {
-    return jsonResponse(400, { error: 'invalid_json' });
+    return jsonResponse(400, { error: 'invalid_form_data' });
   }
 
-  const fileDataUrl = typeof body.fileDataUrl === 'string' ? body.fileDataUrl.trim() : '';
-  if (!fileDataUrl || fileDataUrl.length > MAX_BASE64_LENGTH) {
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
     return jsonResponse(400, { error: 'invalid_file' });
   }
 
-  const match = fileDataUrl.match(DATA_URL_PATTERN);
-  if (!match) {
+  const mime = file.type.toLowerCase();
+  if (!ALLOWED_MIME_TYPES.has(mime)) {
     return jsonResponse(400, { error: 'unsupported_file_type' });
   }
 
+  if (file.size <= 0 || file.size > MAX_FILE_BYTES) {
+    return jsonResponse(400, { error: 'invalid_file' });
+  }
+
   try {
-    const mime = match[1].toLowerCase();
-    const base64 = match[2];
     const mediaType = mime.startsWith('video/') ? 'video' : 'image';
-    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const blob = new Blob([bytes], { type: mime });
     const fileName = `${crypto.randomUUID()}.${extensionFromMime(mime)}`;
 
-    let { error: uploadError } = await admin.storage.from(BUCKET).upload(fileName, blob, {
+    // Se sube el binario crudo (sin pasar por base64): decodificar base64 a
+    // mano (atob + Uint8Array.from con callback por caracter) es lo que
+    // agotaba los recursos del worker con archivos de video de varios MB.
+    let { error: uploadError } = await admin.storage.from(BUCKET).upload(fileName, file, {
       contentType: mime,
     });
 
@@ -100,7 +111,7 @@ Deno.serve(async (req) => {
         console.error('No se pudo crear el bucket social-posts-media:', createBucketError.message);
         return jsonResponse(500, { error: 'bucket_create_failed' });
       }
-      const retry = await admin.storage.from(BUCKET).upload(fileName, blob, { contentType: mime });
+      const retry = await admin.storage.from(BUCKET).upload(fileName, file, { contentType: mime });
       uploadError = retry.error;
     }
 

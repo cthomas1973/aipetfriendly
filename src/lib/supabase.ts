@@ -2464,10 +2464,13 @@ export async function deleteAdminSocialPost(id: string): Promise<void> {
 }
 
 export async function uploadAdminSocialMedia(args: {
-  fileDataUrl: string;
+  file: File;
 }): Promise<{ mediaUrl: string; mediaType: SocialPostMediaType }> {
+  const formData = new FormData();
+  formData.append('file', args.file);
+
   const { data, error } = await supabase.functions.invoke('admin-upload-social-media', {
-    body: { fileDataUrl: args.fileDataUrl },
+    body: formData,
   });
 
   if (error) {
