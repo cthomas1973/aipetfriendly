@@ -1,10 +1,9 @@
 // supabase/functions/publish-social-posts/index.ts
 //
 // Etapa 1 de "Publicaciones" (Admin > Publicaciones): publica de verdad en
-// Facebook e Instagram los posts que ya quedaron en status='scheduled' con
-// scheduled_at vencido. YouTube/TikTok todavia no estan soportados (quedan
-// marcados como 'failed' con un mensaje claro) - se suman en una etapa
-// posterior.
+// Facebook, Instagram y YouTube los posts que ya quedaron en status='scheduled'
+// con scheduled_at vencido. TikTok todavia no esta soportado (queda marcado
+// como 'failed' con un mensaje claro) - se suma en una etapa posterior.
 //
 // Se dispara por un cron externo (GitHub Actions, ver
 // .github/workflows/publish-social-posts.yml) cada 15 minutos, autenticado
@@ -18,6 +17,10 @@
 //                                   pages_manage_posts + instagram_content_publish
 //   META_IG_BUSINESS_ACCOUNT_ID  — ID de la cuenta de Instagram Business/Creator
 //                                   vinculada a esa Pagina
+//   YOUTUBE_CLIENT_ID            — Client ID de OAuth (tipo "Desktop app")
+//   YOUTUBE_CLIENT_SECRET        — Client Secret de ese mismo OAuth Client
+//   YOUTUBE_REFRESH_TOKEN        — refresh_token obtenido una vez con
+//                                   get_token.py (scope youtube.upload)
 // Opcional: META_GRAPH_API_VERSION (default "v21.0").
 
 import { createClient } from '@supabase/supabase-js';
@@ -30,6 +33,9 @@ const META_PAGE_ACCESS_TOKEN = Deno.env.get('META_PAGE_ACCESS_TOKEN')?.trim() ??
 const META_IG_BUSINESS_ACCOUNT_ID = Deno.env.get('META_IG_BUSINESS_ACCOUNT_ID')?.trim() ?? '';
 const META_GRAPH_API_VERSION = Deno.env.get('META_GRAPH_API_VERSION')?.trim() || 'v21.0';
 const META_GRAPH_BASE_URL = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
+const YOUTUBE_CLIENT_ID = Deno.env.get('YOUTUBE_CLIENT_ID')?.trim() ?? '';
+const YOUTUBE_CLIENT_SECRET = Deno.env.get('YOUTUBE_CLIENT_SECRET')?.trim() ?? '';
+const YOUTUBE_REFRESH_TOKEN = Deno.env.get('YOUTUBE_REFRESH_TOKEN')?.trim() ?? '';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -168,6 +174,100 @@ function buildInstagramCaption(caption: string): string {
   return caption.replace(/https?:\/\/\S+/g, 'link en bio 🔗');
 }
 
+// Google exige refrescar el access_token en cada corrida (dura ~1 hora); el
+// refresh_token de larga duracion es el que guardamos como secret.
+async function getYouTubeAccessToken(): Promise<string> {
+  if (!YOUTUBE_CLIENT_ID || !YOUTUBE_CLIENT_SECRET || !YOUTUBE_REFRESH_TOKEN) {
+    throw new Error('YouTube no esta configurado (falta YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN).');
+  }
+  const body = new URLSearchParams({
+    client_id: YOUTUBE_CLIENT_ID,
+    client_secret: YOUTUBE_CLIENT_SECRET,
+    refresh_token: YOUTUBE_REFRESH_TOKEN,
+    grant_type: 'refresh_token',
+  });
+  const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) {
+    throw new Error(`YouTube (refrescar token): ${data?.error_description || data?.error || `HTTP ${res.status}`}`);
+  }
+  return data.access_token as string;
+}
+
+// YouTube no tiene un campo de "caption" unico: usa titulo + descripcion.
+// Se toma la primera linea del caption como titulo (recortada al limite de
+// 100 caracteres de la API) y el caption completo como descripcion.
+function buildYouTubeTitleAndDescription(caption: string): { title: string; description: string } {
+  const firstLine = (caption.split('\n')[0] || '').trim() || 'AiPetFriendly';
+  const title = firstLine.length > 95 ? `${firstLine.slice(0, 92)}...` : firstLine;
+  return { title, description: caption };
+}
+
+// Sube el video a YouTube via "resumable upload": primero se crea la sesion
+// de subida (POST con los metadatos) y despues se hace streaming directo del
+// video (leido desde Supabase Storage) al PUT de esa sesion, sin bufferear
+// el archivo entero en memoria - el mismo problema de WORKER_RESOURCE_LIMIT
+// que ya se resolvio antes en admin-upload-social-media.
+async function publishToYouTube(args: { mediaUrl: string; mediaType: MediaType; caption: string }): Promise<string> {
+  if (args.mediaType !== 'video') {
+    throw new Error('YouTube solo admite subir videos (no imagenes sueltas).');
+  }
+
+  const accessToken = await getYouTubeAccessToken();
+
+  const sourceRes = await fetch(args.mediaUrl);
+  if (!sourceRes.ok || !sourceRes.body) {
+    throw new Error(`YouTube: no se pudo descargar el video de origen (HTTP ${sourceRes.status}).`);
+  }
+  const contentLength = sourceRes.headers.get('content-length');
+  const contentType = sourceRes.headers.get('content-type') || 'video/mp4';
+
+  const { title, description } = buildYouTubeTitleAndDescription(args.caption);
+  const metadata = {
+    snippet: { title, description, categoryId: '15' }, // 15 = Pets & Animals
+    status: { privacyStatus: 'public', selfDeclaredMadeForKids: false },
+  };
+
+  const initRes = await fetch(
+    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': contentType,
+        ...(contentLength ? { 'X-Upload-Content-Length': contentLength } : {}),
+      },
+      body: JSON.stringify(metadata),
+    },
+  );
+  if (!initRes.ok) {
+    const errData = await initRes.json().catch(() => ({}));
+    throw new Error(`YouTube (iniciar subida): ${errData?.error?.message || `HTTP ${initRes.status}`}`);
+  }
+  const uploadUrl = initRes.headers.get('location');
+  if (!uploadUrl) {
+    throw new Error('YouTube (iniciar subida): no se recibio la URL de subida.');
+  }
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': contentType,
+      ...(contentLength ? { 'Content-Length': contentLength } : {}),
+    },
+    body: sourceRes.body,
+    // Requerido por la spec de fetch al mandar un ReadableStream como body.
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
+
+  const uploadData = await uploadRes.json().catch(() => ({}));
+  if (!uploadRes.ok || !uploadData.id) {
+    throw new Error(`YouTube (subir video): ${uploadData?.error?.message || `HTTP ${uploadRes.status}`}`);
+  }
+  return String(uploadData.id);
+}
+
 async function publishTarget(post: SocialPostRow, target: SocialPostTargetRow): Promise<string> {
   const caption = post.caption || '';
   if (target.platform === 'facebook') {
@@ -175,6 +275,9 @@ async function publishTarget(post: SocialPostRow, target: SocialPostTargetRow): 
   }
   if (target.platform === 'instagram') {
     return publishToInstagram({ mediaUrl: post.media_url, mediaType: post.media_type, caption: buildInstagramCaption(caption) });
+  }
+  if (target.platform === 'youtube') {
+    return publishToYouTube({ mediaUrl: post.media_url, mediaType: post.media_type, caption });
   }
   throw new Error(`La plataforma "${target.platform}" todavia no esta soportada (queda pendiente para una etapa posterior).`);
 }

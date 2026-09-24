@@ -11,15 +11,15 @@ import {
 } from '../lib/supabase';
 import type { SocialPost, SocialPostPlatform, SocialPostTargetStatus } from '../types';
 
-// Etapa 1: Facebook e Instagram se publican de verdad via el cron
+// Etapa 1: Facebook, Instagram y YouTube se publican de verdad via el cron
 // publish-social-posts (Edge Function + GitHub Actions cada 15min) cuando
-// scheduled_at vence. YouTube/TikTok todavia no estan soportados (quedan
-// como 'failed' con mensaje explicito) - se suman en una etapa posterior.
+// scheduled_at vence. TikTok todavia no esta soportado (queda como 'failed'
+// con mensaje explicito) - se suma en una etapa posterior.
 
 const PLATFORM_OPTIONS: { value: SocialPostPlatform; label: string; icon: typeof Facebook; supported: boolean }[] = [
   { value: 'facebook', label: 'Facebook', icon: Facebook, supported: true },
   { value: 'instagram', label: 'Instagram', icon: Instagram, supported: true },
-  { value: 'youtube', label: 'YouTube', icon: Youtube, supported: false },
+  { value: 'youtube', label: 'YouTube', icon: Youtube, supported: true },
   { value: 'tiktok', label: 'TikTok', icon: Music2, supported: false },
 ];
 
@@ -290,7 +290,7 @@ export function AdminPublicacionesSection() {
         <div>
           <p className="font-bold text-slate-900">Publicaciones en redes sociales</p>
           <p className="text-xs text-slate-500">
-            Facebook e Instagram se publican solos al llegar la fecha programada. YouTube y TikTok todavia no estan soportados.
+            Facebook, Instagram y YouTube se publican solos al llegar la fecha programada. TikTok todavia no esta soportado.
           </p>
         </div>
         <div className="flex items-center gap-2">

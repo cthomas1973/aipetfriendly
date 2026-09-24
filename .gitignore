@@ -28,3 +28,7 @@ yarn-error.log*
 .supabase/
 supabase/.supabase/
 supabase/.temp/
+
+# Credenciales OAuth de Google (YouTube API) - nunca commitear
+client_secret*.json
+youtube_token.json
