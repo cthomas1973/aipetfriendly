@@ -221,6 +221,22 @@ function getPetSpecies(focus) {
   return focus.startsWith('perro') ? 'perro' : 'gato';
 }
 
+// El petFocus se sortea ANTES de que la IA escriba el articulo (ver
+// pickPetFocus), asi que puede no coincidir con la especie de la que termino
+// hablando el titulo/contenido (ej. petFocus="gato" pero el articulo salio
+// sobre "Adiestramiento canino"). Esto detecta si el articulo quedo claramente
+// enfocado en una sola especie, para poder corregir la especie de la imagen
+// en vez de mostrar un gato en un articulo de perros (o viceversa). Devuelve
+// null si el articulo es general o menciona ambas especies por igual.
+function detectSpeciesFocus(title, content) {
+  const text = `${title} ${content}`.toLowerCase();
+  const dogMatches = (text.match(/\b(perr\w*|canin\w*|cachorr\w*)\b/g) || []).length;
+  const catMatches = (text.match(/\b(gat\w*|felin\w*|michi\w*)\b/g) || []).length;
+  if (dogMatches > 0 && catMatches === 0) return 'perro';
+  if (catMatches > 0 && dogMatches === 0) return 'gato';
+  return null;
+}
+
 // Elige la especie/raza protagonista de la imagen (y, si encaja, del ejemplo
 // del articulo). Alterna la especie respecto del post inmediatamente
 // anterior (perro <-> gato) para no encadenar varios seguidos de la misma
@@ -392,7 +408,7 @@ async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide)
   return parseArticleJson(rawResponse);
 }
 
-async function generateArticleImage(title, topic, petFocus) {
+export async function generateArticleImage(title, topic, petFocus) {
   const apiKey = getEnvOrThrow('AI_API_KEY');
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const imageModel = (process.env.AI_IMAGE_MODEL || 'dall-e-3').trim();
@@ -447,7 +463,7 @@ async function generateArticleImage(title, topic, petFocus) {
   return Buffer.from(await imageResponse.arrayBuffer());
 }
 
-async function uploadImageToStorage(admin, slug, imageBuffer) {
+export async function uploadImageToStorage(admin, slug, imageBuffer) {
   const fileName = `${slug}-${Date.now()}.png`;
 
   let { error: uploadError } = await admin.storage.from('blog-images').upload(fileName, imageBuffer, {
@@ -849,10 +865,20 @@ export default async function handler(req, res) {
     const baseSlug = slugify(article.title);
     const slug = await ensureUniqueSlug(admin, baseSlug);
 
+    // Si el articulo termino siendo claramente sobre una sola especie,
+    // corregimos la especie/raza protagonista de la imagen (y la que se
+    // guarda para la rotacion) para que coincida con el titulo/contenido real.
+    const detectedSpecies = detectSpeciesFocus(article.title, article.content);
+    let effectivePetFocus = petFocus;
+    if (detectedSpecies && getPetSpecies(petFocus) !== detectedSpecies) {
+      const matchingPool = PET_FOCUS_OPTIONS.filter((focus) => getPetSpecies(focus) === detectedSpecies);
+      effectivePetFocus = pickRandom(matchingPool);
+    }
+
     let imageUrl = null;
     let imageBuffer = null;
     try {
-      imageBuffer = await generateArticleImage(article.title, topic, petFocus);
+      imageBuffer = await generateArticleImage(article.title, topic, effectivePetFocus);
       imageUrl = await uploadImageToStorage(admin, slug, imageBuffer);
     } catch (imageError) {
       // La imagen es un extra: si falla (por ejemplo, la cuenta de IA no
@@ -872,7 +898,7 @@ export default async function handler(req, res) {
         estimated_reading_time: article.estimatedReadingTime,
         status: 'draft',
         topic,
-        pet_focus: petFocus,
+        pet_focus: effectivePetFocus,
         related_guide_slug: relatedGuide?.slug || null,
       })
       .select()
@@ -895,7 +921,7 @@ export default async function handler(req, res) {
     return sendJson(res, 200, {
       created: true,
       topic,
-      petFocus,
+      petFocus: effectivePetFocus,
       post: { id: inserted.id, slug: inserted.slug, title: inserted.title, hasImage: Boolean(imageUrl), status: inserted.status },
     });
   } catch (error) {
