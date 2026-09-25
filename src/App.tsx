@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  BookOpen,
   CalendarDays,
   CreditCard,
   Gift,
@@ -185,14 +186,14 @@ function BottomNavMoreSheet({
 }) {
   const items: Array<{ id: string; label: string; icon: typeof Gift; onSelect: () => void }> = [
     { id: 'offers', label: 'Tienda', icon: Gift, onSelect: () => onChange('offers') },
-    { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard, onSelect: () => onChange('subscription') },
   ];
 
   if (isAdmin) {
     items.push({ id: 'admin', label: 'Admin', icon: Shield, onSelect: () => onChange('admin') });
   }
 
-  items.push({ id: 'blog', label: 'Blog', icon: Newspaper, onSelect: () => { window.location.href = '/blog'; } });
+  items.push({ id: 'guias', label: 'Guías', icon: BookOpen, onSelect: () => { window.location.href = '/guias'; } });
+  items.push({ id: 'subscription', label: 'Mi Cuenta', icon: CreditCard, onSelect: () => onChange('subscription') });
 
   return (
     <div
@@ -242,6 +243,7 @@ function BottomNav({
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const primaryTabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
+    { id: 'blog', label: 'Blog', icon: Newspaper },
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
@@ -259,7 +261,7 @@ function BottomNav({
         className="fixed left-0 right-0 z-30 border-t border-emerald-100 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur md:hidden"
         style={{ bottom: hasMobileBanner ? '52px' : '0px' }}
       >
-        <ul className="grid grid-cols-6 gap-1">
+        <ul className="grid grid-cols-7 gap-1">
           {primaryTabs.map((tab) => (
             <li key={tab.id} className="text-center">
               <button
@@ -325,13 +327,13 @@ function DesktopTabNav({
   isAdmin: boolean;
 }) {
   const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
+    { id: 'blog', label: 'Blog', icon: Newspaper },
     { id: 'pets', label: 'Mascotas', icon: PawPrint },
     { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
     { id: 'agenda', label: 'Agenda', icon: CalendarDays },
     { id: 'map', label: 'Mapa Vet', icon: MapPinned },
     { id: 'places', label: 'Pet Friendly', icon: Palmtree },
     { id: 'offers', label: 'Tienda', icon: Gift },
-    { id: 'subscription', label: 'Mi Cuenta', icon: CreditCard },
   ];
 
   if (isAdmin) {
@@ -340,7 +342,7 @@ function DesktopTabNav({
 
   return (
     <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className={`grid ${isAdmin ? 'grid-cols-9' : 'grid-cols-8'} gap-2`}>
+      <ul className={`grid ${isAdmin ? 'grid-cols-10' : 'grid-cols-9'} gap-2`}>
         {tabs.map((tab) => (
           <li key={tab.id}>
             <button
@@ -358,11 +360,24 @@ function DesktopTabNav({
         ))}
         <li>
           <a
-            href="/blog"
+            href="/guias"
             className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50"
           >
-            <Newspaper size={16} /> Blog
+            <BookOpen size={16} /> Guías
           </a>
+        </li>
+        <li>
+          <button
+            type="button"
+            onClick={() => onChange('subscription')}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+              activeTab === 'subscription'
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'text-slate-600 hover:bg-emerald-50'
+            }`}
+          >
+            <CreditCard size={16} /> Mi Cuenta
+          </button>
         </li>
       </ul>
     </nav>
@@ -514,7 +529,7 @@ function AppContent() {
       } else if (user) {
         await signOut();
       }
-      setActiveTab('pets');
+      setActiveTab('blog');
     } catch (err) {
       console.error('No se pudo cambiar de usuario:', err);
     } finally {
@@ -676,6 +691,10 @@ function AppContent() {
 
     if (!user) {
       return <AuthScreens initialMode={authInitialMode} />;
+    }
+
+    if (activeTab === 'blog') {
+      return <BlogSection />;
     }
 
     if (activeTab === 'pets') {
@@ -916,7 +935,7 @@ export default function App() {
   const [loading] = useState<boolean>(false);
   const [pets, setPets] = useState<Pet[]>([]);
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<AppTab>('pets');
+  const [activeTab, setActiveTab] = useState<AppTab>('blog');
   const [aiDailyUsage, setAiDailyUsage] = useState<number>(0);
   const [clinicalEntries, setClinicalEntries] = useState<ClinicalTimelineEntry[]>([]);
   const [preventiveTasks, setPreventiveTasks] = useState<PreventiveTask[]>([]);

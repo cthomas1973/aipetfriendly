@@ -34,7 +34,7 @@ export type ClinicalEntryCategory =
 export type SubscriptionPlan = 'free' | 'premium';
 export type UserAccessLevel = 'guest' | 'free' | 'premium';
 
-export type AppTab = 'pets' | 'clinical' | 'agenda' | 'map' | 'places' | 'offers' | 'subscription' | 'admin';
+export type AppTab = 'blog' | 'pets' | 'clinical' | 'agenda' | 'map' | 'places' | 'offers' | 'subscription' | 'admin';
 
 export type Species = 'dog' | 'cat' | 'other';
 
