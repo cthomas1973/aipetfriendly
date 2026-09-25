@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Facebook, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle, Youtube } from 'lucide-react';
+import { AlertTriangle, Facebook, Film, Instagram, Loader2, Music2, Pencil, Plus, RefreshCw, Sparkles, Trash2, Wand2, X, XCircle, Youtube } from 'lucide-react';
 import {
   cancelAdminSocialPost,
   createAdminSocialPost,
   deleteAdminSocialPost,
   fetchAdminSocialPosts,
   generateGuideSocialReel,
+  generateSocialPostVideo,
+  regenerateBlogPostImage,
   updateAdminSocialPost,
   uploadAdminSocialMedia,
 } from '../lib/supabase';
@@ -90,13 +92,22 @@ export function AdminPublicacionesSection() {
   const [msg, setMsg] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSource, setEditingSource] = useState<string | null>(null);
+  const [editingSourceRefId, setEditingSourceRefId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [guideOptions, setGuideOptions] = useState<{ slug: string; title: string }[]>([]);
   const [selectedGuideSlug, setSelectedGuideSlug] = useState('');
   const [generatingGuideReel, setGeneratingGuideReel] = useState(false);
+  const [regenSpecies, setRegenSpecies] = useState<'perro' | 'gato' | ''>('');
+  const [regenInstructions, setRegenInstructions] = useState('');
+  const [regeneratingImage, setRegeneratingImage] = useState(false);
+  const [imageRegenerated, setImageRegenerated] = useState(false);
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -156,11 +167,24 @@ export function AdminPublicacionesSection() {
     }));
   };
 
+  const resetRegenState = () => {
+    setRegenSpecies('');
+    setRegenInstructions('');
+    setRegeneratingImage(false);
+    setImageRegenerated(false);
+    setGeneratingVideo(false);
+    setVideoReady(false);
+  };
+
   const openCreateForm = () => {
     setEditingId(null);
+    setEditingSource(null);
+    setEditingSourceRefId(null);
     setForm(EMPTY_FORM);
     setFile(null);
     setPreviewUrl(null);
+    setPreviewIsVideo(false);
+    resetRegenState();
     setShowForm(true);
     setError(null);
     setMsg(null);
@@ -174,6 +198,8 @@ export function AdminPublicacionesSection() {
       if (!proceed) return;
     }
     setEditingId(row.id);
+    setEditingSource(row.source);
+    setEditingSourceRefId(row.sourceRefId);
     setForm({
       caption: row.caption || '',
       scheduledAt: row.scheduledAt ? toDatetimeLocalValue(row.scheduledAt) : '',
@@ -181,6 +207,8 @@ export function AdminPublicacionesSection() {
     });
     setFile(null);
     setPreviewUrl(row.mediaUrl);
+    setPreviewIsVideo(row.mediaType === 'video');
+    resetRegenState();
     setShowForm(true);
     setError(null);
     setMsg(null);
@@ -189,9 +217,13 @@ export function AdminPublicacionesSection() {
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
+    setEditingSource(null);
+    setEditingSourceRefId(null);
     setForm(EMPTY_FORM);
     setFile(null);
     setPreviewUrl(null);
+    setPreviewIsVideo(false);
+    resetRegenState();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -201,12 +233,79 @@ export function AdminPublicacionesSection() {
     const selected = e.target.files?.[0] || null;
     setFile(selected);
     setPreviewUrl(selected ? URL.createObjectURL(selected) : null);
+    setPreviewIsVideo(Boolean(selected?.type.startsWith('video/')));
+  };
+
+  const handleRegenerateImage = async () => {
+    if (!editingSourceRefId) {
+      setError('Este borrador no esta vinculado a un post del blog: no se puede regenerar la imagen.');
+      return;
+    }
+    if (!regenSpecies) {
+      setError('Elegi la especie (perro o gato) para la nueva imagen.');
+      return;
+    }
+    setError(null);
+    setMsg(null);
+    setRegeneratingImage(true);
+    try {
+      const { imageUrl, socialPostId } = await regenerateBlogPostImage({
+        postId: editingSourceRefId,
+        species: regenSpecies,
+        extraInstructions: regenInstructions,
+      });
+      if (socialPostId) {
+        setEditingId(socialPostId);
+      }
+      setPreviewUrl(imageUrl);
+      setPreviewIsVideo(false);
+      setImageRegenerated(true);
+      setVideoReady(false);
+      setMsg('Imagen regenerada. Ahora genera el video antes de programar la publicacion.');
+      await load();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo regenerar la imagen.');
+    } finally {
+      setRegeneratingImage(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!editingId) return;
+    setError(null);
+    setMsg(null);
+    setGeneratingVideo(true);
+    try {
+      const result = await generateSocialPostVideo(editingId);
+      if (result.upgraded && result.mediaUrl) {
+        setPreviewUrl(result.mediaUrl);
+        setPreviewIsVideo(true);
+        setVideoReady(true);
+        setMsg(
+          result.hasAudio
+            ? 'Video generado con voz y subtitulos. Ya podes programar la publicacion.'
+            : 'Video generado (mudo, fallo el audio/subtitulos). Ya podes programar la publicacion.',
+        );
+        await load();
+      } else {
+        setError(result.reason || 'No se pudo generar el video (el borrador ya no estaba disponible).');
+      }
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'No se pudo generar el video.');
+    } finally {
+      setGeneratingVideo(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setMsg(null);
+
+    if (imageRegenerated && !videoReady) {
+      setError('Genera el video antes de programar la publicacion (regeneraste la imagen pero todavia no hay video).');
+      return;
+    }
 
     if (!editingId && !file) {
       setError('Elegi una imagen o video para publicar.');
@@ -368,10 +467,65 @@ export function AdminPublicacionesSection() {
 
             {previewUrl && (
               <div className="sm:col-span-2">
-                {file?.type.startsWith('video/') || (editingId && rows.find((r) => r.id === editingId)?.mediaType === 'video') ? (
+                {previewIsVideo ? (
                   <video src={previewUrl} controls className="max-h-48 rounded-xl border border-slate-200" />
                 ) : (
                   <img src={previewUrl} alt="Vista previa" className="max-h-48 rounded-xl border border-slate-200 object-contain" />
+                )}
+              </div>
+            )}
+
+            {editingId && editingSource === 'blog_auto' && (
+              <div className="sm:col-span-2 space-y-2 rounded-xl border border-dashed border-slate-300 p-3">
+                <p className="text-xs font-semibold text-slate-500">Regenerar imagen con IA (opcional)</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['perro', 'gato'] as const).map((sp) => (
+                    <button
+                      key={sp}
+                      type="button"
+                      onClick={() => setRegenSpecies(sp)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                        regenSpecies === sp ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500'
+                      }`}
+                    >
+                      {sp === 'perro' ? 'Perro' : 'Gato'}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={regenInstructions}
+                  onChange={(e) => setRegenInstructions(e.target.value)}
+                  rows={2}
+                  placeholder="Indicaciones extra para la nueva imagen (opcional). Ej: que se lo vea jugando en un parque"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRegenerateImage}
+                    disabled={regeneratingImage || !regenSpecies}
+                    className="flex items-center gap-1.5 rounded-full bg-slate-800 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+                  >
+                    {regeneratingImage ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                    {regeneratingImage ? 'Regenerando...' : 'Regenerar imagen'}
+                  </button>
+                  {imageRegenerated && (
+                    <button
+                      type="button"
+                      onClick={handleGenerateVideo}
+                      disabled={generatingVideo || videoReady}
+                      className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {generatingVideo ? <Loader2 size={14} className="animate-spin" /> : <Film size={14} />}
+                      {generatingVideo ? 'Generando video...' : videoReady ? 'Video listo' : 'Generar video'}
+                    </button>
+                  )}
+                </div>
+                {imageRegenerated && !videoReady && (
+                  <p className="flex items-start gap-1.5 text-xs font-semibold text-amber-600">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    Genera el video antes de programar la publicacion: si no, va a quedar como imagen fija y YouTube va a fallar.
+                  </p>
                 )}
               </div>
             )}
@@ -422,7 +576,7 @@ export function AdminPublicacionesSection() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (imageRegenerated && !videoReady)}
             className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-5 py-2 text-sm font-bold text-white disabled:opacity-70"
           >
             {saving && <Loader2 size={14} className="animate-spin" />}

@@ -2510,6 +2510,65 @@ export async function generateGuideSocialReel(slug: string): Promise<{ socialPos
   return { socialPostId: body.socialPostId, hasAudio: Boolean(body.hasAudio) };
 }
 
+// Regenera la imagen (IA) de un post de blog ya creado, por si quedo con la
+// especie equivocada o el admin quiere ajustarla antes de programar la
+// publicacion (ver AdminPublicacionesSection). Borra y recrea el borrador en
+// social_posts, por eso devuelve el id NUEVO de ese borrador.
+export async function regenerateBlogPostImage(input: {
+  postId: string;
+  species: 'perro' | 'gato';
+  extraInstructions?: string;
+}): Promise<{ imageUrl: string; socialPostId: string | null }> {
+  const token = await getAuthTokenOrThrow();
+
+  const response = await fetch('/api/admin/regenerate-blog-post-image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      postId: input.postId,
+      species: input.species,
+      extraInstructions: input.extraInstructions?.trim() || undefined,
+    }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof body?.error === 'string' ? body.error : '';
+    throw new Error(detail || 'No se pudo regenerar la imagen.');
+  }
+
+  return { imageUrl: body.imageUrl, socialPostId: body.socialPostId || null };
+}
+
+// Genera bajo demanda el video Ken Burns (con voz+subtitulos si se puede)
+// para un borrador puntual de social_posts, sin esperar a la proxima corrida
+// del cron programado.
+export async function generateSocialPostVideo(
+  socialPostId: string,
+): Promise<{ upgraded: boolean; mediaUrl?: string; hasAudio?: boolean; reason?: string }> {
+  const token = await getAuthTokenOrThrow();
+
+  const response = await fetch('/api/admin/generate-post-video', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ postId: socialPostId }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof body?.error === 'string' ? body.error : '';
+    throw new Error(detail || 'No se pudo generar el video.');
+  }
+
+  return body;
+}
+
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
   const { data, error } = await supabase.rpc('admin_list_user_access');
 

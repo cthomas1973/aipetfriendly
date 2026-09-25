@@ -408,18 +408,24 @@ async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide)
   return parseArticleJson(rawResponse);
 }
 
-export async function generateArticleImage(title, topic, petFocus) {
+export async function generateArticleImage(title, topic, petFocus, extraInstructions) {
   const apiKey = getEnvOrThrow('AI_API_KEY');
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const imageModel = (process.env.AI_IMAGE_MODEL || 'dall-e-3').trim();
   console.log('generateArticleImage: baseUrl =', baseUrl, '| imageModel =', JSON.stringify(imageModel));
 
-  const prompt = [
+  const promptParts = [
     'Fotografia editorial calida y realista para un blog de cuidado de mascotas.',
     `Tema del articulo: "${title}" (eje general: ${topic}).`,
     `Protagonista: un(a) ${petFocus}, en una situacion cotidiana coherente con el tema del articulo.`,
     'La imagen debe ilustrar claramente la escena del tema (por ejemplo, si el tema es alimentacion mostralo comiendo o con su plato; si es adiestramiento mostralo en una sesion de entrenamiento; si es salud/veterinaria mostralo en una revision), luz natural, composicion profesional, sin texto ni logos en la imagen.',
-  ].join(' ');
+  ];
+
+  if (extraInstructions && extraInstructions.trim()) {
+    promptParts.push(`Indicaciones adicionales del administrador (respetalas siempre que no contradigan lo anterior): ${extraInstructions.trim()}`);
+  }
+
+  const prompt = promptParts.join(' ');
 
   // La API de imagenes de OpenAI ya no acepta "response_format" (rechaza el
   // parametro con "Unknown parameter" para cualquier modelo); simplemente no
@@ -790,32 +796,38 @@ export async function createSocialDraftFromBlogPost(admin, { blogPost, articleIm
     .maybeSingle();
 
   if (existing) {
-    return;
+    return existing.id;
   }
 
   const brandedImageBuffer = await buildBrandedSocialImage(articleImageBuffer, blogPost.title);
   const mediaUrl = await uploadSocialDraftMedia(admin, blogPost.slug, brandedImageBuffer, { extension: 'png', contentType: 'image/png' });
 
   if (!mediaUrl) {
-    return;
+    return null;
   }
 
   const articleUrl = `${SITE_URL}/blog/${blogPost.slug}`;
   const tip = buildSocialTipExcerpt(blogPost.content);
   const caption = `📰 ${blogPost.title}\n\n${tip}\n\nLeé la nota completa 👉 ${articleUrl}\n\n🐾 AiPetFriendly`;
 
-  const { error } = await admin.from('social_posts').insert({
-    media_url: mediaUrl,
-    media_type: 'image',
-    caption,
-    status: 'draft',
-    source: 'blog_auto',
-    source_ref_id: blogPost.id,
-  });
+  const { data: inserted, error } = await admin
+    .from('social_posts')
+    .insert({
+      media_url: mediaUrl,
+      media_type: 'image',
+      caption,
+      status: 'draft',
+      source: 'blog_auto',
+      source_ref_id: blogPost.id,
+    })
+    .select('id')
+    .single();
 
   if (error) {
     throw new Error(`No se pudo crear el borrador de publicacion social: ${error.message}`);
   }
+
+  return inserted.id;
 }
 
 async function alreadyHasPostToday(admin) {

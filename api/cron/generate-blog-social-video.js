@@ -244,6 +244,89 @@ export async function generateKenBurnsVideoWithBranding(rawImageBuffer, { banner
   }
 }
 
+// Dado un borrador de social_posts (id, media_url, caption, source_ref_id),
+// genera el video Ken Burns (con voz+subtitulos si se puede, sino mudo) y
+// actualiza esa misma fila. Compartido entre el cron (busca el borrador
+// pendiente mas antiguo) y el endpoint admin bajo demanda (apunta a un
+// borrador puntual elegido en el panel de Publicaciones).
+export async function generateVideoForDraft(admin, draft) {
+  const branding = await tryBuildBrandingFromBlogPost(admin, draft);
+
+  let videoBuffer;
+  let effectName;
+  let hasAudio = false;
+
+  if (branding) {
+    // Primero se intenta la version completa (guion-gancho + voz en off +
+    // subtitulos quemados). Si CUALQUIER paso de ese pipeline falla (falta
+    // AI_API_KEY, la API de TTS/transcripcion no responde, etc.) se cae al
+    // video mudo de siempre, para que el pipeline nunca se rompa por esto.
+    try {
+      const script = await generateReelHookScript({ title: branding.title, content: branding.content });
+      const audioBuffer = await generateVoiceOverAudio(script);
+      const words = await transcribeAudioWithWordTimestamps(audioBuffer);
+      const result = await generateReelVideoWithAudioAndCaptions(branding.rawImageBuffer, {
+        bannerLayer: branding.bannerLayer,
+        logoLayer: branding.logoLayer,
+        audioBuffer,
+        words,
+        seed: draft.id,
+      });
+      videoBuffer = result.buffer;
+      effectName = result.effectName;
+      hasAudio = true;
+    } catch (audioError) {
+      console.warn('Fallo el pipeline de audio+subtitulos, se usa el fallback mudo:', audioError);
+      const result = await generateKenBurnsVideoWithBranding(branding.rawImageBuffer, {
+        bannerLayer: branding.bannerLayer,
+        logoLayer: branding.logoLayer,
+        seed: draft.id,
+      });
+      videoBuffer = result.buffer;
+      effectName = result.effectName;
+    }
+  } else {
+    const imageResponse = await fetch(draft.media_url);
+    if (!imageResponse.ok) {
+      throw new Error(`No se pudo descargar la imagen del borrador (status ${imageResponse.status}).`);
+    }
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    const result = await generateKenBurnsVideo(imageBuffer, { seed: draft.id });
+    videoBuffer = result.buffer;
+    effectName = result.effectName;
+  }
+
+  const videoUrl = await uploadSocialDraftMedia(admin, draft.id, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
+
+  if (!videoUrl) {
+    throw new Error('La subida del video no devolvio una URL publica.');
+  }
+
+  // Guard `.eq('status', 'draft')`: si el admin ya aprobo/programo este
+  // borrador entre que se busco y que termino de generarse el video, no se
+  // pisa esa decision (el update simplemente no afecta ninguna fila).
+  const { data: updated, error: updateError } = await admin
+    .from('social_posts')
+    .update({ media_url: videoUrl, media_type: 'video' })
+    .eq('id', draft.id)
+    .eq('status', 'draft')
+    .select('id')
+    .maybeSingle();
+
+  if (updateError) {
+    throw new Error(`No se pudo actualizar el borrador con el video: ${updateError.message}`);
+  }
+
+  if (!updated) {
+    return {
+      upgraded: false,
+      reason: 'El borrador ya no estaba en estado draft (el admin lo actualizo mientras se generaba el video).',
+    };
+  }
+
+  return { upgraded: true, socialPostId: draft.id, mediaUrl: videoUrl, effect: effectName, hasAudio };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed' });
@@ -261,82 +344,8 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { skipped: true, reason: 'No hay borradores de publicacion social pendientes de video.' });
     }
 
-    const branding = await tryBuildBrandingFromBlogPost(admin, draft);
-
-    let videoBuffer;
-    let effectName;
-    let hasAudio = false;
-
-    if (branding) {
-      // Primero se intenta la version completa (guion-gancho + voz en off +
-      // subtitulos quemados). Si CUALQUIER paso de ese pipeline falla (falta
-      // AI_API_KEY, la API de TTS/transcripcion no responde, etc.) se cae al
-      // video mudo de siempre, para que el pipeline nunca se rompa por esto.
-      try {
-        const script = await generateReelHookScript({ title: branding.title, content: branding.content });
-        const audioBuffer = await generateVoiceOverAudio(script);
-        const words = await transcribeAudioWithWordTimestamps(audioBuffer);
-        const result = await generateReelVideoWithAudioAndCaptions(branding.rawImageBuffer, {
-          bannerLayer: branding.bannerLayer,
-          logoLayer: branding.logoLayer,
-          audioBuffer,
-          words,
-          seed: draft.id,
-        });
-        videoBuffer = result.buffer;
-        effectName = result.effectName;
-        hasAudio = true;
-      } catch (audioError) {
-        console.warn('Fallo el pipeline de audio+subtitulos, se usa el fallback mudo:', audioError);
-        const result = await generateKenBurnsVideoWithBranding(branding.rawImageBuffer, {
-          bannerLayer: branding.bannerLayer,
-          logoLayer: branding.logoLayer,
-          seed: draft.id,
-        });
-        videoBuffer = result.buffer;
-        effectName = result.effectName;
-      }
-    } else {
-      const imageResponse = await fetch(draft.media_url);
-      if (!imageResponse.ok) {
-        throw new Error(`No se pudo descargar la imagen del borrador (status ${imageResponse.status}).`);
-      }
-      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-      const result = await generateKenBurnsVideo(imageBuffer, { seed: draft.id });
-      videoBuffer = result.buffer;
-      effectName = result.effectName;
-    }
-
-    const slugGuess = draft.id;
-    const videoUrl = await uploadSocialDraftMedia(admin, slugGuess, videoBuffer, { extension: 'mp4', contentType: 'video/mp4' });
-
-    if (!videoUrl) {
-      throw new Error('La subida del video no devolvio una URL publica.');
-    }
-
-    // Guard `.eq('status', 'draft')`: si el admin ya aprobo/programo este
-    // borrador entre que se busco y que termino de generarse el video, no se
-    // pisa esa decision (el update simplemente no afecta ninguna fila).
-    const { data: updated, error: updateError } = await admin
-      .from('social_posts')
-      .update({ media_url: videoUrl, media_type: 'video' })
-      .eq('id', draft.id)
-      .eq('status', 'draft')
-      .select('id')
-      .maybeSingle();
-
-    if (updateError) {
-      throw new Error(`No se pudo actualizar el borrador con el video: ${updateError.message}`);
-    }
-
-    if (!updated) {
-      return sendJson(res, 200, {
-        upgraded: false,
-        reason: 'El borrador ya no estaba en estado draft (el admin lo actualizo mientras se generaba el video).',
-      });
-    }
-
-    return sendJson(res, 200, { upgraded: true, socialPostId: draft.id, effect: effectName, hasAudio });
+    const result = await generateVideoForDraft(admin, draft);
+    return sendJson(res, 200, result);
   } catch (error) {
     console.error('Error generando el video de la publicacion social del blog:', error);
     return sendJson(res, 500, { error: error instanceof Error ? error.message : 'Unknown error' });

@@ -3,18 +3,19 @@
 // Endpoint manual (no cron): regenera la imagen de un post del blog ya
 // creado, por si quedo con la especie equivocada (ver bug corregido en
 // api/cron/generate-blog-post.js: el pet_focus se sorteaba antes de saber el
-// tema real del articulo). Actualiza blog_posts.image_url/pet_focus y
-// recrea el borrador de publicacion social (Admin > Publicaciones) con la
-// imagen nueva.
+// tema real del articulo) o simplemente porque el admin quiere una version
+// distinta antes de programar la publicacion (ver AdminPublicacionesSection).
+// Actualiza blog_posts.image_url/pet_focus y recrea el borrador de
+// publicacion social (Admin > Publicaciones) con la imagen nueva.
 //
 // Requiere sesion de admin (Authorization: Bearer <access_token del usuario>,
 // verificado contra la tabla admin_users, igual que generate-guide-reel.js).
 //
-// Uso (desde la consola del navegador logueado como admin, en la pagina de
-// Admin): fetch('/api/admin/regenerate-blog-post-image', { method: 'POST',
-// headers: { 'Content-Type': 'application/json', Authorization: `Bearer
-// ${(await supabase.auth.getSession()).data.session.access_token}` }, body:
-// JSON.stringify({ slug: '...', species: 'perro' }) }).then(r => r.json()).then(console.log)
+// Body: { slug o postId (blog_posts.id), species: 'perro'|'gato',
+// extraInstructions (opcional) }. Devuelve { success, imageUrl, socialPostId
+// }: socialPostId es el id NUEVO del borrador en social_posts (el anterior
+// se borra y se recrea), asi el frontend puede seguir operando sobre el
+// mismo borrador aunque haya cambiado de id.
 
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -74,21 +75,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { slug, species } = req.body || {};
+    const { slug, postId, species, extraInstructions } = req.body || {};
     const petFocus = PET_FOCUS_BY_SPECIES[species];
-    if (!slug || !petFocus) {
-      return sendJson(res, 400, { error: 'Se requiere "slug" y "species" ("perro" o "gato").' });
+    if ((!slug && !postId) || !petFocus) {
+      return sendJson(res, 400, { error: 'Se requiere "slug" o "postId", y "species" ("perro" o "gato").' });
     }
 
-    const { data: post, error } = await admin.from('blog_posts').select('*').eq('slug', slug).maybeSingle();
+    const postQuery = admin.from('blog_posts').select('*');
+    const { data: post, error } = await (postId ? postQuery.eq('id', postId) : postQuery.eq('slug', slug)).maybeSingle();
     if (error) {
       throw new Error(`No se pudo buscar el post: ${error.message}`);
     }
     if (!post) {
-      return sendJson(res, 404, { error: `No existe ningun post con slug "${slug}".` });
+      return sendJson(res, 404, { error: `No existe ningun post con ${postId ? `id "${postId}"` : `slug "${slug}"`}.` });
     }
 
-    const imageBuffer = await generateArticleImage(post.title, post.topic, petFocus);
+    const imageBuffer = await generateArticleImage(post.title, post.topic, petFocus, extraInstructions);
     const imageUrl = await uploadImageToStorage(admin, post.slug, imageBuffer);
 
     const { error: updateError } = await admin
@@ -108,9 +110,9 @@ export default async function handler(req, res) {
       throw new Error(`No se pudo limpiar el borrador social previo: ${deleteError.message}`);
     }
 
-    await createSocialDraftFromBlogPost(admin, { blogPost: { ...post, image_url: imageUrl }, articleImageBuffer: imageBuffer });
+    const socialPostId = await createSocialDraftFromBlogPost(admin, { blogPost: { ...post, image_url: imageUrl }, articleImageBuffer: imageBuffer });
 
-    return sendJson(res, 200, { success: true, imageUrl });
+    return sendJson(res, 200, { success: true, imageUrl, socialPostId });
   } catch (ex) {
     return sendJson(res, 500, { error: ex instanceof Error ? ex.message : String(ex) });
   }
