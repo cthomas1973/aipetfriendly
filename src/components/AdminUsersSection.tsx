@@ -11,7 +11,6 @@ import { AdminPlacesSection } from './AdminPlacesSection';
 import { AdminPublicacionesSection } from './AdminPublicacionesSection';
 import {
   fetchAdminAiDashboardMetrics,
-  fetchAdminAiQueryAudit,
   fetchAdminBillingPricingSettings,
   fetchAdminAiUsageSettings,
   fetchAdminUsers,
@@ -20,7 +19,6 @@ import {
   updateAdminUserAccess,
 } from '../lib/supabase';
 import type {
-  AdminAiAuditEntry,
   AdminAiDashboardMetrics,
   AiUsageSettings,
   BillingPricingSettings,
@@ -45,6 +43,7 @@ export function AdminUsersSection() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [planFilter, setPlanFilter] = useState<UserAccessLevel | null>(null);
   const [metrics, setMetrics] = useState<AdminAiDashboardMetrics>({
     consultasHoy: 0,
     consultas7d: 0,
@@ -52,7 +51,6 @@ export function AdminUsersSection() {
     percentLimitesAgotados: 0,
     topMascotas: [],
   });
-  const [auditRows, setAuditRows] = useState<AdminAiAuditEntry[]>([]);
   const [limits, setLimits] = useState<AiUsageSettings>({
     guestLimitPerPet: 3,
     freeLimitPerPet: 10,
@@ -73,29 +71,41 @@ export function AdminUsersSection() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return adminUsers;
-    return adminUsers.filter((item) =>
-      item.email.toLowerCase().includes(q) ||
-      (item.fullName || '').toLowerCase().includes(q),
-    );
-  }, [adminUsers, query]);
+    return adminUsers.filter((item) => {
+      if (planFilter && item.access !== planFilter) return false;
+      if (!q) return true;
+      return item.email.toLowerCase().includes(q) || (item.fullName || '').toLowerCase().includes(q);
+    });
+  }, [adminUsers, query, planFilter]);
+
+  // Resumen para las tarjetas de plan (cantidad de usuarios y de mascotas por plan).
+  const planSummary = useMemo(() => {
+    const base: Record<UserAccessLevel, { users: number; pets: number }> = {
+      guest: { users: 0, pets: 0 },
+      free: { users: 0, pets: 0 },
+      premium: { users: 0, pets: 0 },
+    };
+    for (const item of adminUsers) {
+      base[item.access].users += 1;
+      base[item.access].pets += item.petsCount;
+    }
+    return base;
+  }, [adminUsers]);
 
   const loadUsers = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [rows, limitsData, pricingData, metricsData, auditData] = await Promise.all([
+      const [rows, limitsData, pricingData, metricsData] = await Promise.all([
         fetchAdminUsers(),
         fetchAdminAiUsageSettings(),
         fetchAdminBillingPricingSettings(),
         fetchAdminAiDashboardMetrics(),
-        fetchAdminAiQueryAudit(20),
       ]);
       setAdminUsers(rows);
       setLimits(limitsData);
       setPricing(pricingData);
       setMetrics(metricsData);
-      setAuditRows(auditData);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo cargar el listado de usuarios.');
     } finally {
@@ -579,81 +589,82 @@ export function AdminUsersSection() {
         </div>
       </div>
 
+      {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
+      {msg && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</p>}
+
       <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
         <div>
-          <p className="font-bold text-slate-900">Auditoria IA reciente</p>
-          <p className="text-sm text-slate-500">Fecha, usuario, mascota, tier y tokens estimados.</p>
+          <p className="font-bold text-slate-900">Resumen de usuarios por plan</p>
+          <p className="text-sm text-slate-500">Toca un plan para ver el listado de usuarios de esa categoria.</p>
         </div>
 
-        <div className="space-y-2">
-          {auditRows.length === 0 && (
-            <p className="text-sm text-slate-500">Aun no hay registros de auditoria.</p>
-          )}
-          {auditRows.map((row, index) => (
-            <div key={`${row.createdAt}-${row.userEmail}-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-900">{row.petName} · {row.userEmail}</p>
-                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {row.tier.toUpperCase()}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                {new Date(row.createdAt).toLocaleString('es-AR')} · Tokens: {row.estimatedTotalTokens} · Modelo: {row.model || 'N/D'}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">Chars pregunta/respuesta: {row.questionChars}/{row.answerChars}</p>
-            </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          {ACCESS_OPTIONS.map((access) => (
+            <button
+              key={access}
+              type="button"
+              onClick={() => setPlanFilter((current) => (current === access ? null : access))}
+              className={`rounded-2xl p-3 text-left transition ${
+                planFilter === access ? 'bg-emerald-100 ring-2 ring-emerald-400' : 'bg-slate-50 hover:bg-emerald-50'
+              }`}
+            >
+              <p className="text-xs uppercase tracking-wide text-slate-500">{ACCESS_LABELS[access]}</p>
+              <p className="mt-1 text-xl font-extrabold text-slate-900">{planSummary[access].users} usuarios</p>
+              <p className="text-sm text-slate-600">{planSummary[access].pets} mascotas</p>
+            </button>
           ))}
         </div>
       </div>
 
-      {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>}
-      {msg && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</p>}
-
-      <div className="space-y-3">
-        {filtered.map((item) => (
-          <div key={item.id} className="rounded-3xl bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="font-bold text-slate-900">{item.fullName || item.email}</p>
-                <p className="text-xs text-slate-500">{item.email}</p>
-                <p className="mt-1 text-xs text-slate-400">Alta: {new Date(item.createdAt).toLocaleDateString('es-AR')}</p>
+      {planFilter && (
+        <div className="space-y-3">
+          {filtered.map((item) => (
+            <div key={item.id} className="rounded-3xl bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-slate-900">{item.fullName || item.email}</p>
+                  <p className="text-xs text-slate-500">{item.email}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Alta: {new Date(item.createdAt).toLocaleDateString('es-AR')} · Mascotas: {item.petsCount}
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  <Shield size={12} />
+                  {ACCESS_LABELS[item.access]}
+                </div>
               </div>
-              <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                <Shield size={12} />
-                {ACCESS_LABELS[item.access]}
+
+              <div className="flex items-center gap-2">
+                <UserCog size={16} className="text-emerald-600" />
+                <label className="text-sm font-medium text-slate-700">Nivel de acceso</label>
+              </div>
+              <div className="mt-2">
+                <select
+                  value={item.access}
+                  onChange={(e) => onChangeAccess(item.id, e.target.value as UserAccessLevel)}
+                  disabled={savingUserId === item.id}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                >
+                  {ACCESS_OPTIONS.map((access) => (
+                    <option key={access} value={access}>
+                      {ACCESS_LABELS[access]}
+                    </option>
+                  ))}
+                </select>
+                {savingUserId === item.id && (
+                  <p className="mt-1 text-xs text-slate-500">Guardando cambios...</p>
+                )}
               </div>
             </div>
+          ))}
 
-            <div className="flex items-center gap-2">
-              <UserCog size={16} className="text-emerald-600" />
-              <label className="text-sm font-medium text-slate-700">Nivel de acceso</label>
+          {!loading && filtered.length === 0 && (
+            <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
+              <p className="text-sm text-slate-500">No hay usuarios para mostrar.</p>
             </div>
-            <div className="mt-2">
-              <select
-                value={item.access}
-                onChange={(e) => onChangeAccess(item.id, e.target.value as UserAccessLevel)}
-                disabled={savingUserId === item.id}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
-              >
-                {ACCESS_OPTIONS.map((access) => (
-                  <option key={access} value={access}>
-                    {ACCESS_LABELS[access]}
-                  </option>
-                ))}
-              </select>
-              {savingUserId === item.id && (
-                <p className="mt-1 text-xs text-slate-500">Guardando cambios...</p>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {!loading && filtered.length === 0 && (
-          <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
-            <p className="text-sm text-slate-500">No hay usuarios para mostrar.</p>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
       </>)}
     </section>
   );

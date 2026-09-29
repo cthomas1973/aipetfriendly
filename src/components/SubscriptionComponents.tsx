@@ -1330,7 +1330,8 @@ export function OffersSection() {
         )}
       </div>
 
-      <AdBanner adSenseSlotId="9835684451" />
+      {/* forcePublic: Ofertas tambien es visible para invitados y son la mayoria del trafico curioso */}
+      <AdBanner adSenseSlotId="9835684451" forcePublic />
     </section>
   );
 }

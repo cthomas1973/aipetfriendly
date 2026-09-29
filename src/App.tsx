@@ -425,10 +425,11 @@ function AppContent() {
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
   const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
-  // La barra de tabs de la app se muestra tambien en /guias, /blog y las paginas
-  // legales (con o sin login) para que se pueda navegar directo a otras secciones
-  // sin volver antes al inicio.
-  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute;
+  // La barra de tabs de la app se muestra tambien en /guias, /blog, las paginas
+  // legales y la landing (con o sin login) para que se pueda navegar directo a
+  // otras secciones sin volver antes al inicio. /social queda afuera a proposito
+  // (es un embudo de conversion, sin distracciones de navegacion).
+  const showAppNav = !isResetPasswordRoute && (!isLandingRoute || !isSocialLandingRoute) && !(isLoginRoute && !user) && !isPetPublicRoute;
 
   // Si estamos en una pagina de contenido publico (/guias, /blog, legales) y se
   // elige un tab de la app, no alcanza con cambiar el estado (renderTabContent
@@ -439,6 +440,19 @@ function AppContent() {
     if (isGuidesRoute || isBlogRoute || isLegalRoute) {
       window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
       window.location.href = '/';
+      return;
+    }
+    // Sin sesion (landing): Blog ya es publico por ruta, se navega directo.
+    // El resto de las pestañas requieren cuenta, asi que guardamos la eleccion
+    // y abrimos el registro/login; se aplica sola apenas haya sesion.
+    if (!user) {
+      if (tab === 'blog') {
+        window.location.href = '/blog';
+        return;
+      }
+      window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
+      setAuthInitialMode('register');
+      setShowAuthGate(true);
       return;
     }
     setActiveTab(tab);

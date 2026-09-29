@@ -2585,6 +2585,7 @@ export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
     subscriptionPlan: row.subscription_plan as SubscriptionPlan,
     subscriptionActive: Boolean(row.subscription_active),
     createdAt: row.created_at,
+    petsCount: Number(row.pets_count) || 0,
   }));
 }
 

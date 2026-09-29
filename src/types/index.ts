@@ -573,6 +573,7 @@ export interface AdminUserRow {
   subscriptionPlan: SubscriptionPlan;
   subscriptionActive: boolean;
   createdAt: string;
+  petsCount: number;
 }
 
 export interface InboundEmailRow {

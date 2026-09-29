@@ -2306,7 +2306,8 @@ export function NearbyVetsMapSection() {
         </div>
       )}
 
-      <AdBanner adSenseSlotId="9556337067" />
+      {/* forcePublic: el mapa tambien es visible para invitados y son la mayoria del trafico curioso */}
+      <AdBanner adSenseSlotId="9556337067" forcePublic />
     </section>
   );
 }

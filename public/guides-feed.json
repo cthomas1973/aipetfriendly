@@ -1,5 +1,14 @@
 [
   {
+    "slug": "que-hacer-si-tu-mascota-se-atraganta",
+    "title": "Primeros auxilios: qué hacer si tu mascota se atraganta",
+    "category": "salud",
+    "summary": "El atragantamiento con objetos como juguetes, huesos o piedras es una emergencia hogareña que exige actuar rápido. Guía paso a paso para identificarlo, actuar con seguridad y saber qué nunca hay que hacer.",
+    "coverImageSrc": "/guides/que-hacer-si-tu-mascota-se-atraganta/portada.jpg",
+    "relatedProductId": null,
+    "effectiveReleaseDate": "2026-09-28"
+  },
+  {
     "slug": "como-ensenar-a-tu-mascota-el-comando-soltar",
     "title": "Cómo enseñar a tu mascota el comando \"Soltar\"",
     "category": "adiestramiento",
