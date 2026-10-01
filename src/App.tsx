@@ -177,23 +177,25 @@ function BottomNavMoreSheet({
   activeTab,
   onChange,
   isAdmin,
+  isGuidesRoute,
   onClose,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   isAdmin: boolean;
+  isGuidesRoute: boolean;
   onClose: () => void;
 }) {
-  const items: Array<{ id: string; label: string; icon: typeof Gift; onSelect: () => void }> = [
-    { id: 'offers', label: 'Tienda', icon: Gift, onSelect: () => onChange('offers') },
+  const items: Array<{ id: string; label: string; icon: typeof Gift; onSelect: () => void; active: boolean }> = [
+    { id: 'offers', label: 'Tienda', icon: Gift, onSelect: () => onChange('offers'), active: !isGuidesRoute && activeTab === 'offers' },
   ];
 
   if (isAdmin) {
-    items.push({ id: 'admin', label: 'Admin', icon: Shield, onSelect: () => onChange('admin') });
+    items.push({ id: 'admin', label: 'Admin', icon: Shield, onSelect: () => onChange('admin'), active: !isGuidesRoute && activeTab === 'admin' });
   }
 
-  items.push({ id: 'guias', label: 'Guías', icon: BookOpen, onSelect: () => { window.location.href = '/guias'; } });
-  items.push({ id: 'subscription', label: 'Mi Cuenta', icon: CreditCard, onSelect: () => onChange('subscription') });
+  items.push({ id: 'guias', label: 'Guías', icon: BookOpen, onSelect: () => { window.location.href = '/guias'; }, active: isGuidesRoute });
+  items.push({ id: 'subscription', label: 'Mi Cuenta', icon: CreditCard, onSelect: () => onChange('subscription'), active: !isGuidesRoute && activeTab === 'subscription' });
 
   return (
     <div
@@ -215,7 +217,7 @@ function BottomNavMoreSheet({
                   onClose();
                 }}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                  activeTab === item.id
+                  item.active
                     ? 'bg-emerald-100 text-emerald-700'
                     : 'text-slate-700 hover:bg-emerald-50'
                 }`}
@@ -234,11 +236,13 @@ function BottomNav({
   activeTab,
   onChange,
   isAdmin,
+  isGuidesRoute,
   hasMobileBanner,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   isAdmin: boolean;
+  isGuidesRoute: boolean;
   hasMobileBanner: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -253,7 +257,7 @@ function BottomNav({
   // El boton "Más" se marca como activo cuando la pestaña actual vive dentro
   // del bottom-sheet (Tienda, Mi Cuenta o Admin), para que el usuario no
   // pierda la referencia de donde esta parado.
-  const isMoreActive = ['offers', 'subscription', 'admin'].includes(activeTab);
+  const isMoreActive = !isGuidesRoute && ['offers', 'subscription', 'admin'].includes(activeTab);
 
   return (
     <>
@@ -268,14 +272,14 @@ function BottomNav({
                 type="button"
                 onClick={() => onChange(tab.id)}
                 className={`w-full rounded-2xl px-1 py-1.5 text-[11px] font-medium transition ${
-                  activeTab === tab.id
+                  !isGuidesRoute && activeTab === tab.id
                     ? 'text-emerald-700'
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
                 <span
                   className={`mx-auto mb-1 inline-flex h-9 w-9 items-center justify-center rounded-full transition ${
-                    activeTab === tab.id ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400'
+                    !isGuidesRoute && activeTab === tab.id ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400'
                   }`}
                 >
                   <tab.icon size={18} />
@@ -310,6 +314,7 @@ function BottomNav({
           activeTab={activeTab}
           onChange={onChange}
           isAdmin={isAdmin}
+          isGuidesRoute={isGuidesRoute}
           onClose={() => setMoreOpen(false)}
         />
       )}
@@ -321,10 +326,12 @@ function DesktopTabNav({
   activeTab,
   onChange,
   isAdmin,
+  isGuidesRoute,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   isAdmin: boolean;
+  isGuidesRoute: boolean;
 }) {
   const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
     { id: 'blog', label: 'Blog', icon: Newspaper },
@@ -349,7 +356,7 @@ function DesktopTabNav({
               type="button"
               onClick={() => onChange(tab.id)}
               className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                activeTab === tab.id
+                !isGuidesRoute && activeTab === tab.id
                   ? 'bg-emerald-100 text-emerald-700'
                   : 'text-slate-600 hover:bg-emerald-50'
               }`}
@@ -361,7 +368,11 @@ function DesktopTabNav({
         <li>
           <a
             href="/guias"
-            className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50"
+            className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+              isGuidesRoute
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'text-slate-600 hover:bg-emerald-50'
+            }`}
           >
             <BookOpen size={16} /> Guías
           </a>
@@ -371,7 +382,7 @@ function DesktopTabNav({
             type="button"
             onClick={() => onChange('subscription')}
             className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              activeTab === 'subscription'
+              !isGuidesRoute && activeTab === 'subscription'
                 ? 'bg-emerald-100 text-emerald-700'
                 : 'text-slate-600 hover:bg-emerald-50'
             }`}
@@ -776,7 +787,7 @@ function AppContent() {
         </div>
 
         {!isResetPasswordRoute && showAppNav && (
-          <DesktopTabNav activeTab={activeTab} onChange={handleTabChange} isAdmin={Boolean(user?.isAdmin)} />
+          <DesktopTabNav activeTab={activeTab} onChange={handleTabChange} isAdmin={Boolean(user?.isAdmin)} isGuidesRoute={isGuidesRoute} />
         )}
 
         {user && !user.isGuest && !isResetPasswordRoute && <SubscriptionBanner />}
@@ -832,6 +843,7 @@ function AppContent() {
           activeTab={activeTab}
           onChange={handleTabChange}
           isAdmin={Boolean(user?.isAdmin)}
+          isGuidesRoute={isGuidesRoute}
           hasMobileBanner={hasMobileBanner}
         />
       )}
