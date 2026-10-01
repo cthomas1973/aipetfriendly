@@ -349,6 +349,7 @@ export const PET_GUIDES: PetGuide[] = [
         ],
       },
     ],
+    relatedGuideSlug: 'grooming-e-higiene-para-perros-y-gatos',
   },
   {
     slug: 'como-ensenar-a-tu-perro-a-sentarse',
@@ -978,6 +979,188 @@ export const PET_GUIDES: PetGuide[] = [
       },
     ],
     relatedGuideSlug: 'que-hacer-si-tu-mascota-se-atraganta',
+  },
+  {
+    slug: 'grooming-e-higiene-para-perros-y-gatos',
+    title: 'Guía completa de grooming e higiene para perros y gatos',
+    category: 'salud',
+    petTypes: ['perro', 'gato'],
+    publishedAt: '2026-10-01',
+    summary:
+      'El grooming no es solo estética: cepillado, baño, uñas, oídos, dientes y ojos en orden previenen enfermedades de piel, parásitos y dolor por pelo apelmazado. Guía paso a paso con la técnica correcta, la frecuencia según la edad y el tipo de pelaje, y cuándo recurrir a un profesional.',
+    readingTime: '9 min',
+    coverImage: {
+      src: '/guides/grooming-e-higiene-para-perros-y-gatos/portada.png',
+      alt: 'Perro y gato sobre una mesa de grooming rodeados de cepillos, peines, cortaúñas y toallas',
+    },
+    sections: [
+      {
+        heading: 'Por qué el grooming es también una cuestión de salud',
+        paragraphs: [
+          'Cuando hablamos de "grooming" no nos referimos solo a que la mascota se vea prolija: es una rutina de cuidado que permite detectar a tiempo bultos, heridas, parásitos externos, infecciones de oído o problemas de piel que a simple vista, con el pelo largo, pasan desapercibidos.',
+          'Un pelaje descuidado también puede traer dolor real: el pelo apelmazado (los famosos "nudos") tira de la piel con cada movimiento, puede esconder humedad y suciedad debajo, y en casos extremos favorece lastimaduras e infecciones. Por eso conviene pensar el grooming como parte de la salud preventiva, igual que las vacunas o la desparasitación.',
+        ],
+      },
+      {
+        heading: 'Antes de empezar: el kit básico y la frecuencia según la edad',
+        paragraphs: [
+          'Conviene tener a mano, antes de arrancar, un cepillo adecuado al tipo de pelo, un peine metálico, cortaúñas veterinario, shampoo específico para mascotas, toallas absorbentes, limpiador de oídos veterinario, cepillo dental para mascotas y gasas estériles: tenerlo todo listo evita cortar la sesión a la mitad y estresar a la mascota buscando algo.',
+          'La frecuencia ideal cambia con la edad. En cachorros: cepillado diario (sesiones cortas), baño cada 30-45 días, uñas cada 3-4 semanas, oídos una vez por semana y dientes a diario. En adultos: cepillado de 2 a 7 veces por semana según el pelaje, baño cada 30-60 días, uñas cada 4 semanas, oídos semanal y dientes a diario. En seniors: cepillado diario pero en sesiones más cortas, baño según necesidad, uñas cada 2-3 semanas (crecen más rápido y se desgastan menos al caminar) y oídos revisados dos veces por semana.',
+        ],
+      },
+      {
+        heading: 'Paso 1: cepillado correcto, zona por zona',
+        paragraphs: [
+          'Perros y gatos de pelo corto (la mayoría de los mestizos, Beagle, Siamés) se benefician con un cepillado semanal con un cepillo de cerdas suaves o guante de goma: quita pelo muerto, reparte los aceites naturales de la piel y es un buen momento para revisar la piel.',
+          'Razas de pelo medio o largo (Golden Retriever, Collie, Persa, Maine Coon) necesitan cepillado cada 2-3 días, idealmente con un peine de dientes anchos primero y uno de dientes finos después. La técnica más prolija es empezar por el cuello y la espalda, avanzar hacia los laterales, seguir con las patas y terminar en la cola y el abdomen, pasando el peine al final para confirmar que no quedaron nudos ocultos bajo el pelo superficial, sobre todo detrás de las orejas, en las axilas y debajo de la cola.',
+          'En época de muda (cambio de estación) conviene aumentar la frecuencia, aunque sea por unos minutos todos los días: ayuda a que la mascota trague menos pelo al autolimpiarse (clave en gatos, para prevenir bolas de pelo) y a que no se acumule tanto pelo suelto en la casa.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/cepillado.png',
+          alt: 'Perro de pelo medio siendo cepillado con un cepillo slicker, empezando por el lomo',
+        },
+      },
+      {
+        heading: 'Paso 2: el baño, cada cuánto y cómo hacerlo sin dañar la piel',
+        paragraphs: [
+          'En perros, la frecuencia habitual ronda cada 3 a 6 semanas, salvo indicación veterinaria distinta por alguna condición de piel. Bañar con demasiada frecuencia puede resecar la piel y alterar su manto protector natural, favoreciendo irritaciones.',
+          'Los gatos, en general, no necesitan baños regulares: su propio acicalamiento alcanza en la mayoría de los casos. Se recomienda bañarlos solo si se ensuciaron con algo que no pueden quitarse solos, por indicación veterinaria, o en gatos que no pueden autolimpiarse bien (edad avanzada, sobrepeso, pelo muy largo).',
+          'La temperatura ideal del agua es de 36 a 38°C, similar a la temperatura corporal, para evitar un choque térmico. El procedimiento: mojar bien todo el pelaje, aplicar un shampoo formulado específicamente para mascotas (nunca shampoo de humanos, que tiene un pH distinto e irrita la piel) masajeando con suavidad y sin olvidar patas y almohadillas, enjuagar hasta que no quede nada de espuma y secar primero con toalla y, si la mascota lo tolera, con secador a temperatura media-baja. El error más frecuente es no enjuagar lo suficiente: el shampoo que queda en la piel genera picazón e irritación.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/bano.png',
+          alt: 'Perro recibiendo un baño con shampoo y espuma en una bañera',
+        },
+      },
+      {
+        heading: 'Paso 3: corte de uñas sin lastimar',
+        paragraphs: [
+          'Si las uñas se escuchan golpetear contra el piso al caminar, ya es momento de cortarlas. La clave es identificar la "vena viva" (la zona rosada que se ve en uñas claras) y cortar solo la punta, en cortes pequeños y progresivos, premiando a la mascota durante y después de cada corte para que la sesión se vuelva una rutina tranquila.',
+          'Los perros grandes desgastan las uñas más naturalmente al caminar y necesitan cortes menos frecuentes, mientras que los perros pequeños, al pisar menos superficies duras, suelen necesitarlos más seguido. En gatos alcanza con recortar solo la punta transparente de la uña, sin tocar la parte rosada.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/unas.png',
+          alt: 'Corte de uñas a un perro con cortaúñas veterinario',
+        },
+      },
+      {
+        heading: 'Paso 4: limpieza de oídos',
+        paragraphs: [
+          'Conviene revisar los oídos semanalmente buscando mal olor, secreción oscura, enrojecimiento o sacudidas de cabeza frecuentes, señales típicas de otitis. Las razas de orejas caídas o con mucho pelo en el canal auditivo (Cocker Spaniel, Basset Hound, Golden Retriever, Labrador) necesitan un control más seguido por acumular más humedad y cera.',
+          'El procedimiento correcto es aplicar el limpiador ótico específico, masajear suavemente la base de la oreja para que el líquido disuelva la suciedad, y retirar el excedente con una gasa, nunca con hisopos: empujan la suciedad hacia el canal auditivo en lugar de sacarla.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/oidos.png',
+          alt: 'Limpieza del oído de un perro con una gasa y limpiador ótico',
+        },
+      },
+      {
+        heading: 'Paso 5: higiene dental, la rutina que más se posterga',
+        paragraphs: [
+          'Lo ideal es el cepillado dental diario, aunque hacerlo 2-3 veces por semana con pasta dental formulada para mascotas (nunca pasta de uso humano) ya marca una diferencia notable frente a no cepillar nunca: es la medida más efectiva contra el sarro y el mal aliento, y los snacks o juguetes dentales ayudan pero no la reemplazan.',
+          'Razas con dientes más amontonados o boca pequeña, como Yorkshire Terrier, Caniche, Chihuahua, Persa y Scottish Fold, acumulan sarro más rápido y necesitan un seguimiento más cercano. La técnica correcta es hacer movimientos circulares, haciendo foco en molares y colmillos, que son los dientes donde más se junta el sarro.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/dientes.png',
+          alt: 'Cepillado de dientes a un perro con cepillo y pasta dental veterinaria',
+        },
+      },
+      {
+        heading: 'Paso 6: limpieza de ojos',
+        paragraphs: [
+          'Es especialmente importante en razas de hocico chato o mucho pelo facial: perros como Shih Tzu, Pug, Bulldog Francés y Maltés, y gatos como Persa y Exótico, que suelen tener lagrimeo constante y acumulación de legañas.',
+          'El procedimiento es usar una gasa húmeda y limpiar siempre desde el lagrimal hacia afuera, usando una gasa distinta para cada ojo, para no pasar una posible infección de uno a otro.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/ojos.png',
+          alt: 'Limpieza de los ojos de un perro de hocico chato con una gasa húmeda',
+        },
+      },
+      {
+        heading: 'Cachorros (2 a 12 meses): sesiones cortas para que lo vivan bien',
+        paragraphs: [
+          'El objetivo con los cachorros no es que el resultado salga "perfecto" sino que se acostumbren al manejo: tocarles las patas, las orejas y la boca con calma para que, de adultos, toleren sin estrés cada paso del grooming.',
+          'Conviene hacer sesiones cortas y positivas, con premios, y evitar cortes de pelo complejos, baños muy seguidos y secadores a temperatura alta, que pueden asustarlos o lastimar su piel todavía sensible.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/cachorros.png',
+          alt: 'Cachorro siendo cepillado con suavidad en una sesión corta y positiva',
+        },
+      },
+      {
+        heading: 'Adultos (1 a 7 años): la rutina completa',
+        paragraphs: [
+          'En esta etapa ya se puede sostener la rutina completa: cepillado según el tipo de pelaje, baños regulares, corte de uñas, revisión dental y limpieza ocular y auditiva, sin sobresaltos.',
+          'Es un buen momento para fijar una frecuencia estable (por ejemplo, un día del mes para el baño y las uñas) y aprovechar cada sesión para repasar el estado general de la piel y detectar cualquier cambio a tiempo.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/adultos.png',
+          alt: 'Perro adulto recibiendo una sesión completa de grooming',
+        },
+      },
+      {
+        heading: 'Seniors (+7 años): sesiones más cortas y delicadas',
+        paragraphs: [
+          'Las mascotas mayores suelen tener articulaciones más sensibles y menor tolerancia a permanecer mucho tiempo en una misma posición, además de piel más delicada y propensa a lastimarse.',
+          'Conviene acortar la duración de cada sesión, trabajar sobre una superficie cómoda y evitar forzar posturas: si hay dolor evidente al tocar alguna zona, mejor consultar al veterinario antes de seguir con el grooming en esa parte del cuerpo.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/seniors.png',
+          alt: 'Perro senior de pelaje canoso siendo cepillado con delicadeza',
+        },
+      },
+      {
+        heading: 'Pelaje en perros: corto, medio y largo, cada uno con su ritmo',
+        paragraphs: [
+          'Pelo corto (Beagle, Boxer, Dóberman, Pitbull y la mayoría de los mestizos): alcanza con un cepillado semanal y un baño cada 45-60 días.',
+          'Pelo medio (Border Collie, Pastor Australiano): necesitan cepillado unas 3 veces por semana para evitar que se les forme un subpelo apelmazado.',
+          'Pelo largo (Golden Retriever, Setter, Shih Tzu, Yorkshire): requieren cepillado diario y un control constante de nudos. El Golden Retriever, en particular, suele necesitar además un cepillo deslanador en época de muda por la cantidad de pelo que suelta.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/pelaje-perros.png',
+          alt: 'Comparativa de perros con pelaje corto, medio y largo',
+        },
+      },
+      {
+        heading: 'Pelaje en gatos: del pelo corto al pelo largo',
+        paragraphs: [
+          'Pelo corto (Europeo, Siamés, Azul Ruso): con 1-2 cepillados semanales suele alcanzar, ya que se autolimpian con facilidad.',
+          'Pelo semilargo (como el Bosque de Noruega): necesitan cepillado unas 3 veces por semana para que no se les enrede el subpelo.',
+          'Pelo largo (Persa, Maine Coon, Ragdoll): el cepillado diario no es opcional, porque sin él se forman nudos grandes en pocos días.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/pelaje-gatos.png',
+          alt: 'Comparativa de gatos con pelaje corto, semilargo y largo',
+        },
+      },
+      {
+        heading: 'Gatos de pelo largo: una rutina diaria no negociable',
+        paragraphs: [
+          'En Persas, Maine Coon y Ragdoll, un solo día sin cepillar puede alcanzar para que se forme un nudo nuevo, sobre todo en las axilas, detrás de las orejas (zona típica en el Maine Coon) y debajo de la cola.',
+          'Conviene usar primero un peine de dientes anchos para destrabar lo más grueso y después uno de dientes finos para terminar de prolijar, siempre con movimientos suaves: si un nudo no sale con el peine, es mejor cortarlo con tijeras de punta roma o pedir ayuda a un groomer, antes que tironear y lastimar la piel. El Persa, además, necesita limpieza ocular diaria por su hocico chato.',
+        ],
+        image: {
+          src: '/guides/grooming-e-higiene-para-perros-y-gatos/gatos-pelo-largo.png',
+          alt: 'Gato de pelo largo tipo Maine Coon siendo cepillado para desenredar nudos',
+        },
+      },
+      {
+        heading: 'Cuándo recurrir a un groomer profesional o al veterinario',
+        paragraphs: [
+          'Si el pelo ya está muy apelmazado y tironea de la piel, lo correcto es que lo resuelva un profesional: intentar desenredarlo a la fuerza en casa puede lastimar a la mascota, y a veces la única solución segura es rapar esa zona.',
+          'Razas de pelo complejo (Poodle, Shih Tzu, Yorkshire, Persas) suelen necesitar, además del cepillado diario en casa, un corte higiénico o profesional cada 30 a 45 días para mantener el pelaje manejable entre sesiones.',
+          'Conviene consultar al veterinario ante cualquiera de estas señales: olor fuerte en los oídos, pérdida de pelo excesiva o en parches, caspa abundante, enrojecimiento de la piel, nódulos o bultos nuevos, encías inflamadas o secreción ocular abundante, más allá de cualquier rutina de grooming en casa. En los perros, además, conviene revisar las glándulas anales si se arrastra o lame insistentemente la zona.',
+        ],
+      },
+      {
+        heading: 'Cómo lograr que tu mascota tolere (o disfruta) el grooming',
+        paragraphs: [
+          'Empezar de cachorro o gatito, con sesiones muy cortas y positivas (unos minutos, con premios), ayuda a que de adulto no viva el cepillado o el baño como una experiencia estresante.',
+          'Si ya es adulta y le cuesta, conviene avanzar de a poco: tocar y cepillar zonas que tolere bien primero, premiar la calma, y cortar la sesión antes de que se ponga ansiosa, en vez de insistir hasta terminar "a la fuerza".',
+        ],
+      },
+    ],
+    relatedGuideSlug: 'vacunas-y-desparasitacion-guia-para-no-perderse',
   },
 ];
 

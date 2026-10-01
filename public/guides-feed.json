@@ -1,5 +1,14 @@
 [
   {
+    "slug": "grooming-e-higiene-para-perros-y-gatos",
+    "title": "Guía completa de grooming e higiene para perros y gatos",
+    "category": "salud",
+    "summary": "El grooming no es solo estética: cepillado, baño, uñas, oídos, dientes y ojos en orden previenen enfermedades de piel, parásitos y dolor por pelo apelmazado. Guía paso a paso con la técnica correcta, la frecuencia según la edad y el tipo de pelaje, y cuándo recurrir a un profesional.",
+    "coverImageSrc": "/guides/grooming-e-higiene-para-perros-y-gatos/portada.png",
+    "relatedProductId": null,
+    "effectiveReleaseDate": "2026-10-01"
+  },
+  {
     "slug": "que-hacer-si-tu-mascota-se-atraganta",
     "title": "Primeros auxilios: qué hacer si tu mascota se atraganta",
     "category": "salud",
