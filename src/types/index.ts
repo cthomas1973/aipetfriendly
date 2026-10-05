@@ -57,6 +57,25 @@ export type PetFriendlyPlaceCategory =
   | 'bar_cafe'
   | 'otro';
 
+// Contacto adicional (Premium) que recibe los mismos avisos de Agenda que el
+// titular. Por ahora es solo notificacion: no tiene login propio todavia.
+export interface Cotutor {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  email: string;
+  whatsappPhone?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CotutorFormData {
+  name: string;
+  email: string;
+  whatsappPhone?: string;
+}
+
 export interface Pet {
   id: string;
   userId: string;

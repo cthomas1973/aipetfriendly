@@ -476,6 +476,42 @@ export function usePreventive() {
     [preventiveTasks, setPreventiveTasks, user],
   );
 
+  // A diferencia de postponeTask (desplaza N minutos desde el horario actual),
+  // esta funcion fija directamente una fecha/hora puntual elegida por el usuario.
+  const rescheduleTaskTo = useCallback(
+    async (taskId: string, nextDueDate: string, nextTime: string) => {
+      const current = preventiveTasks.find((task) => task.id === taskId);
+      if (!current) {
+        return;
+      }
+
+      if (!user || user.isGuest) {
+        setPreventiveTasks(
+          preventiveTasks.map((task) => (
+            task.id === taskId
+              ? { ...task, dueDate: nextDueDate, appointmentTime: nextTime, scheduleTimes: [nextTime] }
+              : task
+          )),
+        );
+        return;
+      }
+
+      const updated = await updatePreventiveTaskSchedule(taskId, nextDueDate, nextTime);
+      if (!updated) {
+        throw new Error('No se pudo reprogramar la alerta en Supabase.');
+      }
+
+      setPreventiveTasks(
+        preventiveTasks.map((task) => (
+          task.id === taskId
+            ? { ...task, dueDate: nextDueDate, appointmentTime: nextTime, scheduleTimes: [nextTime] }
+            : task
+        )),
+      );
+    },
+    [preventiveTasks, setPreventiveTasks, user],
+  );
+
   const discardTaskReminder = useCallback(
     async (taskId: string) => {
       const current = preventiveTasks.find((task) => task.id === taskId);
@@ -513,6 +549,7 @@ export function usePreventive() {
     addPreventiveTask,
     toggleTask,
     postponeTask,
+    rescheduleTaskTo,
     discardTaskReminder,
   };
 }

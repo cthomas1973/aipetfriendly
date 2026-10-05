@@ -10,6 +10,8 @@ import type {
   PetTagCodeStatus,
   BillingPricingSettings,
   BlogPost,
+  Cotutor,
+  CotutorFormData,
   DiscountCode,
   DiscountCodeValidation,
   InboundEmailReply,
@@ -247,6 +249,77 @@ export async function updateUserNewsOptIn(args: {
     .from('users')
     .update(payload)
     .eq('id', args.userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+function mapCotutorRow(row: any): Cotutor {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    name: row.name,
+    email: row.email,
+    whatsappPhone: row.whatsapp_phone || undefined,
+    active: Boolean(row.active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function fetchCotutors(ownerUserId: string): Promise<Cotutor[]> {
+  const { data, error } = await supabase
+    .from('pet_cotutors')
+    .select('*')
+    .eq('owner_user_id', ownerUserId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching cotutors:', error);
+    return [];
+  }
+
+  return (data || []).map(mapCotutorRow);
+}
+
+export async function createCotutor(ownerUserId: string, data: CotutorFormData): Promise<Cotutor | null> {
+  const { data: row, error } = await supabase
+    .from('pet_cotutors')
+    .insert([
+      {
+        owner_user_id: ownerUserId,
+        name: data.name.trim(),
+        email: data.email.trim().toLowerCase(),
+        whatsapp_phone: data.whatsappPhone || null,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return row ? mapCotutorRow(row) : null;
+}
+
+export async function updateCotutorActive(cotutorId: string, active: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('pet_cotutors')
+    .update({ active })
+    .eq('id', cotutorId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteCotutor(cotutorId: string): Promise<void> {
+  const { error } = await supabase
+    .from('pet_cotutors')
+    .delete()
+    .eq('id', cotutorId);
 
   if (error) {
     throw error;

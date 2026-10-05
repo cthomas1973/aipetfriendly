@@ -386,7 +386,7 @@ export function PetsSection() {
     sendHealthBookletPdfByEmail,
     sendMedicationLogPdfByEmail,
   } = usePetReports();
-  const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask } = usePreventive();
+  const { preventiveTasks, addPreventiveTask, toggleTask, rescheduleTaskTo } = usePreventive();
   const { getMessages, markMessageRead, getTagRequest, generatePosterPdf, generatePosterImage, getLinkedTagCode, linkTagCode, unlinkTagCode } = usePetIdentification();
 
   const [view, setView]   = useState<View>('list');
@@ -437,6 +437,9 @@ export function PetsSection() {
   const [pDurationDays, setPDurationDays] = useState('');
   const [pNotes, setPNotes] = useState('');
   const [pRemindersEnabled, setPRemindersEnabled] = useState(true);
+  const [postponeTaskId, setPostponeTaskId] = useState<string | null>(null);
+  const [postponeDate, setPostponeDate] = useState('');
+  const [postponeTime, setPostponeTime] = useState('');
   const [pAppointmentReason, setPAppointmentReason] = useState('');
   const [pAppointmentTime, setPAppointmentTime] = useState('09:00');
   const [pAppointmentLocation, setPAppointmentLocation] = useState('');
@@ -820,23 +823,32 @@ export function PetsSection() {
     }
   };
 
-  const doPostponePreventive = async (taskId: string) => {
-    const raw = window.prompt('Posponer alerta (minutos):', '30');
-    if (!raw) {
+  const doPostponePreventive = (taskId: string) => {
+    const task = preventiveTasks.find((t) => t.id === taskId);
+    if (!task) {
       return;
     }
-    const minutes = Number(raw);
-    if (!Number.isFinite(minutes) || minutes <= 0) {
-      setErr('Ingresa una cantidad valida de minutos para posponer.');
+    setPostponeTaskId(taskId);
+    setPostponeDate(task.dueDate);
+    setPostponeTime(getDoseTime(task) || '09:00');
+  };
+
+  const doConfirmPostpone = async () => {
+    if (!postponeTaskId) {
+      return;
+    }
+    if (!postponeDate || !/^\d{2}:\d{2}$/.test(postponeTime)) {
+      setErr('Elegi una fecha y hora validas para reprogramar.');
       return;
     }
 
     try {
-      await postponeTask(taskId, Math.round(minutes));
+      await rescheduleTaskTo(postponeTaskId, postponeDate, postponeTime);
       setErr(null);
-      setMsg(`Alerta pospuesta ${Math.round(minutes)} minutos.`);
+      setMsg('Alerta reprogramada.');
+      setPostponeTaskId(null);
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'No se pudo posponer la alerta.');
+      setErr(ex instanceof Error ? ex.message : 'No se pudo reprogramar la alerta.');
     }
   };
 
@@ -2559,6 +2571,44 @@ export function PetsSection() {
             </button>
           ))}
         </div>
+
+        {postponeTaskId && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center">
+            <div className="w-full max-w-sm rounded-t-3xl bg-white p-5 md:rounded-3xl">
+              <p className="mb-3 font-bold text-slate-900">Reprogramar alerta</p>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha</label>
+              <input
+                type="date"
+                value={postponeDate}
+                onChange={(e) => setPostponeDate(e.target.value)}
+                className="mb-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              />
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Hora</label>
+              <input
+                type="time"
+                value={postponeTime}
+                onChange={(e) => setPostponeTime(e.target.value)}
+                className="mb-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPostponeTaskId(null)}
+                  className="w-full rounded-full border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void doConfirmPostpone()}
+                  className="w-full rounded-full bg-emerald-500 py-3 text-sm font-bold text-white"
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {prevModal && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 md:items-center">

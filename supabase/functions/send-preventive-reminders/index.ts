@@ -22,6 +22,12 @@ interface UserRow {
   full_name: string | null;
 }
 
+interface CotutorRow {
+  name: string;
+  email: string;
+  whatsapp_phone: string | null;
+}
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
@@ -188,6 +194,23 @@ function maybeEmail(metadata: Record<string, unknown> | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// Cotutores activos del titular: reciben los mismos avisos que el, ademas del
+// destinatario propio de la tarea (notificationEmail/notificationPhone).
+async function fetchActiveCotutors(ownerUserId: string): Promise<CotutorRow[]> {
+  const { data, error } = await supabase
+    .from('pet_cotutors')
+    .select('name, email, whatsapp_phone')
+    .eq('owner_user_id', ownerUserId)
+    .eq('active', true);
+
+  if (error) {
+    console.error('fetchActiveCotutors error', error);
+    return [];
+  }
+
+  return (data ?? []) as CotutorRow[];
+}
+
 // Deriva un nombre "amigable" a partir de la parte local del email (lo que esta
 // antes de la arroba), para usar como nombre del tutor cuando no cargo full_name.
 function deriveNameFromEmail(email: string): string {
@@ -277,7 +300,7 @@ async function saveLog(args: {
         delivered_at: args.status === 'delivered' || args.status === 'read' ? new Date().toISOString() : null,
         last_status_at: new Date().toISOString(),
       },
-      { onConflict: 'task_id,channel,scheduled_date' },
+      { onConflict: 'task_id,channel,target,scheduled_date' },
     );
 
   if (error) {
@@ -446,15 +469,30 @@ Deno.serve(async (req) => {
 
       const messageText = `Recordatorio de ${petName}: ${task.title}. Vence el ${formattedDateTime}.${task.notes ? ` Nota: ${task.notes}` : ''}`;
 
+      // Cotutores activos del titular reciben el mismo aviso, ademas del
+      // destinatario propio de la tarea.
+      const cotutors = wantsEmail || wantsWhatsApp ? await fetchActiveCotutors((pet as PetRow).user_id) : [];
+
       if (wantsEmail) {
-        const claimed = await claimSlot(task.id, 'email', targetEmail, scheduledDate);
-        if (claimed) {
+        const emailTargets = new Map<string, string>();
+        emailTargets.set(targetEmail.toLowerCase(), ownerName);
+        for (const cotutor of cotutors) {
+          if (cotutor.email) {
+            emailTargets.set(cotutor.email.toLowerCase(), cotutor.name);
+          }
+        }
+
+        for (const [recipientEmail, recipientName] of emailTargets) {
+          const claimed = await claimSlot(task.id, 'email', recipientEmail, scheduledDate);
+          if (!claimed) {
+            continue;
+          }
           try {
             const response = await sendEmail(
-              targetEmail,
+              recipientEmail,
               `AiPetFriendly: recordatorio de ${petName}`,
               buildReminderEmailHtml({
-                ownerName,
+                ownerName: recipientName,
                 petName,
                 taskTitle: task.title,
                 scheduledDate: formattedDateTime,
@@ -466,7 +504,7 @@ Deno.serve(async (req) => {
             await saveLog({
               taskId: task.id,
               channel: 'email',
-              target: targetEmail,
+              target: recipientEmail,
               scheduledDate,
               status: 'sent',
               providerMessageId: response.id,
@@ -478,7 +516,7 @@ Deno.serve(async (req) => {
             await saveLog({
               taskId: task.id,
               channel: 'email',
-              target: targetEmail,
+              target: recipientEmail,
               scheduledDate,
               status: 'failed',
               providerResponse: reason,
@@ -490,13 +528,26 @@ Deno.serve(async (req) => {
       }
 
       if (wantsWhatsApp) {
-        const phone = maybePhone(metadata);
-        if (!phone) {
+        const ownerPhone = maybePhone(metadata);
+        const whatsappTargets = new Map<string, string>();
+        if (ownerPhone) {
+          whatsappTargets.set(ownerPhone, ownerName);
+        }
+        for (const cotutor of cotutors) {
+          if (cotutor.whatsapp_phone) {
+            whatsappTargets.set(cotutor.whatsapp_phone, cotutor.name);
+          }
+        }
+
+        if (whatsappTargets.size === 0) {
           failed += 1;
           failedDetails.push({ taskId: task.id, channel: 'whatsapp', reason: 'Missing notificationPhone in task metadata' });
         } else {
-          const claimed = await claimSlot(task.id, 'whatsapp', phone, scheduledDate);
-          if (claimed) {
+          for (const [phone, recipientName] of whatsappTargets) {
+            const claimed = await claimSlot(task.id, 'whatsapp', phone, scheduledDate);
+            if (!claimed) {
+              continue;
+            }
             try {
               const hasApprovedTemplate = TWILIO_WHATSAPP_CONTENT_SID.trim().length > 0;
               const response = await sendWhatsApp(phone, {
@@ -504,7 +555,7 @@ Deno.serve(async (req) => {
                 contentSid: hasApprovedTemplate ? TWILIO_WHATSAPP_CONTENT_SID : undefined,
                 contentVariables: hasApprovedTemplate
                   ? {
-                      '1': ownerName,
+                      '1': recipientName,
                       '2': petName,
                       '3': task.title,
                       '4': formattedDateTime,
