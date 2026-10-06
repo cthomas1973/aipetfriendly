@@ -1,6 +1,6 @@
 // api/cron/generate-blog-post.js
 //
-// Vercel Cron Job (ver "crons" en vercel.json) que corre cada 2 dias y
+// Vercel Cron Job (ver "crons" en vercel.json) que corre cada 4 dias y
 // genera automaticamente un BORRADOR para el blog "Tips del dia":
 //   1. Busca noticias recientes en SerpApi (Google News) sobre un subtema
 //      que rota evitando los usados en los ultimos 10 posts (ver pickTopic),
@@ -370,6 +370,17 @@ function parseArticleJson(rawText) {
   };
 }
 
+// Piso minimo de palabras antes de reintentar (un poco por debajo del
+// objetivo real de 650-850 para dejar margen): si la IA entrega menos que
+// esto, se reintenta una vez con un recordatorio explicito de longitud.
+// Ver diagnostico de rechazo de AdSense por "contenido de poco valor"
+// (posts reales salian de 250-540 palabras pese a pedir 650-850).
+const MIN_ARTICLE_WORD_COUNT = 550;
+
+function countWords(text) {
+  return String(text || '').split(/\s+/).filter(Boolean).length;
+}
+
 async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide) {
   const newsBlock = newsItems
     .map((item, index) => `${index + 1}. Titulo: ${item.title}\n   Resumen: ${item.snippet}\n   Fuente: ${item.source}`)
@@ -379,33 +390,55 @@ async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide)
     ? `Tenemos una guia propia relacionada llamada "${relatedGuide.title}". En el ultimo parrafo, despues de la sugerencia practica, sumá una recomendacion natural y breve invitando a leerla completa en AiPetFriendly (mencionando su titulo tal cual, sin inventar un link).`
     : '';
 
-  const prompt = [
-    'Sos una veterinaria influencer que escribe para el blog de AiPetFriendly, una app de cuidado de mascotas.',
-    `Tema del dia: ${topic}.`,
-    'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos (no tiene que ser literalmente sobre la noticia, podes usarla como disparador de una sugerencia practica).',
-    newsBlock,
-    '',
-    'Escribi un articulo original en espanol de entre 650 y 850 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Tiene que aportar informacion realmente util y especifica, no relleno.',
-    `Si encaja de forma natural con el tema, usa como ejemplo o protagonista de algun caso a un(a) ${petFocus} (sin forzarlo: si el tema no lo permite, mantene el articulo general para perros y gatos).`,
-    'Estructura obligatoria dentro del campo "content" (parrafos separados por linea en blanco, sin markdown ni titulos con #):',
-    '- Un parrafo de apertura enganchando con el tema.',
-    '- Dos o tres parrafos de desarrollo con contexto e informacion util y concreta (podes basarte en la noticia elegida).',
-    '- Tres parrafos cortos de sugerencias practicas y accionables, cada uno empezando exactamente con "Sugerencia 1:", "Sugerencia 2:" y "Sugerencia 3:" respectivamente, con una sugerencia distinta y especifica en cada uno (no repitas la misma idea con otras palabras). NUNCA uses la palabra "consejo"/"consejos", usa siempre "sugerencia"/"sugerencias".',
-    '- Un parrafo final que empiece exactamente con "💡 Para cerrar:" con una reflexion breve que cierre el tema.',
-    relatedGuideInstruction,
-    'NO incluyas el titulo ni una linea de "Visto en" dentro de "content" (eso se muestra aparte).',
-    `Evita por completo estas frases cliche: ${BANNED_CLICHES.join(', ')}.`,
-    'Separa los parrafos de "content" con una linea en blanco.',
-    '',
-    'Respondé UNICAMENTE con un JSON valido (sin texto extra antes ni despues), con esta forma exacta:',
-    '{"title": "...", "content": "...", "source_name": "...", "estimated_reading_time": 2}',
-    'Donde "source_name" es el medio de la noticia que elegiste (una de las 10 de arriba) y "estimated_reading_time" es un numero entero de minutos de lectura.',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const buildPrompt = (lengthReminder) =>
+    [
+      'Sos una veterinaria influencer que escribe para el blog de AiPetFriendly, una app de cuidado de mascotas.',
+      `Tema del dia: ${topic}.`,
+      'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos (no tiene que ser literalmente sobre la noticia, podes usarla como disparador de una sugerencia practica).',
+      newsBlock,
+      '',
+      'Escribi un articulo original en espanol de entre 650 y 850 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Tiene que aportar informacion realmente util y especifica, no relleno.',
+      lengthReminder,
+      `Si encaja de forma natural con el tema, usa como ejemplo o protagonista de algun caso a un(a) ${petFocus} (sin forzarlo: si el tema no lo permite, mantene el articulo general para perros y gatos).`,
+      'Estructura obligatoria dentro del campo "content" (parrafos separados por linea en blanco, sin markdown ni titulos con #):',
+      '- Un parrafo de apertura enganchando con el tema.',
+      '- Dos o tres parrafos de desarrollo con contexto e informacion util y concreta (podes basarte en la noticia elegida).',
+      '- Tres parrafos cortos de sugerencias practicas y accionables, cada uno empezando exactamente con "Sugerencia 1:", "Sugerencia 2:" y "Sugerencia 3:" respectivamente, con una sugerencia distinta y especifica en cada uno (no repitas la misma idea con otras palabras). NUNCA uses la palabra "consejo"/"consejos", usa siempre "sugerencia"/"sugerencias".',
+      '- Un parrafo final que empiece exactamente con "💡 Para cerrar:" con una reflexion breve que cierre el tema.',
+      relatedGuideInstruction,
+      'NO incluyas el titulo ni una linea de "Visto en" dentro de "content" (eso se muestra aparte).',
+      `Evita por completo estas frases cliche: ${BANNED_CLICHES.join(', ')}.`,
+      'Separa los parrafos de "content" con una linea en blanco.',
+      '',
+      'Respondé UNICAMENTE con un JSON valido (sin texto extra antes ni despues), con esta forma exacta:',
+      '{"title": "...", "content": "...", "source_name": "...", "estimated_reading_time": 2}',
+      'Donde "source_name" es el medio de la noticia que elegiste (una de las 10 de arriba) y "estimated_reading_time" es un numero entero de minutos de lectura.',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
-  const rawResponse = await callAiTextModel(prompt);
-  return parseArticleJson(rawResponse);
+  let article = parseArticleJson(await callAiTextModel(buildPrompt('')));
+  let wordCount = countWords(article.content);
+
+  if (wordCount < MIN_ARTICLE_WORD_COUNT) {
+    console.warn(
+      `generateArticleFromNews: primer intento con ${wordCount} palabras (minimo ${MIN_ARTICLE_WORD_COUNT}), reintentando con prompt reforzado.`
+    );
+    const reinforcedReminder = `IMPORTANTE: tu intento anterior tuvo apenas ${wordCount} palabras, muy por debajo de lo pedido. Esta vez desarrolla cada parrafo con mas detalle, ejemplos y contexto concreto hasta llegar SI O SI a al menos 650 palabras (idealmente hasta 850). No resumas ni acortes el contenido.`;
+    const retryArticle = parseArticleJson(await callAiTextModel(buildPrompt(reinforcedReminder)));
+    const retryWordCount = countWords(retryArticle.content);
+    if (retryWordCount > wordCount) {
+      article = retryArticle;
+      wordCount = retryWordCount;
+    }
+    if (wordCount < MIN_ARTICLE_WORD_COUNT) {
+      console.warn(
+        `generateArticleFromNews: tras el reintento el articulo sigue corto (${wordCount} palabras). Se guarda igual como borrador para revision manual.`
+      );
+    }
+  }
+
+  return article;
 }
 
 export async function generateArticleImage(title, topic, petFocus, extraInstructions) {
