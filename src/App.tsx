@@ -95,6 +95,7 @@ function shouldAutoStartAsGuest(): boolean {
 
   const path = window.location.pathname;
   const normalizedPath = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  const isRootRoute = normalizedPath === '/';
   const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
   const isBlogRoute = normalizedPath === '/blog' || normalizedPath.startsWith('/blog/');
   const isSocialLandingRoute = normalizedPath === '/social';
@@ -109,7 +110,8 @@ function shouldAutoStartAsGuest(): boolean {
   const hasPublicPlaceClaimRoute = Boolean(urlParams.get('place_claim'));
 
   return (
-    !isGuidesRoute
+    !isRootRoute
+    && !isGuidesRoute
     && !isBlogRoute
     && !isSocialLandingRoute
     && !isLoginRoute
