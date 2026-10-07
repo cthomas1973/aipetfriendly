@@ -1,6 +1,7 @@
 import {
   BadgeCheck,
   CalendarDays,
+  ClipboardList,
   Gift,
   MapPinned,
   MessageCircle,
@@ -73,6 +74,35 @@ const FEATURES: Array<{
   },
 ];
 
+// Pasos del bloque "¿Como funciona AiPetFriendly?", entre las funcionalidades
+// y el bloque de planes.
+const HOW_IT_WORKS_STEPS: Array<{
+  icon: typeof PawPrint;
+  title: string;
+  description: string;
+}> = [
+  {
+    icon: PawPrint,
+    title: 'Creá el perfil de tu mascota',
+    description: 'Registrá sus datos básicos para comenzar a organizar su cuidado.',
+  },
+  {
+    icon: ClipboardList,
+    title: 'Registrá sus cuidados',
+    description: 'Agregá vacunas, desparasitaciones, medicación, alimentación, peso y notas clínicas.',
+  },
+  {
+    icon: CalendarDays,
+    title: 'Consultá y organizá',
+    description: 'Usá la agenda, los recordatorios, el historial y las herramientas disponibles para mantener todo organizado.',
+  },
+  {
+    icon: MapPinned,
+    title: 'Cuidala estés donde estés',
+    description: 'Accedé a su información, consultá al asistente IA y encontrá veterinarias y lugares Pet Friendly cuando los necesites.',
+  },
+];
+
 export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionProps) {
   return (
     <section className="space-y-8 pb-6">
@@ -81,11 +111,11 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
           <PawPrint size={28} />
         </span>
         <h1 className="mt-4 text-2xl font-extrabold leading-tight md:text-4xl">
-          Cuidá a tu mascota con inteligencia artificial
+          Todo lo que necesitás para cuidar mejor a tu mascota, en un solo lugar
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm text-emerald-50 md:text-base">
-          AiPetFriendly te ayuda a organizar la salud de tu mascota: consultas de IA, agenda de
-          cuidados, historial clínico y veterinarias cercanas, todo en un solo lugar.
+          AiPetFriendly reúne herramientas para organizar la salud, alimentación y cuidados de tu
+          mascota, consultar información y encontrar veterinarias y lugares Pet Friendly.
         </p>
         <div className="mt-6 flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
           <button
@@ -110,6 +140,19 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
             👁️ Seguir como visitante
           </button>
         </div>
+      </div>
+
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
+        <h2 className="font-bold text-slate-900">¿Qué problema resolvemos?</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Cuando la información de una mascota queda repartida entre papeles, mensajes, recuerdos
+          y distintas aplicaciones, es fácil olvidar una vacuna, una medicación, una compra de
+          alimento o un dato importante de su salud.
+        </p>
+        <p className="mt-2 text-sm text-slate-600">
+          Con AiPetFriendly podés reunir esa información y organizar los principales cuidados de
+          tu mascota desde un mismo lugar.
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -144,6 +187,23 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
             </div>
           );
         })}
+      </div>
+
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
+        <h2 className="font-bold text-slate-900">¿Cómo funciona AiPetFriendly?</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {HOW_IT_WORKS_STEPS.map((step, index) => (
+            <div key={step.title} className="rounded-2xl bg-emerald-50/60 p-4 ring-1 ring-emerald-100">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <step.icon size={18} />
+              </span>
+              <h3 className="mt-3 text-sm font-bold text-slate-900">
+                {index + 1}. {step.title}
+              </h3>
+              <p className="mt-1 text-xs text-slate-600">{step.description}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
