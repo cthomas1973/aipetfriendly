@@ -204,6 +204,20 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
             </div>
           ))}
         </div>
+
+        <div className="mt-6 text-center">
+          <h3 className="font-bold text-slate-900">¿Querés conocer AiPetFriendly en detalle?</h3>
+          <p className="mt-2 text-sm text-slate-600">
+            Descubrí cómo funciona cada herramienta y cómo puede ayudarte a organizar el cuidado
+            de tu mascota.
+          </p>
+          <a
+            href="/como-funciona"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-full border-2 border-emerald-600 px-6 py-3 text-sm font-bold text-emerald-700 shadow transition hover:bg-emerald-50 md:text-base"
+          >
+            Conocé cómo funciona →
+          </a>
+        </div>
       </div>
 
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
