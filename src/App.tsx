@@ -17,6 +17,7 @@ import { AgendaSection } from './components/AgendaSection';
 import { AuthScreens } from './components/AuthScreens';
 import { BlogSection } from './components/BlogSection';
 import { ChatSection } from './components/ChatSection';
+import { HowItWorksSection } from './components/HowItWorksSection';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
@@ -100,6 +101,7 @@ function shouldAutoStartAsGuest(): boolean {
   const isBlogRoute = normalizedPath === '/blog' || normalizedPath.startsWith('/blog/');
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLoginRoute = normalizedPath === '/login';
+  const isHowItWorksRoute = normalizedPath === '/como-funciona';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
   const isPetPublicRoute = Boolean(getPetPublicCodeFromPath(normalizedPath)) || Boolean(getTagCodeFromPath(normalizedPath));
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -115,6 +117,7 @@ function shouldAutoStartAsGuest(): boolean {
     && !isBlogRoute
     && !isSocialLandingRoute
     && !isLoginRoute
+    && !isHowItWorksRoute
     && !isLegalRoute
     && !isPetPublicRoute
     && !isResetPasswordRoute
@@ -428,6 +431,7 @@ function AppContent() {
   const isSocialLandingRoute = normalizedPath === '/social';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
   const isLoginRoute = normalizedPath === '/login';
+  const isHowItWorksRoute = normalizedPath === '/como-funciona';
   const petPublicCode = getPetPublicCodeFromPath(normalizedPath);
   const tagCode = getTagCodeFromPath(normalizedPath);
   const isPetPublicRoute = Boolean(petPublicCode) || Boolean(tagCode);
@@ -436,7 +440,7 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isPetPublicRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isHowItWorksRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app se muestra tambien en /guias, /blog, las paginas
   // legales y la landing (con o sin login) para que se pueda navegar directo a
@@ -450,7 +454,7 @@ function AppContent() {
   // guardado para aplicarlo apenas cargue la app (mismo mecanismo que
   // POST_SIGNUP_TAB_KEY).
   const handleTabChange = (tab: AppTab) => {
-    if (isGuidesRoute || isBlogRoute || isLegalRoute) {
+    if (isGuidesRoute || isBlogRoute || isLegalRoute || isHowItWorksRoute) {
       window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
       window.location.href = '/';
       return;
@@ -671,6 +675,17 @@ function AppContent() {
 
     if (isLegalRoute) {
       return <PublicLegalPage route={normalizedPath} />;
+    }
+
+    if (isHowItWorksRoute && !showAuthGate) {
+      return (
+        <HowItWorksSection
+          onRegister={() => {
+            setAuthInitialMode('register');
+            setShowAuthGate(true);
+          }}
+        />
+      );
     }
 
     if (isSocialLandingRoute && !user && !showAuthGate) {
