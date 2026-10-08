@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, Clock, Newspaper } from 'lucide-react';
+import { Calendar, ChevronLeft, Clock, Newspaper } from 'lucide-react';
 import { AdBanner } from './AdBanner';
 import { PublicFooter } from './PublicLegalPages';
 import { RelatedLinksBlock } from './RelatedLinksBlock';
@@ -16,6 +16,10 @@ function setPageMeta(title: string, description: string) {
   if (metaDescription) {
     metaDescription.setAttribute('content', description);
   }
+}
+
+function formatPostDate(iso: string) {
+  return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 // El contenido del post viene como texto plano generado por IA (parrafos
@@ -86,8 +90,11 @@ function BlogList() {
         </a>
         <h1 className="text-2xl font-extrabold text-slate-900 md:text-3xl">Tips del día</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600 md:text-base">
-          Novedades cortas y consejos prácticos sobre el cuidado de perros y gatos, escritos por
-          nuestra IA a partir de fuentes reales y actualizadas.
+          Novedades cortas y consejos prácticos sobre el cuidado de perros y gatos.
+        </p>
+        <p className="mx-auto mt-1 max-w-xl text-xs text-slate-500 md:text-sm">
+          Contenido generado con asistencia de IA a partir de fuentes consultadas, revisado y
+          aprobado antes de su publicación.
         </p>
       </div>
 
@@ -123,6 +130,9 @@ function BlogList() {
               <Newspaper size={14} /> Última novedad · {latest.estimatedReadingTime} min de lectura
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-900">{latest.title}</h2>
+            <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-slate-400">
+              <Calendar size={12} /> {formatPostDate(latest.createdAt)}
+            </p>
           </div>
         </a>
       )}
@@ -148,6 +158,9 @@ function BlogList() {
                   <Clock size={12} /> {post.estimatedReadingTime} min
                 </p>
                 <h3 className="mt-1 font-bold text-slate-900">{post.title}</h3>
+                <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-slate-400">
+                  <Calendar size={12} /> {formatPostDate(post.createdAt)}
+                </p>
               </div>
             </a>
           ))}
@@ -222,6 +235,9 @@ function BlogDetail({ slug }: { slug: string }) {
           <Clock size={14} /> {post.estimatedReadingTime} min de lectura
         </p>
         <h1 className="mt-2 text-2xl font-extrabold text-slate-900 md:text-3xl">{post.title}</h1>
+        <p className="mt-2 flex flex-wrap items-center gap-1 text-xs font-medium text-slate-500">
+          <Calendar size={14} /> Publicado el {formatPostDate(post.createdAt)}
+        </p>
       </header>
 
       {post.imageUrl && (
