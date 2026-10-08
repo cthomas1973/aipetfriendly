@@ -13,6 +13,7 @@ import {
 import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
+import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
 
 interface FoodWeightLandingSectionProps {
   onRegister: () => void;
@@ -84,6 +85,8 @@ export function FoodWeightLandingSection({ onRegister }: FoodWeightLandingSectio
           </a>
         </div>
       </div>
+
+      <PublicLandingNav />
 
       {/* REGISTRA CADA COMPRA DE ALIMENTO */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-orange-100 md:p-6">
@@ -274,6 +277,8 @@ export function FoodWeightLandingSection({ onRegister }: FoodWeightLandingSectio
           </a>
         </div>
       </div>
+
+      <RelatedLinksSection links={[{ href: '/historial-clinico', label: 'Historial clínico' }]} />
 
       <BlogTeaser />
       <PetGuidesTeaser />

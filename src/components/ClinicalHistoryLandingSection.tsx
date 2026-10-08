@@ -16,6 +16,7 @@ import {
 import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
+import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
 
 interface ClinicalHistoryLandingSectionProps {
   onRegister: () => void;
@@ -102,6 +103,8 @@ export function ClinicalHistoryLandingSection({ onRegister }: ClinicalHistoryLan
           </a>
         </div>
       </div>
+
+      <PublicLandingNav />
 
       {/* QUE ES EL HISTORIAL CLINICO DIGITAL */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
@@ -275,6 +278,13 @@ export function ClinicalHistoryLandingSection({ onRegister }: ClinicalHistoryLan
           </button>
         </div>
       </div>
+
+      <RelatedLinksSection
+        links={[
+          { href: '/recordatorios', label: 'Recordatorios' },
+          { href: '/consultorio-ia', label: 'Asistente IA' },
+        ]}
+      />
 
       <BlogTeaser />
       <PetGuidesTeaser />

@@ -15,6 +15,7 @@ import {
 import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
+import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
 
 interface IdentificationLostPetLandingSectionProps {
   onRegister: () => void;
@@ -101,6 +102,8 @@ export function IdentificationLostPetLandingSection({ onRegister }: Identificati
           </a>
         </div>
       </div>
+
+      <PublicLandingNav />
 
       {/* EL PROBLEMA */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100 md:p-6">
@@ -408,6 +411,8 @@ export function IdentificationLostPetLandingSection({ onRegister }: Identificati
           </a>
         </div>
       </div>
+
+      <RelatedLinksSection links={[{ href: '/como-funciona', label: 'Cómo funciona AiPetFriendly' }]} />
 
       <BlogTeaser />
       <PetGuidesTeaser />

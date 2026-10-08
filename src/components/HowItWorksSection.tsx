@@ -19,6 +19,7 @@ import {
 import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
+import { PublicLandingNav } from './PublicLandingNav';
 
 interface HowItWorksSectionProps {
   onRegister: () => void;
@@ -157,6 +158,8 @@ export function HowItWorksSection({ onRegister }: HowItWorksSectionProps) {
           </a>
         </div>
       </div>
+
+      <PublicLandingNav />
 
       {/* QUE ES AIPETFRIENDLY */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">

@@ -21,6 +21,7 @@ import {
 import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
+import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
 
 interface PetFriendlyLandingSectionProps {
   onRegister: () => void;
@@ -101,6 +102,8 @@ export function PetFriendlyLandingSection({ onRegister }: PetFriendlyLandingSect
           </a>
         </div>
       </div>
+
+      <PublicLandingNav />
 
       {/* EL PROBLEMA */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-sky-100 md:p-6">
@@ -391,6 +394,8 @@ export function PetFriendlyLandingSection({ onRegister }: PetFriendlyLandingSect
           </a>
         </div>
       </div>
+
+      <RelatedLinksSection links={[{ href: '/veterinarias', label: 'Veterinarias cerca tuyo' }]} />
 
       <BlogTeaser />
       <PetGuidesTeaser />

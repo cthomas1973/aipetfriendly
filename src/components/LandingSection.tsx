@@ -11,6 +11,7 @@ import {
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { BlogTeaser } from './BlogTeaser';
 import { PublicFooter } from './PublicLegalPages';
+import { PublicLandingNav } from './PublicLandingNav';
 
 interface LandingSectionProps {
   onRegister: () => void;
@@ -141,6 +142,8 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
           </button>
         </div>
       </div>
+
+      <PublicLandingNav />
 
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
         <h2 className="font-bold text-slate-900">¿Qué problema resolvemos?</h2>
