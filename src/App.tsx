@@ -28,6 +28,7 @@ import { PetPublicProfileSection } from './components/PetPublicProfileSection';
 import { PublicLegalPage, isPublicLegalRoute } from './components/PublicLegalPages';
 import { RemindersLandingSection } from './components/RemindersLandingSection';
 import { FoodWeightLandingSection } from './components/FoodWeightLandingSection';
+import { AIAssistantLandingSection } from './components/AIAssistantLandingSection';
 import {
   OffersSection,
   PaywallCard,
@@ -108,6 +109,7 @@ function shouldAutoStartAsGuest(): boolean {
   const isClinicalHistoryRoute = normalizedPath === '/historial-clinico';
   const isRemindersRoute = normalizedPath === '/recordatorios';
   const isFoodWeightRoute = normalizedPath === '/alimentacion-y-peso';
+  const isAIAssistantRoute = normalizedPath === '/consultorio-ia';
   const isLegalRoute = isPublicLegalRoute(normalizedPath);
   const isPetPublicRoute = Boolean(getPetPublicCodeFromPath(normalizedPath)) || Boolean(getTagCodeFromPath(normalizedPath));
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -127,6 +129,7 @@ function shouldAutoStartAsGuest(): boolean {
     && !isClinicalHistoryRoute
     && !isRemindersRoute
     && !isFoodWeightRoute
+    && !isAIAssistantRoute
     && !isLegalRoute
     && !isPetPublicRoute
     && !isResetPasswordRoute
@@ -444,6 +447,7 @@ function AppContent() {
   const isClinicalHistoryRoute = normalizedPath === '/historial-clinico';
   const isRemindersRoute = normalizedPath === '/recordatorios';
   const isFoodWeightRoute = normalizedPath === '/alimentacion-y-peso';
+  const isAIAssistantRoute = normalizedPath === '/consultorio-ia';
   const petPublicCode = getPetPublicCodeFromPath(normalizedPath);
   const tagCode = getTagCodeFromPath(normalizedPath);
   const isPetPublicRoute = Boolean(petPublicCode) || Boolean(tagCode);
@@ -452,7 +456,7 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isHowItWorksRoute && !isClinicalHistoryRoute && !isRemindersRoute && !isFoodWeightRoute && !isPetPublicRoute;
+  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isHowItWorksRoute && !isClinicalHistoryRoute && !isRemindersRoute && !isFoodWeightRoute && !isAIAssistantRoute && !isPetPublicRoute;
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app se muestra tambien en /guias, /blog, las paginas
   // legales y la landing (con o sin login) para que se pueda navegar directo a
@@ -466,7 +470,7 @@ function AppContent() {
   // guardado para aplicarlo apenas cargue la app (mismo mecanismo que
   // POST_SIGNUP_TAB_KEY).
   const handleTabChange = (tab: AppTab) => {
-    if (isGuidesRoute || isBlogRoute || isLegalRoute || isHowItWorksRoute || isClinicalHistoryRoute || isRemindersRoute || isFoodWeightRoute) {
+    if (isGuidesRoute || isBlogRoute || isLegalRoute || isHowItWorksRoute || isClinicalHistoryRoute || isRemindersRoute || isFoodWeightRoute || isAIAssistantRoute) {
       window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
       window.location.href = '/';
       return;
@@ -725,6 +729,17 @@ function AppContent() {
     if (isFoodWeightRoute && !showAuthGate) {
       return (
         <FoodWeightLandingSection
+          onRegister={() => {
+            setAuthInitialMode('register');
+            setShowAuthGate(true);
+          }}
+        />
+      );
+    }
+
+    if (isAIAssistantRoute && !showAuthGate) {
+      return (
+        <AIAssistantLandingSection
           onRegister={() => {
             setAuthInitialMode('register');
             setShowAuthGate(true);
