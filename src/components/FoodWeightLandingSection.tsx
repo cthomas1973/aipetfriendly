@@ -14,20 +14,10 @@ import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface FoodWeightLandingSectionProps {
   onRegister: () => void;
-}
-
-// Mismo patron que HowItWorksSection.tsx/ClinicalHistoryLandingSection.tsx/RemindersLandingSection.tsx:
-// cada pagina publica actualiza su propio title/description para que buscadores
-// y el crawler de AdSense vean contenido distinto por URL.
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
 }
 
 const PURCHASE_FIELDS = [
@@ -52,6 +42,7 @@ export function FoodWeightLandingSection({ onRegister }: FoodWeightLandingSectio
     setPageMeta(
       'Alimentación y peso de tu mascota | AiPetFriendly',
       'Registrá compras de alimento, estimá el consumo, seguí la evolución del peso y recibí orientación ante cambios significativos, todo desde AiPetFriendly.',
+      '/alimentacion-y-peso',
     );
   }, []);
 

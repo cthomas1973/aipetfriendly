@@ -24,6 +24,7 @@ import {
   type PetGuidePetType,
 } from '../data/petGuides';
 import { PublicFooter } from './PublicLegalPages';
+import { setNotFoundPageMeta, setPageMeta } from '../lib/pageMeta';
 
 const CATEGORY_ICONS: Record<PetGuideCategory, typeof PawPrint> = {
   adiestramiento: Target,
@@ -49,14 +50,6 @@ const PET_TYPE_FILTERS: Array<{ value: PetGuidePetType | 'todas'; label: string 
 const SITE_DESCRIPTION_DEFAULT =
   'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
 
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
-}
-
 function GuidesList() {
   const { user } = useAppState();
   const isAdmin = Boolean(user?.isAdmin);
@@ -67,6 +60,7 @@ function GuidesList() {
     setPageMeta(
       'Guías y consejos para el cuidado de tu mascota | AiPetFriendly',
       'Guías gratuitas sobre adiestramiento, ansiedad, conducta y salud de perros y gatos, escritas para ayudarte en el día a día con tu mascota.',
+      '/guias',
     );
   }, []);
 
@@ -193,11 +187,13 @@ function GuideDetail({ slug }: { slug: string }) {
 
   useEffect(() => {
     if (guide) {
-      setPageMeta(`${guide.title} | AiPetFriendly`, guide.summary);
+      setPageMeta(`${guide.title} | AiPetFriendly`, guide.summary, `/guias/${slug}`);
     } else {
-      setPageMeta('Guía no encontrada | AiPetFriendly', SITE_DESCRIPTION_DEFAULT);
+      // No inventamos un canonical de contenido para un slug inexistente:
+      // noindex y sin canonical, igual que en BlogSection.tsx.
+      setNotFoundPageMeta('Guía no encontrada | AiPetFriendly', SITE_DESCRIPTION_DEFAULT);
     }
-  }, [guide]);
+  }, [guide, slug]);
 
   if (!guide) {
     return (

@@ -2912,7 +2912,15 @@ export async function fetchBlogPostBySlug(slug: string): Promise<BlogPost | null
   }
 
   const row = Array.isArray(data) ? data[0] : data;
-  return row ? mapBlogPostRow(row) : null;
+  // get_blog_post_by_slug() devuelve public.blog_posts (una sola fila, no
+  // SETOF). Cuando el slug no matchea ningun post publicado, Postgres/PostgREST
+  // serializa esto como un objeto con TODOS los campos en null (no como JSON
+  // null), por eso no alcanza con `row ? ... : null`: hay que chequear que la
+  // fila tenga un id real para saber si el post existe de verdad.
+  if (!row || row.id == null) {
+    return null;
+  }
+  return mapBlogPostRow(row);
 }
 
 // Admin: ve todos los posts (draft y published) para revisarlos antes de publicar.

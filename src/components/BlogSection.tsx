@@ -5,28 +5,32 @@ import { PublicFooter } from './PublicLegalPages';
 import { RelatedLinksBlock } from './RelatedLinksBlock';
 import { useAppState } from '../context/AppStateContext';
 import { fetchBlogPostBySlug, fetchBlogPosts } from '../lib/supabase';
+import { setNotFoundPageMeta, setPageMeta } from '../lib/pageMeta';
 import type { BlogPost } from '../types';
 
 const SITE_DESCRIPTION_DEFAULT =
   'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
 
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
-}
-
 function formatPostDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// Un post "usable" tiene que tener contenido real. fetchBlogPostBySlug ya
+// devuelve null cuando el slug no existe, pero esto queda ademas como
+// resguardo explicito (no solo ocultar el error) ante cualquier fila
+// incompleta/malformada que llegue por otra via.
+function isUsablePost(value: BlogPost | null | undefined): value is BlogPost {
+  return Boolean(value && value.id && typeof value.content === 'string');
 }
 
 // El contenido del post viene como texto plano generado por IA (parrafos
 // separados por linea en blanco, ver api/cron/generate-blog-post.js). Lo
 // separamos en parrafos para poder darle el mismo espaciado que las guias,
 // sin depender de que el modelo devuelva HTML/markdown.
-function renderContentParagraphs(content: string) {
+function renderContentParagraphs(content: string | null | undefined) {
+  if (!content) {
+    return null;
+  }
   return content
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
@@ -57,6 +61,7 @@ function BlogList() {
     setPageMeta(
       'Blog: tips diarios para el cuidado de tu mascota | AiPetFriendly',
       'Novedades y consejos prácticos sobre salud, alimentación y bienestar de perros y gatos, actualizados todos los días.',
+      '/blog',
     );
   }, []);
 
@@ -195,12 +200,14 @@ function BlogDetail({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => {
-    if (post) {
-      setPageMeta(`${post.title} | AiPetFriendly`, post.content.slice(0, 150));
-    } else if (post === null) {
-      setPageMeta('Post no encontrado | AiPetFriendly', SITE_DESCRIPTION_DEFAULT);
+    if (isUsablePost(post)) {
+      setPageMeta(`${post.title} | AiPetFriendly`, post.content.slice(0, 150), `/blog/${slug}`);
+    } else if (post !== undefined) {
+      // Slug sin post publicado valido (no existe o la fila llego incompleta):
+      // noindex y sin canonical, no inventamos una URL de contenido valido.
+      setNotFoundPageMeta('Articulo no encontrado | AiPetFriendly', SITE_DESCRIPTION_DEFAULT);
     }
-  }, [post]);
+  }, [post, slug]);
 
   if (post === undefined) {
     return (
@@ -210,10 +217,10 @@ function BlogDetail({ slug }: { slug: string }) {
     );
   }
 
-  if (post === null) {
+  if (!isUsablePost(post)) {
     return (
       <section className="space-y-4 pb-6 text-center">
-        <p className="text-sm text-slate-600">No encontramos este post.</p>
+        <p className="text-sm text-slate-600">No encontramos este artículo.</p>
         <a href="/blog" className="text-sm font-semibold text-emerald-700 hover:underline">
           Ver todo el blog
         </a>

@@ -8,10 +8,12 @@ import {
   PawPrint,
   ShieldCheck,
 } from 'lucide-react';
+import { useEffect } from 'react';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { BlogTeaser } from './BlogTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface LandingSectionProps {
   onRegister: () => void;
@@ -105,6 +107,17 @@ const HOW_IT_WORKS_STEPS: Array<{
 ];
 
 export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionProps) {
+  // Restaura el title/description/canonical de la home: si se llega aca
+  // navegando desde otra pagina publica (SPA, sin recarga), esos valores
+  // quedarian con los de la pagina anterior si no se resetean aca.
+  useEffect(() => {
+    setPageMeta(
+      'AiPetFriendly - Cuidado inteligente para tu mascota',
+      'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.',
+      '/',
+    );
+  }, []);
+
   return (
     <section className="space-y-8 pb-6">
       <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-center text-white shadow-md md:p-10">

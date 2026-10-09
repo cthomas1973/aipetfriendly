@@ -20,20 +20,10 @@ import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface HowItWorksSectionProps {
   onRegister: () => void;
-}
-
-// Mismo patron que BlogSection.tsx/PetGuidesSection.tsx/PublicLegalPages.tsx:
-// cada pagina publica actualiza su propio title/description para que buscadores
-// y el crawler de AdSense vean contenido distinto por URL.
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
 }
 
 const HOW_IT_WORKS_STEPS: Array<{
@@ -125,6 +115,7 @@ export function HowItWorksSection({ onRegister }: HowItWorksSectionProps) {
     setPageMeta(
       'AiPetFriendly | Cómo funciona',
       'Conocé cómo funciona AiPetFriendly y cómo podés organizar la salud, los cuidados, la alimentación, la identificación y la vida cotidiana de tu mascota desde un solo lugar.',
+      '/como-funciona',
     );
   }, []);
 

@@ -22,21 +22,10 @@ import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface PetFriendlyLandingSectionProps {
   onRegister: () => void;
-}
-
-// Mismo patron que HowItWorksSection.tsx/ClinicalHistoryLandingSection.tsx/RemindersLandingSection.tsx/
-// FoodWeightLandingSection.tsx/AIAssistantLandingSection.tsx/IdentificationLostPetLandingSection.tsx/
-// VeterinaryLandingSection.tsx: cada pagina publica actualiza su propio title/description para que
-// buscadores y el crawler de AdSense vean contenido distinto por URL.
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
 }
 
 const HOW_IT_WORKS_STEPS = [
@@ -69,6 +58,7 @@ export function PetFriendlyLandingSection({ onRegister }: PetFriendlyLandingSect
     setPageMeta(
       'Lugares Pet Friendly cerca tuyo | AiPetFriendly',
       'Buscá restaurantes, bares, hoteles y otros lugares pet friendly cerca tuyo utilizando tu ubicación o una dirección, y consultá los resultados en mapa y listado con AiPetFriendly.',
+      '/pet-friendly',
     );
   }, []);
 

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Facebook, Instagram, Youtube } from 'lucide-react';
 import type { ComponentType } from 'react';
+import { setPageMeta } from '../lib/pageMeta';
 
 type PublicLegalRoute = '/privacidad' | '/terminos' | '/contacto' | '/sobre-nosotros';
 
@@ -9,13 +10,6 @@ type IconProps = { size?: number | string; className?: string };
 // Mismo patron que BlogSection.tsx/PetGuidesSection.tsx: cada pagina publica
 // actualiza su propio title/description para que buscadores y el crawler de
 // AdSense vean contenido distinto por URL (no siempre el generico de index.html).
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
-}
 
 function TikTokIcon({ size = 20, className }: IconProps) {
   return (
@@ -86,6 +80,7 @@ function PrivacyPage() {
     setPageMeta(
       'Politica de privacidad | AiPetFriendly',
       'Como AiPetFriendly recolecta, usa y protege los datos personales de sus usuarios y de sus mascotas.',
+      '/privacidad',
     );
   }, []);
 
@@ -177,6 +172,7 @@ function TermsPage() {
     setPageMeta(
       'Terminos y aviso legal | AiPetFriendly',
       'Condiciones de uso de AiPetFriendly: alcance del servicio, suscripcion Premium, responsabilidad y datos del titular del sitio.',
+      '/terminos',
     );
   }, []);
 
@@ -271,6 +267,7 @@ function ContactPage() {
     setPageMeta(
       'Contacto | AiPetFriendly',
       'Como contactar al equipo de AiPetFriendly por consultas, sugerencias o temas comerciales.',
+      '/contacto',
     );
   }, []);
 
@@ -305,6 +302,7 @@ function AboutPage() {
     setPageMeta(
       'Sobre nosotros | AiPetFriendly',
       'Quienes hacemos AiPetFriendly: una app para el cuidado de perros y gatos con consultorio de IA, agenda de cuidados, historial clinico y guias.',
+      '/sobre-nosotros',
     );
   }, []);
 

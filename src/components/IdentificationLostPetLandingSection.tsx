@@ -16,20 +16,10 @@ import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface IdentificationLostPetLandingSectionProps {
   onRegister: () => void;
-}
-
-// Mismo patron que HowItWorksSection.tsx/ClinicalHistoryLandingSection.tsx/RemindersLandingSection.tsx/
-// FoodWeightLandingSection.tsx/AIAssistantLandingSection.tsx: cada pagina publica actualiza su propio
-// title/description para que buscadores y el crawler de AdSense vean contenido distinto por URL.
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
 }
 
 const HOW_IT_WORKS_STEPS = [
@@ -69,6 +59,7 @@ export function IdentificationLostPetLandingSection({ onRegister }: Identificati
     setPageMeta(
       'Identificación QR y mascota perdida | AiPetFriendly',
       'Identificá a tu mascota con un QR y facilitá que puedan avisarte si la encuentran, sin exponer públicamente tu teléfono ni email.',
+      '/identificacion-y-mascota-perdida',
     );
   }, []);
 

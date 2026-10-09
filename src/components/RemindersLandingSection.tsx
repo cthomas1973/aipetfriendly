@@ -21,20 +21,10 @@ import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface RemindersLandingSectionProps {
   onRegister: () => void;
-}
-
-// Mismo patron que HowItWorksSection.tsx/ClinicalHistoryLandingSection.tsx:
-// cada pagina publica actualiza su propio title/description para que buscadores
-// y el crawler de AdSense vean contenido distinto por URL.
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
 }
 
 const CARE_CATEGORIES: Array<{
@@ -89,6 +79,7 @@ export function RemindersLandingSection({ onRegister }: RemindersLandingSectionP
     setPageMeta(
       'AiPetFriendly | Recordatorios para el cuidado de tu mascota',
       'Organizá vacunas, desparasitaciones, medicación, turnos y otros cuidados de tu mascota con la agenda y los recordatorios de AiPetFriendly.',
+      '/recordatorios',
     );
   }, []);
 

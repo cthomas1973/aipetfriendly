@@ -13,20 +13,10 @@ import { BlogTeaser } from './BlogTeaser';
 import { PetGuidesTeaser } from './PetGuidesTeaser';
 import { PublicFooter } from './PublicLegalPages';
 import { PublicLandingNav, RelatedLinksSection } from './PublicLandingNav';
+import { setPageMeta } from '../lib/pageMeta';
 
 interface AIAssistantLandingSectionProps {
   onRegister: () => void;
-}
-
-// Mismo patron que HowItWorksSection.tsx/ClinicalHistoryLandingSection.tsx/RemindersLandingSection.tsx/FoodWeightLandingSection.tsx:
-// cada pagina publica actualiza su propio title/description para que buscadores
-// y el crawler de AdSense vean contenido distinto por URL.
-function setPageMeta(title: string, description: string) {
-  document.title = title;
-  const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-  if (metaDescription) {
-    metaDescription.setAttribute('content', description);
-  }
 }
 
 const HOW_IT_WORKS_STEPS = [
@@ -72,6 +62,7 @@ export function AIAssistantLandingSection({ onRegister }: AIAssistantLandingSect
     setPageMeta(
       'Asistente IA para el cuidado de tu mascota | AiPetFriendly',
       'Consultá sobre el cuidado de tu mascota y recibí orientación mediante IA utilizando información de su perfil, historial reciente y cuidados registrados.',
+      '/consultorio-ia',
     );
   }, []);
 
