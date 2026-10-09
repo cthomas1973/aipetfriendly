@@ -212,8 +212,9 @@ function TermsPage() {
           <p className="mt-1 text-sm text-slate-700">
             AiPetFriendly ofrece un plan gratuito con funciones limitadas y un plan Premium pago,
             gestionado a traves de Mercado Pago. La suscripcion se renueva automaticamente segun el
-            ciclo contratado y puede cancelarse en cualquier momento desde la seccion de suscripcion;
-            la cancelacion aplica al proximo ciclo de facturacion.
+            ciclo contratado y puede cancelarse en cualquier momento desde Mercado Pago (seccion
+            "Suscripciones" de tu cuenta de Mercado Pago); la cancelacion aplica al proximo ciclo de
+            facturacion.
           </p>
         </div>
 
@@ -238,9 +239,8 @@ function TermsPage() {
           <h2 className="font-bold text-slate-900">6. Baja de cuenta</h2>
           <p className="mt-1 text-sm text-slate-700">
             Podes eliminar tu cuenta y tus datos en cualquier momento escribiendonos a
-            contacto@aipetfriendly.ar. La eliminacion de la suscripcion Premium no cancela
-            automaticamente el cobro en Mercado Pago; ese paso debe hacerse desde la app o desde
-            Mercado Pago.
+            contacto@aipetfriendly.ar. La eliminacion de la cuenta no cancela automaticamente el
+            cobro en Mercado Pago; esa cancelacion debe hacerse directamente desde Mercado Pago.
           </p>
         </div>
 
@@ -345,8 +345,9 @@ function AboutPage() {
           <h2 className="font-bold text-slate-900">Nuestro compromiso</h2>
           <p className="mt-1 text-sm text-slate-700">
             Buscamos que la informacion sea clara, practica y util para el dia a dia con tu mascota,
-            y seguir sumando funciones (como chapitas con codigo QR y perfiles publicos para mascotas
-            perdidas) que resuelvan problemas reales de duenios de perros y gatos.
+            con funciones como la identificacion por chapitas con codigo QR y perfiles publicos para
+            mascotas perdidas, y seguimos sumando herramientas que resuelvan problemas reales de
+            duenios de perros y gatos.
           </p>
         </div>
 
