@@ -44,13 +44,13 @@ import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { getSupabaseAdminClient, sendJson, isAuthorizedCronRequest, uploadSocialDraftMedia, buildBrandingLayers } from './generate-blog-post.js';
-import { pickKenBurnsEffect, buildKenBurnsBackgroundFilter } from './ken-burns-effects.js';
+import { pickKenBurnsEffect, buildKenBurnsBackgroundFilter } from './_ken-burns-effects.js';
 import {
   generateReelHookScript,
   generateVoiceOverAudio,
   transcribeAudioWithWordTimestamps,
   generateReelVideoWithAudioAndCaptions,
-} from './social-video-audio-captions.js';
+} from './_social-video-audio-captions.js';
 
 const execFileAsync = promisify(execFile);
 

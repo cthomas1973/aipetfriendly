@@ -32,7 +32,7 @@ import {
   generateVoiceOverAudio,
   transcribeAudioWithWordTimestamps,
   generateReelVideoWithAudioAndCaptions,
-} from '../cron/social-video-audio-captions.js';
+} from '../cron/_social-video-audio-captions.js';
 
 export const config = { maxDuration: 60 };
 

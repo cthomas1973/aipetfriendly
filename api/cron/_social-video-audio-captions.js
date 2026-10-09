@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import { TITLE_FONT_PATH, TITLE_FONT_FAMILY, callAiTextModel } from './generate-blog-post.js';
-import { pickKenBurnsEffect, buildKenBurnsBackgroundFilter } from './ken-burns-effects.js';
+import { pickKenBurnsEffect, buildKenBurnsBackgroundFilter } from './_ken-burns-effects.js';
 
 const execFileAsync = promisify(execFile);
 
