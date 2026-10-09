@@ -23,16 +23,21 @@
 //      mucho tiempo y este cron ya gasta su presupuesto en SerpApi/IA texto/
 //      IA imagen): lo genera un segundo cron, ver generate-blog-social-video.js.
 //
-// Seguridad: si existe la variable de entorno CRON_SECRET, se exige el header
-// "Authorization: Bearer <CRON_SECRET>" (Vercel Cron lo envia automaticamente
-// cuando esa variable esta configurada en el proyecto). Sin esa variable, el
-// endpoint queda abierto solo a llamadas GET (pensado para probarlo a mano
-// mientras se configura, pero se recomienda definir CRON_SECRET en produccion).
+// Seguridad: Vercel Cron invoca este endpoint con el header
+// "Authorization: Bearer <CRON_SECRET>" automaticamente, pero SOLO si la
+// variable de entorno CRON_SECRET esta configurada en el proyecto (Preview y
+// Production son scopes separados en Vercel, hay que cargarla en ambos). Ver
+// https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs.
+// getCronAuthStatus() EXIGE que CRON_SECRET este configurado: si falta, el
+// endpoint se rechaza (503) ANTES de tocar Supabase/SerpApi/IA. No existe
+// ningun modo "abierto"/sin autenticacion, ni siquiera para pruebas manuales
+// (ver handler() mas abajo).
 
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 // SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
@@ -125,17 +130,30 @@ export function sendJson(res, status, payload) {
   res.status(status).json(payload);
 }
 
-export function isAuthorizedCronRequest(req) {
-  const secret = process.env.CRON_SECRET || '';
-  if (!secret) {
-    // Sin CRON_SECRET configurado no podemos validar el origen: se permite
-    // igual (util mientras se prueba a mano) pero se loguea la advertencia.
-    console.warn('CRON_SECRET no configurado: el endpoint de cron queda sin autenticacion.');
-    return true;
+// Comparacion de tiempo constante para el token: evita que un atacante pueda
+// medir microdiferencias de timing para adivinar el secreto caracter a
+// caracter (timing attack). Si las longitudes difieren igual se hace una
+// comparacion dummy (contra si mismo) para no filtrar la longitud por timing.
+function timingSafeEqualStrings(a, b) {
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  if (bufA.length !== bufB.length) {
+    crypto.timingSafeEqual(bufA, bufA);
+    return false;
   }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
+// Devuelve 'missing_secret' (CRON_SECRET no configurado: rechazar siempre),
+// 'unauthorized' (configurado pero el header no matchea) u 'ok'.
+export function getCronAuthStatus(req) {
+  const secret = (process.env.CRON_SECRET || '').trim();
+  if (!secret) {
+    return 'missing_secret';
+  }
   const authHeader = req.headers.authorization || req.headers.Authorization || '';
-  return authHeader === `Bearer ${secret}`;
+  const expected = `Bearer ${secret}`;
+  return timingSafeEqualStrings(authHeader, expected) ? 'ok' : 'unauthorized';
 }
 
 function pickRandom(list) {
@@ -886,7 +904,12 @@ export default async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
 
-  if (!isAuthorizedCronRequest(req)) {
+  const authStatus = getCronAuthStatus(req);
+  if (authStatus === 'missing_secret') {
+    console.error('generate-blog-post: CRON_SECRET no esta configurado. Se rechaza la ejecucion por seguridad (no hay modo sin autenticacion).');
+    return sendJson(res, 503, { error: 'Cron no configurado: falta la variable de entorno CRON_SECRET.' });
+  }
+  if (authStatus !== 'ok') {
     return sendJson(res, 401, { error: 'Unauthorized' });
   }
 

@@ -34,7 +34,8 @@
 // borrador antes de que este cron corra, se deja intacto (no se pisa una
 // decision ya tomada).
 //
-// Misma autenticacion que generate-blog-post.js (CRON_SECRET opcional).
+// Misma autenticacion obligatoria que generate-blog-post.js: si CRON_SECRET
+// no esta configurado, el endpoint se rechaza (503) en vez de quedar abierto.
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -43,7 +44,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
-import { getSupabaseAdminClient, sendJson, isAuthorizedCronRequest, uploadSocialDraftMedia, buildBrandingLayers } from './generate-blog-post.js';
+import { getSupabaseAdminClient, sendJson, getCronAuthStatus, uploadSocialDraftMedia, buildBrandingLayers } from './generate-blog-post.js';
 import { pickKenBurnsEffect, buildKenBurnsBackgroundFilter } from './_ken-burns-effects.js';
 import {
   generateReelHookScript,
@@ -332,7 +333,12 @@ export default async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
 
-  if (!isAuthorizedCronRequest(req)) {
+  const authStatus = getCronAuthStatus(req);
+  if (authStatus === 'missing_secret') {
+    console.error('generate-blog-social-video: CRON_SECRET no esta configurado. Se rechaza la ejecucion por seguridad (no hay modo sin autenticacion).');
+    return sendJson(res, 503, { error: 'Cron no configurado: falta la variable de entorno CRON_SECRET.' });
+  }
+  if (authStatus !== 'ok') {
     return sendJson(res, 401, { error: 'Unauthorized' });
   }
 
