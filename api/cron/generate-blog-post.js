@@ -8,12 +8,22 @@
 //      mismo eje (ej. alimentacion).
 //   2. Le pide a la IA (mismo proveedor que el consultorio, ver AI_API_KEY /
 //      AI_MODEL / AI_BASE_URL) que elija la mejor noticia y redacte un
-//      articulo corto en tono "influencer veterinario", usando como ejemplo
-//      una especie/raza (ver pickPetFocus) que tampoco se haya repetido en
-//      los ultimos 10 posts.
+//      articulo en tono "veterinaria influencer" siguiendo una estructura
+//      editorial fija (apertura, desarrollo con subtitulos, recomendaciones
+//      practicas, ejemplo/recurso/errores frecuentes cuando correspondan,
+//      preguntas frecuentes y cierre con accion concreta -- ver el prompt en
+//      generateArticleFromNews para el detalle completo), usando como
+//      ejemplo una especie/raza (ver pickPetFocus) que tampoco se haya
+//      repetido en los ultimos 10 posts. Si el primer intento queda corto en
+//      palabras Y todavia queda presupuesto de tiempo (ver
+//      RETRY_TEXT_BUDGET_MS/deadlineAt), se reintenta una vez con un
+//      recordatorio reforzado.
 //   3. Genera una imagen con DALL-E (mismo AI_API_KEY) protagonizada por esa
 //      misma especie/raza, coherente con el tema del articulo, y la sube a
-//      Supabase Storage (bucket "blog-images", publico).
+//      Supabase Storage (bucket "blog-images", publico). Se saltea si no
+//      queda presupuesto de tiempo suficiente antes del deadline del cron
+//      (ver IMAGE_BUDGET_MS): el post se guarda igual sin imagen, y se puede
+//      generar despues a mano con api/admin/regenerate-blog-post-image.js.
 //   4. Inserta el post en la tabla blog_posts (ver migraciones 041 y 050)
 //      con status='draft': NO se publica solo. Un admin lo revisa/edita y lo
 //      aprueba desde el panel Admin > Blog (ver migracion 042 y
@@ -389,44 +399,83 @@ function parseArticleJson(rawText) {
 }
 
 // Piso minimo de palabras antes de reintentar (un poco por debajo del
-// objetivo real de 650-850 para dejar margen): si la IA entrega menos que
-// esto, se reintenta una vez con un recordatorio explicito de longitud.
+// objetivo orientativo de 650-850 para dejar margen): si la IA entrega menos
+// que esto, se reintenta una vez con un recordatorio explicito de longitud.
 // Ver diagnostico de rechazo de AdSense por "contenido de poco valor"
-// (posts reales salian de 250-540 palabras pese a pedir 650-850).
+// (posts reales salian de 250-540 palabras pese a pedir 650-850). Es un
+// objetivo orientativo, NUNCA una excusa para agregar relleno: el prompt le
+// pide explicitamente a la IA que prefiera un articulo mas corto pero solido
+// antes que uno largo y vacio.
 const MIN_ARTICLE_WORD_COUNT = 550;
 
-function countWords(text) {
+// Presupuesto de tiempo (ms) que se le reserva al reintento por longitud de
+// texto antes de intentarlo. El cron tiene un limite duro de
+// config.maxDuration (60s, el maximo del plan Hobby de Vercel). Una corrida
+// real (ver PASO 15/16) mostro que 2 llamadas de texto seguidas + la
+// generacion de imagen pueden agotar ese presupuesto y tirar un timeout a
+// mitad de la imagen. Para no empeorar eso al pedirle mas estructura al
+// articulo, el reintento por palabras de menos SOLO se intenta si todavia
+// queda tiempo de sobra antes del deadline (ver generateArticleFromNews y
+// el handler, que calcula `deadlineAt`). Si no alcanza, se guarda el primer
+// intento igual como borrador (el admin puede revisarlo/editarlo a mano).
+const RETRY_TEXT_BUDGET_MS = 15000;
+
+// Mismo criterio que RETRY_TEXT_BUDGET_MS pero para la generacion de imagen
+// (ver handler): si no queda presupuesto suficiente antes del deadline, se
+// saltea la imagen en vez de arriesgar el timeout del cron entero (el post
+// ya se guarda sin imagen hoy ante errores de la API de imagenes; esto
+// extiende la misma logica de "fallback sin imagen" al caso de falta de
+// tiempo). El admin puede generarla despues a mano con
+// api/admin/regenerate-blog-post-image.js.
+const IMAGE_BUDGET_MS = 25000;
+
+export function countWords(text) {
   return String(text || '').split(/\s+/).filter(Boolean).length;
 }
 
-async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide) {
+// deadlineAt (opcional): timestamp (Date.now()) limite para no arriesgar el
+// timeout del cron (ver handler). Si no se pasa (por ejemplo, llamadas desde
+// otros scripts/tests), el reintento por longitud se intenta siempre, igual
+// que antes.
+export async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide, deadlineAt) {
   const newsBlock = newsItems
     .map((item, index) => `${index + 1}. Titulo: ${item.title}\n   Resumen: ${item.snippet}\n   Fuente: ${item.source}`)
     .join('\n');
 
   const relatedGuideInstruction = relatedGuide
-    ? `Tenemos una guia propia relacionada llamada "${relatedGuide.title}". En el ultimo parrafo, despues de la sugerencia practica, sumá una recomendacion natural y breve invitando a leerla completa en AiPetFriendly (mencionando su titulo tal cual, sin inventar un link).`
+    ? `Tenemos una guia propia relacionada llamada "${relatedGuide.title}". En el parrafo de cierre, despues de la accion concreta, sumá una recomendacion natural y breve invitando a leerla completa en AiPetFriendly (mencionando su titulo tal cual, sin inventar un link).`
     : '';
 
   const buildPrompt = (lengthReminder) =>
     [
       'Sos una veterinaria influencer que escribe para el blog de AiPetFriendly, una app de cuidado de mascotas.',
       `Tema del dia: ${topic}.`,
-      'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos (no tiene que ser literalmente sobre la noticia, podes usarla como disparador de una sugerencia practica).',
+      'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos. Usala SOLO como disparador/contexto inicial: el articulo tiene que aportar tu propia explicacion, recomendaciones y valor practico, nunca limitarse a parafrasear la noticia como si fuera el contenido completo.',
       newsBlock,
       '',
-      'Escribi un articulo original en espanol de entre 650 y 850 palabras, en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Tiene que aportar informacion realmente util y especifica, no relleno.',
+      'Escribi un articulo original en espanol rioplatense (voseo), en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Objetivo orientativo de extension: entre 650 y 850 palabras, SOLO si el tema realmente da para desarrollarlo asi. NUNCA agregues relleno, repeticiones ni frases genericas solo para alcanzar ese numero: preferi un articulo mas corto pero solido antes que uno largo y vacio.',
       lengthReminder,
       `Si encaja de forma natural con el tema, usa como ejemplo o protagonista de algun caso a un(a) ${petFocus} (sin forzarlo: si el tema no lo permite, mantene el articulo general para perros y gatos).`,
-      'Estructura obligatoria dentro del campo "content" (parrafos separados por linea en blanco, sin markdown ni titulos con #):',
-      '- Un parrafo de apertura enganchando con el tema.',
-      '- Dos o tres parrafos de desarrollo con contexto e informacion util y concreta (podes basarte en la noticia elegida).',
-      '- Tres parrafos cortos de sugerencias practicas y accionables, cada uno empezando exactamente con "Sugerencia 1:", "Sugerencia 2:" y "Sugerencia 3:" respectivamente, con una sugerencia distinta y especifica en cada uno (no repitas la misma idea con otras palabras). NUNCA uses la palabra "consejo"/"consejos", usa siempre "sugerencia"/"sugerencias".',
-      '- Un parrafo final que empiece exactamente con "💡 Para cerrar:" con una reflexion breve que cierre el tema.',
+      '',
+      'Estructura editorial a seguir dentro del campo "content" (parrafos separados por UNA linea en blanco entre si, sin markdown, sin "#" ni "**", sin HTML; cada punto de la lista de abajo es uno o mas parrafos de texto plano). Adapta que secciones incluir segun lo que el tema realmente permita: NO inventes secciones artificiales solo para completar la lista, y saltea las marcadas como opcionales si no suman valor real a este tema puntual.',
+      '1. Apertura (1 parrafo, obligatorio): plantea el problema o la pregunta real que tiene el lector y por que le conviene seguir leyendo.',
+      '2. Desarrollo (1 a 3 parrafos, obligatorio): cada parrafo arranca con una frase corta a modo de subtitulo (por ejemplo "Por que pasa esto:" o "Que hay que tener en cuenta:") seguida de dos puntos, y el desarrollo en el mismo parrafo. Informacion concreta y especifica, no generica.',
+      '3. Recomendaciones practicas (obligatorio, 2 a 4 parrafos cortos, cada uno con el prefijo exacto "Sugerencia 1:", "Sugerencia 2:", "Sugerencia 3:" (y "Sugerencia 4:" si corresponde), con una idea distinta y accionable en cada uno (no repitas la misma idea con otras palabras). NUNCA uses la palabra "consejo"/"consejos", usa siempre "sugerencia"/"sugerencias".',
+      '4. Ejemplo realista (opcional, 1 parrafo, incluilo SOLO si suma valor real): un caso tipico hipotetico y generico (por ejemplo "Pensemos en un caso tipico:..."), NUNCA presentado como un testimonio real de un paciente o cliente concreto. No inventes nombres propios de duenios ni de mascotas reales como si fueran casos verdaderos.',
+      '5. Recurso aplicable (opcional: una checklist, rutina o procedimiento concreto, SOLO si el tema realmente se presta a eso, por ejemplo una rutina de higiene o una lista de sintomas a vigilar): 1 parrafo breve de introduccion + 2 a 4 parrafos cortos, cada uno con el prefijo exacto "Punto a revisar:" (si es una checklist) o "Paso 1:", "Paso 2:", etc. (si es una rutina/procedimiento con orden).',
+      '6. Errores frecuentes (opcional, 1 a 2 parrafos con el prefijo exacto "Error frecuente:"): SOLO si hay errores comunes reales y especificos sobre el tema (no inventes uno generico solo para completar esta seccion); explica brevemente por que pasa y como evitarlo.',
+      '7. Preguntas frecuentes (obligatorio salvo que el tema realmente no se preste, 1 a 2 parrafos, cada uno con el prefijo exacto "❓" seguido de la pregunta y la respuesta directa en el mismo parrafo): elegi dudas realistas y puntuales sobre el tema del dia, no preguntas genericas que sirvan para cualquier articulo.',
+      '8. Cierre (1 parrafo, obligatorio, con el prefijo exacto "💡 Para cerrar:"): una reflexion breve y UNA accion concreta y util que el lector pueda hacer ya (no un resumen generico de lo ya dicho).',
       relatedGuideInstruction,
+      '',
+      'Reglas de rigor (muy importantes):',
+      '- NO inventes estudios, estadisticas, porcentajes, citas textuales, profesionales, instituciones, marcas ni testimonios que no esten respaldados por las noticias de arriba o por conocimiento veterinario general solido.',
+      '- Si retomas un dato puntual de la noticia elegida, dejalo claro como proveniente de esa fuente (por ejemplo "segun publico [fuente]..."); tus propias recomendaciones generales no necesitan atribucion, pero tampoco deben sonar a un dato estadistico inventado.',
+      '- Evita afirmaciones absolutas sin matices ("siempre", "nunca", "en todos los casos") salvo que sean realmente universales.',
+      '- Si el tema toca sintomas, enfermedades, medicacion o un problema de salud concreto: aclara brevemente que es informacion general y no reemplaza una consulta veterinaria presencial, y NO des un diagnostico ni un tratamiento individualizado como si fuera un caso particular que estas atendiendo vos.',
       'NO incluyas el titulo ni una linea de "Visto en" dentro de "content" (eso se muestra aparte).',
       `Evita por completo estas frases cliche: ${BANNED_CLICHES.join(', ')}.`,
-      'Separa los parrafos de "content" con una linea en blanco.',
+      'Separa cada parrafo de "content" con una linea en blanco (no uses saltos de linea simples dentro de un mismo bloque de la estructura).',
       '',
       'Respondé UNICAMENTE con un JSON valido (sin texto extra antes ni despues), con esta forma exacta:',
       '{"title": "...", "content": "...", "source_name": "...", "estimated_reading_time": 2}',
@@ -439,10 +488,19 @@ async function generateArticleFromNews(topic, newsItems, petFocus, relatedGuide)
   let wordCount = countWords(article.content);
 
   if (wordCount < MIN_ARTICLE_WORD_COUNT) {
+    const hasTimeBudgetForRetry = !deadlineAt || Date.now() + RETRY_TEXT_BUDGET_MS < deadlineAt;
+
+    if (!hasTimeBudgetForRetry) {
+      console.warn(
+        `generateArticleFromNews: ${wordCount} palabras (debajo del objetivo orientativo de ${MIN_ARTICLE_WORD_COUNT}), pero no queda presupuesto de tiempo para reintentar sin arriesgar el timeout del cron. Se guarda igual como borrador para revision manual.`
+      );
+      return article;
+    }
+
     console.warn(
       `generateArticleFromNews: primer intento con ${wordCount} palabras (minimo ${MIN_ARTICLE_WORD_COUNT}), reintentando con prompt reforzado.`
     );
-    const reinforcedReminder = `IMPORTANTE: tu intento anterior tuvo apenas ${wordCount} palabras, muy por debajo de lo pedido. Esta vez desarrolla cada parrafo con mas detalle, ejemplos y contexto concreto hasta llegar SI O SI a al menos 650 palabras (idealmente hasta 850). No resumas ni acortes el contenido.`;
+    const reinforcedReminder = `IMPORTANTE: tu intento anterior tuvo apenas ${wordCount} palabras, muy por debajo de lo pedido. Esta vez desarrolla cada seccion con mas detalle, ejemplos concretos y contexto real hasta llegar SI O SI a al menos 650 palabras (idealmente hasta 850), sin agregar relleno ni repeticiones: sumá sustancia real, no paja.`;
     const retryArticle = parseArticleJson(await callAiTextModel(buildPrompt(reinforcedReminder)));
     const retryWordCount = countWords(retryArticle.content);
     if (retryWordCount > wordCount) {
@@ -913,6 +971,17 @@ export default async function handler(req, res) {
     return sendJson(res, 401, { error: 'Unauthorized' });
   }
 
+  // Margen de seguridad antes del limite duro de config.maxDuration (60s,
+  // el maximo del plan Hobby de Vercel): deja tiempo para el insert en
+  // Supabase y la creacion del borrador social despues de texto+imagen. Ver
+  // RETRY_TEXT_BUDGET_MS/IMAGE_BUDGET_MS: el reintento de texto por palabras
+  // de menos y la generacion de imagen se saltean si no queda presupuesto
+  // suficiente antes de este deadline, para no repetir el timeout real
+  // observado en produccion (PASO 15/16) con texto+reintento+imagen
+  // encadenados.
+  const SAFETY_MARGIN_MS = 8000;
+  const deadlineAt = Date.now() + config.maxDuration * 1000 - SAFETY_MARGIN_MS;
+
   try {
     const admin = getSupabaseAdminClient();
 
@@ -929,7 +998,7 @@ export default async function handler(req, res) {
       throw new Error(`SerpApi no devolvio noticias para el tema "${topic}".`);
     }
 
-    const article = await generateArticleFromNews(topic, newsItems, petFocus, relatedGuide);
+    const article = await generateArticleFromNews(topic, newsItems, petFocus, relatedGuide, deadlineAt);
     const baseSlug = slugify(article.title);
     const slug = await ensureUniqueSlug(admin, baseSlug);
 
@@ -945,14 +1014,21 @@ export default async function handler(req, res) {
 
     let imageUrl = null;
     let imageBuffer = null;
-    try {
-      imageBuffer = await generateArticleImage(article.title, topic, effectivePetFocus);
-      imageUrl = await uploadImageToStorage(admin, slug, imageBuffer);
-    } catch (imageError) {
-      // La imagen es un extra: si falla (por ejemplo, la cuenta de IA no
-      // tiene acceso a generacion de imagenes), el post se publica igual sin
-      // imagen en vez de perder el articulo del dia entero.
-      console.error('No se pudo generar/subir la imagen del post (se continua sin imagen):', imageError);
+    const hasTimeBudgetForImage = Date.now() + IMAGE_BUDGET_MS < deadlineAt;
+    if (hasTimeBudgetForImage) {
+      try {
+        imageBuffer = await generateArticleImage(article.title, topic, effectivePetFocus);
+        imageUrl = await uploadImageToStorage(admin, slug, imageBuffer);
+      } catch (imageError) {
+        // La imagen es un extra: si falla (por ejemplo, la cuenta de IA no
+        // tiene acceso a generacion de imagenes), el post se publica igual sin
+        // imagen en vez de perder el articulo del dia entero.
+        console.error('No se pudo generar/subir la imagen del post (se continua sin imagen):', imageError);
+      }
+    } else {
+      console.warn(
+        'No se genero la imagen del post: no queda presupuesto de tiempo suficiente antes del limite de 60s del cron. El post se guarda sin imagen; se puede generar despues a mano con api/admin/regenerate-blog-post-image.js.'
+      );
     }
 
     const { data: inserted, error: insertError } = await admin
