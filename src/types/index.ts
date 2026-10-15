@@ -379,6 +379,8 @@ export interface ChatMessage {
   createdAt: string;
   /** Imagen adjunta por el usuario (foto para que la IA la analice). Data URL en memoria/sesion, o URL publica una vez persistida en Storage. */
   imageUrl?: string | null;
+  /** true cuando este mensaje de asistente es un aviso de error (no se pudo obtener respuesta real de la IA), para distinguirlo de una respuesta valida y habilitar reintento manual. */
+  isError?: boolean;
 }
 
 export interface AiUsageSettings {

@@ -60,10 +60,11 @@ function resizeImageToDataUrl(file: File, maxDim = 1024, quality = 0.72): Promis
 
 export function ChatSection() {
   const { pets, selectedPetId, setSelectedPetId, subscription, setActiveTab } = useAppState();
-  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, suggestedProductByMessageId, vetVisitRecommendedByMessageId } = useChat();
+  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, retryMessage, suggestedProductByMessageId, vetVisitRecommendedByMessageId } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [view, setView] = useState<'new' | 'history'>('new');
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -113,6 +114,16 @@ export function ChatSection() {
   };
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); doSend(input); };
+
+  const doRetry = async (messageId: string) => {
+    if (retryingId) return;
+    setRetryingId(messageId);
+    try {
+      await retryMessage(messageId);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   const onFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -237,7 +248,9 @@ export function ChatSection() {
                     <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                       m.role === 'user'
                         ? 'bg-emerald-500 text-white'
-                        : 'bg-white text-slate-700 shadow-sm'
+                        : m.isError
+                          ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                          : 'bg-white text-slate-700 shadow-sm'
                     }`}>
                       {m.imageUrl && (
                         <img
@@ -246,8 +259,19 @@ export function ChatSection() {
                           className="mb-2 max-h-56 w-full rounded-xl object-cover"
                         />
                       )}
+                      {m.isError && <p className="mb-1 text-xs font-bold uppercase tracking-wide text-rose-500">No se pudo responder</p>}
                       {m.content}
                     </div>
+                    {m.role === 'assistant' && m.isError && (
+                      <button
+                        type="button"
+                        onClick={() => doRetry(m.id)}
+                        disabled={retryingId === m.id}
+                        className="rounded-full bg-rose-100 px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-200 disabled:opacity-50"
+                      >
+                        {retryingId === m.id ? 'Reintentando...' : 'Reintentar'}
+                      </button>
+                    )}
                     {m.role === 'assistant' && suggestedProductByMessageId[m.id] && (
                       <a
                         href={suggestedProductByMessageId[m.id].link}

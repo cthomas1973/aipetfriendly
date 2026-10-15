@@ -488,16 +488,20 @@ function AppContent() {
       return;
     }
     // Sin sesion (landing): Blog ya es publico por ruta, se navega directo.
-    // El resto de las pestañas requieren cuenta, asi que guardamos la eleccion
-    // y abrimos el registro/login; se aplica sola apenas haya sesion.
+    // El resto de las pestañas (Mascotas, Consultorio, Agenda, Mapa, Pet
+    // Friendly, Tienda, Mi Cuenta) ya son funcionales en modo invitado, asi
+    // que en vez de abrir un gate de registro sin contexto, entramos como
+    // invitado (mismo criterio que el boton "Seguir como visitante" del hero)
+    // y navegamos directo a la seccion pedida. Esto evita el callejon sin
+    // salida de tocar un tab visible y terminar en un formulario de registro
+    // inesperado.
     if (!user) {
       if (tab === 'blog') {
         window.location.href = '/blog';
         return;
       }
-      window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
-      setAuthInitialMode('register');
-      setShowAuthGate(true);
+      setUser(createGuestUser());
+      setActiveTab(tab);
       return;
     }
     setActiveTab(tab);

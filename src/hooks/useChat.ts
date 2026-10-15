@@ -53,13 +53,12 @@ const DEFAULT_LIMITS = {
 const SYSTEM_PROMPT =
   'Eres un asistente veterinario preventivo. Brinda orientacion clara y responsable. Siempre aclara que no reemplazas consulta veterinaria presencial.';
 
-function createAssistantFallback(userInput: string): string {
-  return [
-    'Gracias por tu consulta. Como guia preventiva, te sugiero observar sintomas por 24 horas y registrar cambios.',
-    `Consulta recibida: "${userInput}".`,
-    'Importante: esta asistencia no reemplaza al veterinario presencial.',
-  ].join(' ');
-}
+// Mensaje mostrado cuando la IA no responde (timeout, error de red o del
+// proveedor). Es un aviso de error, no debe confundirse con una respuesta
+// real: se marca con `isError` en el ChatMessage y no se persiste como si
+// fuera una respuesta valida.
+const AI_ERROR_MESSAGE =
+  'No pudimos obtener una respuesta en este momento. Puede ser un problema temporal de conexion o del servicio de IA. Toca "Reintentar" para volver a intentarlo.';
 
 export function useChat() {
   const {
@@ -184,46 +183,24 @@ export function useChat() {
     return [system, ...sessionMessages];
   }, [sessionMessages]);
 
-  const sendMessage = useCallback(
-    async (content: string, petId: string | null, imageDataUrl?: string | null) => {
-      if (!canUseAI) {
-        throw new Error('Limite de consultas IA alcanzado para esta mascota.');
-      }
-
-      if (!petId) {
-        throw new Error('Selecciona una mascota para recibir una respuesta personalizada.');
-      }
-
-      const userMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content,
-        petId,
-        createdAt: new Date().toISOString(),
-        imageUrl: imageDataUrl || null,
-      };
-
-      const nextMessages = [...messagesWithSystem, userMessage];
-      const nextSessionMessages = nextMessages.filter((message) => message.role !== 'system');
-      setSessionMessagesByPet((current) => ({
-        ...current,
-        [petId]: nextSessionMessages,
-      }));
-      setChatMessages([...chatMessages, userMessage]);
-
-      let assistantText = createAssistantFallback(content);
+  // Llama al edge function de IA y devuelve el resultado normalizado. Si falla
+  // (red, timeout, error del proveedor), NO lanza: devuelve `isError: true` y
+  // un texto de aviso, para que quien llama decida como mostrarlo/persistirlo
+  // sin tratarlo como una respuesta real.
+  const requestAssistantAnswer = useCallback(
+    async (
+      content: string,
+      petId: string,
+      imageDataUrl: string | null | undefined,
+      recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    ) => {
+      let text = '';
       let suggestedProduct: SuggestedProduct | null = null;
       let persistedImageUrl: string | null = null;
       let recommendVetVisit = false;
-      try {
-        const recentMessages = nextMessages
-          .filter((message) => message.role !== 'system')
-          .slice(-12)
-          .map((message) => ({
-            role: message.role as 'user' | 'assistant',
-            content: message.content,
-          }));
+      let isError = false;
 
+      try {
         const selectedPet = pets.find((pet) => pet.id === petId) ?? null;
 
         const guestContext = user?.isGuest && selectedPet
@@ -270,7 +247,7 @@ export function useChat() {
         });
 
         if (response.answer) {
-          assistantText = response.answer;
+          text = response.answer;
         }
 
         if (response.suggestedProduct) {
@@ -283,6 +260,12 @@ export function useChat() {
 
         if (response.recommendVetVisit) {
           recommendVetVisit = true;
+        }
+
+        if (!text) {
+          // Respuesta vacia del proveedor: se trata igual que un error para
+          // no mostrar un mensaje de asistente en blanco.
+          throw new Error('Respuesta vacia de la IA.');
         }
 
         if (response.usage && petId) {
@@ -302,24 +285,69 @@ export function useChat() {
         }
       } catch (error) {
         console.error('No se pudo obtener respuesta de IA contextual:', error);
+        isError = true;
+        text = AI_ERROR_MESSAGE;
       }
+
+      return { text, suggestedProduct, persistedImageUrl, recommendVetVisit, isError };
+    },
+    [clinicalEntries, pets, preventiveTasks, user],
+  );
+
+  const sendMessage = useCallback(
+    async (content: string, petId: string | null, imageDataUrl?: string | null) => {
+      if (!canUseAI) {
+        throw new Error('Limite de consultas IA alcanzado para esta mascota.');
+      }
+
+      if (!petId) {
+        throw new Error('Selecciona una mascota para recibir una respuesta personalizada.');
+      }
+
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content,
+        petId,
+        createdAt: new Date().toISOString(),
+        imageUrl: imageDataUrl || null,
+      };
+
+      const nextMessages = [...messagesWithSystem, userMessage];
+      const nextSessionMessages = nextMessages.filter((message) => message.role !== 'system');
+      setSessionMessagesByPet((current) => ({
+        ...current,
+        [petId]: nextSessionMessages,
+      }));
+      setChatMessages([...chatMessages, userMessage]);
+
+      const recentMessages = nextMessages
+        .filter((message) => message.role !== 'system')
+        .slice(-12)
+        .map((message) => ({
+          role: message.role as 'user' | 'assistant',
+          content: message.content,
+        }));
+
+      const result = await requestAssistantAnswer(content, petId, imageDataUrl, recentMessages);
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: assistantText,
+        content: result.text,
         petId,
         createdAt: new Date().toISOString(),
+        isError: result.isError || undefined,
       };
 
-      if (suggestedProduct) {
+      if (result.suggestedProduct) {
         setSuggestedProductByMessageId((current) => ({
           ...current,
-          [assistantMessage.id]: suggestedProduct as SuggestedProduct,
+          [assistantMessage.id]: result.suggestedProduct as SuggestedProduct,
         }));
       }
 
-      if (recommendVetVisit) {
+      if (result.recommendVetVisit) {
         setVetVisitRecommendedByMessageId((current) => ({
           ...current,
           [assistantMessage.id]: true,
@@ -335,22 +363,94 @@ export function useChat() {
       if (user && !user.isGuest) {
         // Se persiste aca (despues de la respuesta) para poder guardar la URL
         // publica de Storage de la imagen, ya subida por el edge function.
-        void createChatMessage(user.id, petId, 'user', content, persistedImageUrl);
-        void createChatMessage(user.id, petId, 'assistant', assistantText);
+        void createChatMessage(user.id, petId, 'user', content, result.persistedImageUrl);
+        if (!result.isError) {
+          // El aviso de error no es una respuesta real: no se guarda en el
+          // historial persistido para no confundir futuras lecturas.
+          void createChatMessage(user.id, petId, 'assistant', result.text);
+        }
       }
 
       return assistantMessage;
     },
     [
       canUseAI,
-      clinicalEntries,
       messagesWithSystem,
       chatMessages,
       setChatMessages,
-      pets,
-      preventiveTasks,
+      requestAssistantAnswer,
       user,
     ],
+  );
+
+  // Reintenta un mensaje de asistente marcado como error: reutiliza la
+  // pregunta original del usuario (sin duplicarla ni volver a consumir cupo
+  // en caso de otro fallo) y reemplaza el aviso de error por la respuesta
+  // obtenida (o por un nuevo aviso de error si vuelve a fallar).
+  const retryMessage = useCallback(
+    async (assistantMessageId: string) => {
+      const petId = selectedPetId;
+      if (!petId) return;
+
+      const list = sessionMessagesByPet[petId] || [];
+      const idx = list.findIndex((message) => message.id === assistantMessageId);
+      if (idx <= 0) return;
+
+      const failedMessage = list[idx];
+      const userMessage = list[idx - 1];
+      if (!failedMessage.isError || userMessage.role !== 'user') return;
+
+      const promptMessages = list
+        .slice(0, idx)
+        .filter((message) => message.role !== 'system')
+        .slice(-12)
+        .map((message) => ({
+          role: message.role as 'user' | 'assistant',
+          content: message.content,
+        }));
+
+      const result = await requestAssistantAnswer(userMessage.content, petId, userMessage.imageUrl, promptMessages);
+
+      const updatedMessage: ChatMessage = {
+        ...failedMessage,
+        id: crypto.randomUUID(),
+        content: result.text,
+        createdAt: new Date().toISOString(),
+        isError: result.isError || undefined,
+      };
+
+      if (result.suggestedProduct) {
+        setSuggestedProductByMessageId((current) => ({
+          ...current,
+          [updatedMessage.id]: result.suggestedProduct as SuggestedProduct,
+        }));
+      }
+
+      if (result.recommendVetVisit) {
+        setVetVisitRecommendedByMessageId((current) => ({
+          ...current,
+          [updatedMessage.id]: true,
+        }));
+      }
+
+      setSessionMessagesByPet((current) => {
+        const currentList = current[petId] || [];
+        return {
+          ...current,
+          [petId]: currentList.map((message) => (message.id === assistantMessageId ? updatedMessage : message)),
+        };
+      });
+      setChatMessages(
+        chatMessages.map((message) => (message.id === assistantMessageId ? updatedMessage : message)),
+      );
+
+      if (user && !user.isGuest && !result.isError) {
+        // El mensaje del usuario ya se persistio en el intento original: solo
+        // falta guardar la respuesta valida obtenida en el reintento.
+        void createChatMessage(user.id, petId, 'assistant', result.text);
+      }
+    },
+    [selectedPetId, sessionMessagesByPet, requestAssistantAnswer, chatMessages, setChatMessages, user],
   );
 
   return {
@@ -365,6 +465,7 @@ export function useChat() {
       remaining: remainingForSelectedPet,
     },
     sendMessage,
+    retryMessage,
     suggestedProductByMessageId,
     vetVisitRecommendedByMessageId,
   };

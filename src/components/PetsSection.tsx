@@ -75,6 +75,15 @@ function calcAge(birthDate: string) {
   return { ageYears: Math.floor(months / 12), ageMonths: months % 12 };
 }
 
+// La fecha de nacimiento es opcional: cuando no se conoce, la edad se carga a
+// mano (aproximada). Usamos la presencia/ausencia de `birthDate` como unica
+// fuente de verdad de si la edad es exacta o estimada (sin agregar un campo
+// nuevo al modelo).
+function formatAgeLabel(p: { ageYears: number; ageMonths: number; birthDate?: string }): string {
+  const base = `${p.ageYears}a ${p.ageMonths}m`;
+  return p.birthDate ? base : `${base} (estimado)`;
+}
+
 type View = 'list' | 'wizard' | 'detail' | 'edit' | 'historial' | 'preventivos' | 'comida' | 'libreta-sanitaria' | 'control-medicacion' | 'identificacion';
 
 const INIT: PetFormData = {
@@ -392,6 +401,7 @@ export function PetsSection() {
   const [view, setView]   = useState<View>('list');
   const [step, setStep]   = useState(1);
   const [form, setForm]   = useState<PetFormData>(INIT);
+  const [birthDateUnknown, setBirthDateUnknown] = useState(false);
   const [imgBusy, setImgBusy] = useState(false);
   const [err,  setErr]    = useState<string | null>(null);
   const [msg,  setMsg]    = useState<string | null>(null);
@@ -514,10 +524,34 @@ export function PetsSection() {
     setErr(null);
   };
 
+  // Alterna entre "fecha exacta" y "edad aproximada". Al cambiar de modo se
+  // limpian los valores del otro modo para no guardar una combinacion
+  // inconsistente (ej. una fecha vieja con una edad aproximada distinta).
+  const onToggleBirthDateUnknown = (unknown: boolean) => {
+    setBirthDateUnknown(unknown);
+    setForm(p => ({ ...p, birthDate: '', ageYears: 0, ageMonths: 0 }));
+    setErr(null);
+  };
+
+  const onEstimatedAge = (field: 'ageYears' | 'ageMonths', value: number) => {
+    // Mismos limites que los atributos min/max de los inputs (no alcanza con
+    // el HTML: un valor tipeado a mano puede superarlos sin disparar error).
+    const max = field === 'ageYears' ? 40 : 11;
+    const safeValue = Number.isFinite(value) ? Math.min(max, Math.max(0, Math.trunc(value))) : 0;
+    setForm(p => ({ ...p, birthDate: '', [field]: safeValue }));
+    setErr(null);
+  };
+
   const okStep = () => {
     if (step === 1 && !form.name.trim())  { setErr('El nombre es requerido.'); return false; }
     if (step === 1 && !form.breed.trim()) { setErr('La raza es requerida.');   return false; }
-    if (step === 2 && !form.birthDate)    { setErr('La fecha es requerida.');   return false; }
+    if (step === 2) {
+      if (birthDateUnknown) {
+        if (form.ageYears === 0 && form.ageMonths === 0) { setErr('Ingresa una edad aproximada (anios o meses).'); return false; }
+      } else if (!form.birthDate) {
+        setErr('La fecha es requerida.'); return false;
+      }
+    }
     setErr(null); return true;
   };
 
@@ -529,7 +563,7 @@ export function PetsSection() {
     try {
       const saved = await addPet(form);
       selectPet(saved.id);
-      setForm(INIT); setStep(1); setErr(null);
+      setForm(INIT); setBirthDateUnknown(false); setStep(1); setErr(null);
       setView('detail');
     } catch (ex) { setErr(ex instanceof Error ? ex.message : 'No se pudo guardar.'); }
   };
@@ -1123,7 +1157,7 @@ export function PetsSection() {
       )}
 
       {canAddPet && (
-        <button type="button" onClick={() => { setStep(1); setForm(INIT); setView('wizard'); }}
+        <button type="button" onClick={() => { setStep(1); setForm(INIT); setBirthDateUnknown(false); setView('wizard'); }}
           className="w-full rounded-3xl border-2 border-dashed border-emerald-300 bg-white/80 py-6 text-center shadow-sm transition hover:bg-white">
           <span className="mx-auto mb-3 inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
             <Plus size={28} />
@@ -1138,16 +1172,6 @@ export function PetsSection() {
         </div>
       )}
 
-      {user?.isGuest && pets.length === 0 && (
-        <div className="rounded-3xl bg-white/60 px-6 py-14 text-center shadow-sm">
-          <span className="mx-auto mb-5 inline-flex h-28 w-28 items-center justify-center rounded-full bg-emerald-100 text-emerald-400">
-            <Heart size={52} />
-          </span>
-          <h3 className="text-2xl font-extrabold text-slate-900">Prueba agregando mascotas</h3>
-          <p className="mt-2 text-slate-500">Crea una cuenta para guardar tus datos</p>
-        </div>
-      )}
-
       {!user?.isGuest && pets.length === 0 ? (
         <div className="rounded-3xl bg-white/60 px-6 py-14 text-center shadow-sm">
           <span className="mx-auto mb-5 inline-flex h-28 w-28 items-center justify-center rounded-full bg-emerald-100 text-emerald-400">
@@ -1155,7 +1179,7 @@ export function PetsSection() {
           </span>
           <h3 className="text-2xl font-extrabold text-slate-900">No tienes mascotas registradas</h3>
           <p className="mt-2 text-slate-500">Comienza agregando tu primera mascota</p>
-          <button type="button" onClick={() => { setStep(1); setForm(INIT); setView('wizard'); }}
+          <button type="button" onClick={() => { setStep(1); setForm(INIT); setBirthDateUnknown(false); setView('wizard'); }}
             className="mt-6 rounded-2xl bg-emerald-500 px-8 py-3.5 font-bold text-white">
             Agregar mascota
           </button>
@@ -1173,7 +1197,7 @@ export function PetsSection() {
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-slate-900">{p.name}</p>
                 <p className="text-sm text-slate-500">{p.breed}</p>
-                <p className="text-xs text-slate-400">{p.ageYears}a {p.ageMonths}m · {p.weightKg} kg</p>
+                <p className="text-xs text-slate-400">{formatAgeLabel(p)} · {p.weightKg} kg</p>
               </div>
               <ChevronRight size={18} className="shrink-0 text-slate-300" />
             </button>
@@ -1240,15 +1264,41 @@ export function PetsSection() {
 
         {step === 2 && (
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
-              <input type="date" max={new Date().toISOString().split('T')[0]}
-                value={form.birthDate} onChange={e => onBirth(e.target.value)}
-                className={`mt-1.5 ${inp}`} />
-              {form.birthDate && !err && (
-                <p className="mt-1.5 text-xs text-emerald-600">Edad: {form.ageYears} años y {form.ageMonths} meses</p>
-              )}
-            </div>
+            <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-sm font-medium text-slate-700">No conozco la fecha exacta de nacimiento</span>
+              <input type="checkbox" checked={birthDateUnknown}
+                onChange={e => onToggleBirthDateUnknown(e.target.checked)} className="h-4 w-4" />
+            </label>
+            {birthDateUnknown ? (
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Edad aproximada *</label>
+                <div className="mt-1.5 flex gap-3">
+                  <div className="flex-1">
+                    <input type="number" min={0} max={40} step={1} value={form.ageYears}
+                      onChange={e => onEstimatedAge('ageYears', Number(e.target.value))}
+                      placeholder="Años" className={inp} />
+                    <p className="mt-1 text-center text-xs text-slate-400">Años</p>
+                  </div>
+                  <div className="flex-1">
+                    <input type="number" min={0} max={11} step={1} value={form.ageMonths}
+                      onChange={e => onEstimatedAge('ageMonths', Number(e.target.value))}
+                      placeholder="Meses" className={inp} />
+                    <p className="mt-1 text-center text-xs text-slate-400">Meses</p>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-amber-600">La edad se guardara como estimada, no como fecha exacta.</p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
+                <input type="date" max={new Date().toISOString().split('T')[0]}
+                  value={form.birthDate} onChange={e => onBirth(e.target.value)}
+                  className={`mt-1.5 ${inp}`} />
+                {form.birthDate && !err && (
+                  <p className="mt-1.5 text-xs text-emerald-600">Edad: {form.ageYears} años y {form.ageMonths} meses</p>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700">Peso (kg) *</label>
               <input type="number" min={0.1} step={0.1} value={form.weightKg}
@@ -1284,7 +1334,7 @@ export function PetsSection() {
               <div>
                 <p className="text-xl font-bold text-slate-900">{form.name}</p>
                 <p className="text-sm text-slate-600">{form.breed}</p>
-                <p className="text-xs text-slate-500">{form.ageYears}a {form.ageMonths}m · {form.weightKg} kg · {SEX_LBL[form.sex]}</p>
+                <p className="text-xs text-slate-500">{formatAgeLabel(form)} · {form.weightKg} kg · {SEX_LBL[form.sex]}</p>
               </div>
             </div>
             <p className="text-center text-sm text-slate-400">¿Los datos son correctos?</p>
@@ -1296,7 +1346,7 @@ export function PetsSection() {
         <div className="mt-6 flex gap-3">
           {step > 1
             ? <button type="button" onClick={doBack} className="w-full rounded-full border-2 border-slate-200 py-3.5 font-semibold text-slate-600">Anterior</button>
-            : <button type="button" onClick={() => { setView('list'); setForm(INIT); setStep(1); setErr(null); }}
+            : <button type="button" onClick={() => { setView('list'); setForm(INIT); setBirthDateUnknown(false); setStep(1); setErr(null); }}
                 className="w-full rounded-full border-2 border-slate-200 py-3.5 font-semibold text-slate-600">Cancelar</button>
           }
           {step < 3
@@ -1357,15 +1407,41 @@ export function PetsSection() {
           </div>
 
           {/* fecha de nacimiento */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
-            <input type="date" max={new Date().toISOString().split('T')[0]}
-              value={form.birthDate} onChange={e => onBirth(e.target.value)}
-              className={`mt-1.5 ${inp}`} />
-            {form.birthDate && !err && (
-              <p className="mt-1.5 text-xs text-emerald-600">Edad: {form.ageYears} años y {form.ageMonths} meses</p>
-            )}
-          </div>
+          <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="text-sm font-medium text-slate-700">No conozco la fecha exacta de nacimiento</span>
+            <input type="checkbox" checked={birthDateUnknown}
+              onChange={e => onToggleBirthDateUnknown(e.target.checked)} className="h-4 w-4" />
+          </label>
+          {birthDateUnknown ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Edad aproximada *</label>
+              <div className="mt-1.5 flex gap-3">
+                <div className="flex-1">
+                  <input type="number" min={0} max={40} step={1} value={form.ageYears}
+                    onChange={e => onEstimatedAge('ageYears', Number(e.target.value))}
+                    placeholder="Años" className={inp} />
+                  <p className="mt-1 text-center text-xs text-slate-400">Años</p>
+                </div>
+                <div className="flex-1">
+                  <input type="number" min={0} max={11} step={1} value={form.ageMonths}
+                    onChange={e => onEstimatedAge('ageMonths', Number(e.target.value))}
+                    placeholder="Meses" className={inp} />
+                  <p className="mt-1 text-center text-xs text-slate-400">Meses</p>
+                </div>
+              </div>
+              <p className="mt-1.5 text-xs text-amber-600">La edad se guardara como estimada, no como fecha exacta.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
+              <input type="date" max={new Date().toISOString().split('T')[0]}
+                value={form.birthDate} onChange={e => onBirth(e.target.value)}
+                className={`mt-1.5 ${inp}`} />
+              {form.birthDate && !err && (
+                <p className="mt-1.5 text-xs text-emerald-600">Edad: {form.ageYears} años y {form.ageMonths} meses</p>
+              )}
+            </div>
+          )}
 
           {/* peso */}
           <div>
@@ -1404,7 +1480,11 @@ export function PetsSection() {
           <button type="button" onClick={async () => {
             if (!form.name.trim()) { setErr('El nombre es requerido.'); return; }
             if (!form.breed.trim()) { setErr('La raza es requerida.'); return; }
-            if (!form.birthDate) { setErr('La fecha es requerida.'); return; }
+            if (birthDateUnknown) {
+              if (form.ageYears === 0 && form.ageMonths === 0) { setErr('Ingresa una edad aproximada (anios o meses).'); return; }
+            } else if (!form.birthDate) {
+              setErr('La fecha es requerida.'); return;
+            }
             try {
               await updatePet(pet.id, form);
               setErr(null);
@@ -1478,7 +1558,7 @@ export function PetsSection() {
           <div className="text-white">
             <h2 className="text-2xl font-extrabold">{pet.name}</h2>
             <p className="text-white/80">{pet.breed}</p>
-            <p className="text-sm text-white/70">{pet.ageYears}a {pet.ageMonths}m</p>
+            <p className="text-sm text-white/70">{formatAgeLabel(pet)}</p>
           </div>
         </div>
       </div>
@@ -1490,7 +1570,9 @@ export function PetsSection() {
             <div>
               <p className="text-xs text-slate-400">Fecha de nacimiento</p>
               <p className="font-medium text-slate-800">
-                {pet.birthDate ? new Date(pet.birthDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                {pet.birthDate
+                  ? new Date(pet.birthDate + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : 'No especificada (edad estimada)'}
               </p>
             </div>
             <div>
@@ -1559,7 +1641,7 @@ export function PetsSection() {
           className="w-full rounded-3xl border-2 border-emerald-300 bg-white py-4 text-center font-semibold text-emerald-700 shadow-sm">
           + Agregar medicacion
         </button>
-        <button type="button" onClick={() => { const editForm: PetFormData = { name: pet.name, breed: pet.breed, species: pet.species, sex: pet.sex, birthDate: pet.birthDate ?? '', ageYears: pet.ageYears, ageMonths: pet.ageMonths, weightKg: pet.weightKg, photoUrl: pet.photoUrl ?? '', distinguishingMarks: pet.distinguishingMarks ?? '' }; setForm(editForm); setView('edit'); }}
+        <button type="button" onClick={() => { const editForm: PetFormData = { name: pet.name, breed: pet.breed, species: pet.species, sex: pet.sex, birthDate: pet.birthDate ?? '', ageYears: pet.ageYears, ageMonths: pet.ageMonths, weightKg: pet.weightKg, photoUrl: pet.photoUrl ?? '', distinguishingMarks: pet.distinguishingMarks ?? '' }; setForm(editForm); setBirthDateUnknown(!pet.birthDate); setView('edit'); }}
           className="w-full rounded-3xl border-2 border-amber-300 bg-white py-3 text-center font-semibold text-amber-700 shadow-sm">
           ✏️ Editar mascota
         </button>
