@@ -153,7 +153,7 @@ export function ChatSection() {
           </span>
           <div className="flex-1">
             <p className="font-extrabold text-slate-900">Consultorio IA</p>
-            <p className="text-sm text-slate-500">Veterinario virtual</p>
+            <p className="text-sm text-slate-500">Asistente con IA para tu mascota</p>
           </div>
           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
             {quota.remaining}/{quota.limit} restantes ({quotaLabel})
@@ -162,6 +162,11 @@ export function ChatSection() {
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Premium</span>
           )}
         </div>
+      </div>
+
+      {/* aviso persistente: visible siempre, antes y durante el uso del chat */}
+      <div className="rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-100">
+        Este asistente utiliza inteligencia artificial. Sus respuestas son orientativas, no constituyen un diagnóstico y no sustituyen la evaluación de un veterinario. Si tu mascota presenta una urgencia, acudí a una guardia veterinaria.
       </div>
 
       {/* pet selector */}

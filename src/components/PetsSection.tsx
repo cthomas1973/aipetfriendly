@@ -2328,6 +2328,11 @@ export function PetsSection() {
           <Tag size={20} className="text-purple-600" />
           <h3 className="font-bold">Chapita para el collar</h3>
         </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Quien escanee esta chapita ve el perfil publico de {pet.name} (nombre, especie, raza y
+          foto) pero no tu telefono ni tu email. Si te deja un aviso, te va a llegar por email o
+          WhatsApp y vas a verlo aca abajo, en "Mensajes recibidos".
+        </p>
         {tagRequest && (
           <p className="mt-2 text-sm text-slate-600">
             Estado de tu solicitud: <span className="font-semibold">{tagStatusLabel[tagRequest.status]}</span>

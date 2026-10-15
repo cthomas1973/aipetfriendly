@@ -811,11 +811,12 @@ export const PET_GUIDES: PetGuide[] = [
         },
       },
       {
-        heading: 'Paso 2: la gravedad a tu favor',
+        heading: 'Paso 2: la gravedad a tu favor (en perros)',
         paragraphs: [
-          'Si revisar la boca no resolvió el problema, podés usar la gravedad para ayudar a que el objeto se suelte, según el tamaño de tu mascota.',
-          'Mascotas pequeñas o gatos: levantalos suavemente por las patas traseras o los muslos (con la cabeza hacia abajo) y hacé pequeños movimientos o sacudidas suaves para que la gravedad ayude a soltar el objeto.',
-          'Mascotas grandes: elevá sus patas traseras manteniendo las delanteras apoyadas en el suelo (posición tipo "carretilla") para inclinar el cuerpo hacia adelante. Se pueden dar hasta 5 palmadas firmes entre los omóplatos.',
+          'Si revisar la boca no resolvió el problema, en perros podés usar la gravedad para ayudar a que el objeto se suelte, según su tamaño.',
+          'Perros pequeños: levantalos suavemente por las patas traseras o los muslos (con la cabeza hacia abajo) y hacé pequeños movimientos o sacudidas suaves para que la gravedad ayude a soltar el objeto.',
+          'Perros grandes: elevá sus patas traseras manteniendo las delanteras apoyadas en el suelo (posición tipo "carretilla") para inclinar el cuerpo hacia adelante. Se pueden dar hasta 5 palmadas firmes entre los omóplatos.',
+          'En gatos no existe una técnica de este tipo con el mismo respaldo veterinario que en perros: no los sostengas boca abajo ni los sacudas. Si tu gato se atraganta, priorizá el traslado inmediato a la veterinaria (ver más abajo).',
         ],
         image: {
           src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-2-gravedad-a-favor.jpg',
@@ -823,12 +824,13 @@ export const PET_GUIDES: PetGuide[] = [
         },
       },
       {
-        heading: 'Paso 3: la maniobra de Heimlich en mascotas',
+        heading: 'Paso 3: la maniobra de Heimlich en perros',
         paragraphs: [
-          'Si lo anterior no da resultado y el animal sigue sin poder respirar, el siguiente paso son las compresiones abdominales, adaptadas según el tamaño del animal.',
-          'Mascotas medianas y grandes: parate detrás de tu mascota, rodeá su abdomen con ambas manos justo debajo de las últimas costillas y aplicá compresiones firmes y rápidas hacia arriba y adelante, como dibujando un signo de interrogación. Repetí hasta 5 veces.',
-          'Mascotas pequeñas y gatos: sostenelas con la espalda apoyada contra tu pecho o abdomen, y con dos dedos o la palma de la mano aplicá compresiones suaves pero firmes justo detrás de las últimas costillas, hacia adentro y arriba. Repetí hasta 5 veces.',
+          'Si lo anterior no da resultado y tu perro sigue sin poder respirar, el siguiente paso son las compresiones abdominales, adaptadas según su tamaño.',
+          'Perros medianos y grandes: parate detrás de tu perro, rodeá su abdomen con ambas manos justo debajo de las últimas costillas y aplicá compresiones firmes y rápidas hacia arriba y adelante, como dibujando un signo de interrogación. Repetí hasta 5 veces.',
+          'Perros pequeños: sostenelo con la espalda apoyada contra tu pecho o abdomen, y con dos dedos o la palma de la mano aplicá compresiones suaves pero firmes justo detrás de las últimas costillas, hacia adentro y arriba. Repetí hasta 5 veces.',
           'Revisá la boca después de cada ciclo de compresiones para comprobar si el objeto salió.',
+          'En gatos, por su tamaño y fragilidad, no existe una maniobra validada con el mismo respaldo veterinario que en perros: no la intentes a ciegas. Ante cualquier sospecha de atragantamiento en un gato, mantené la calma, no le fuerces la boca si está consciente, y trasladalo de inmediato a la veterinaria.',
         ],
         image: {
           src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-3-maniobra-heimlich.jpg',

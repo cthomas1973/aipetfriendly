@@ -283,6 +283,11 @@ export function PetPublicProfileSection({ code }: { code: string }) {
         ) : (
           <form onSubmit={onSubmit} className="space-y-3">
             <h2 className="font-bold text-slate-900">¿La encontraste? Dejale un mensaje a su familia</h2>
+            <p className="text-xs text-slate-500">
+              Por privacidad, no mostramos el telefono ni el email del responsable en este perfil. Si
+              enviás un aviso, le va a llegar a quien cuida a {profile.name} junto con tu mensaje y, si
+              los completas, tu contacto y tu ubicacion actual (podes desactivarla mas abajo).
+            </p>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">Mensaje</label>
               <textarea

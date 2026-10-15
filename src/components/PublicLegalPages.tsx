@@ -109,13 +109,30 @@ function PrivacyPage() {
           <p className="mt-1 text-sm text-slate-700">
             Para operar la app usamos proveedores externos que procesan datos en nuestro nombre:
             Supabase (base de datos y autenticacion), OpenAI (respuestas del consultorio de IA),
-            Mercado Pago (pagos de la suscripcion Premium) y Twilio (notificaciones por WhatsApp).
-            Cada uno procesa unicamente los datos necesarios para prestar su funcion especifica.
+            Mercado Pago (pagos de la suscripcion Premium), Twilio (notificaciones por WhatsApp) y
+            Resend (envio de emails transaccionales, por ejemplo recordatorios y avisos de mascota
+            encontrada). Cada uno procesa unicamente los datos necesarios para prestar su funcion
+            especifica.
           </p>
         </div>
 
         <div>
-          <h2 className="font-bold text-slate-900">3. Uso de cookies y publicidad</h2>
+          <h2 className="font-bold text-slate-900">3. Identificacion de mascotas por codigo QR (cartel y chapita)</h2>
+          <p className="mt-1 text-sm text-slate-700">
+            Cuando alguien escanea el cartel o la chapita de tu mascota, ve unicamente su nombre,
+            especie, raza y foto (si la cargaste): nunca mostramos tu telefono ni tu email en ese
+            perfil publico. Si esa persona quiere avisarte que la encontro, puede dejarte un mensaje
+            y, de forma opcional, su propio contacto y su ubicacion del momento (compartir la
+            ubicacion es una opcion que esa persona elige activar). Esa informacion se guarda en
+            nuestra base de datos y te la enviamos a vos, como responsable de la mascota, por email
+            (a traves de Resend) y/o WhatsApp (a traves de Twilio) si tenes esos canales habilitados,
+            ademas de mostrarse en la seccion "Mensajes recibidos" dentro de la app. No compartimos
+            esa informacion con nadie mas.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="font-bold text-slate-900">4. Uso de cookies y publicidad</h2>
           <p className="mt-1 text-sm text-slate-700">
             Utilizamos cookies propias y de terceros para analitica y monetizacion publicitaria.
             Google y sus socios pueden usar cookies para mostrar anuncios personalizados o no
@@ -124,7 +141,7 @@ function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="font-bold text-slate-900">4. Uso de la informacion</h2>
+          <h2 className="font-bold text-slate-900">5. Uso de la informacion</h2>
           <p className="mt-1 text-sm text-slate-700">
             Usamos la informacion para prestar la aplicacion, mejorar funcionalidades, enviar
             recordatorios configurados por el usuario y reforzar la seguridad del servicio. No
@@ -133,7 +150,7 @@ function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="font-bold text-slate-900">5. Conservacion de los datos</h2>
+          <h2 className="font-bold text-slate-900">6. Conservacion de los datos</h2>
           <p className="mt-1 text-sm text-slate-700">
             Conservamos los datos de tu cuenta mientras la mantengas activa. Si la eliminas desde la
             app o nos lo pedis por email, borramos la informacion asociada salvo que debamos
@@ -142,7 +159,7 @@ function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="font-bold text-slate-900">6. Tus derechos</h2>
+          <h2 className="font-bold text-slate-900">7. Tus derechos</h2>
           <p className="mt-1 text-sm text-slate-700">
             Podes pedirnos acceso, rectificacion o eliminacion de tus datos personales (derechos ARCO,
             Ley 25.326 de Argentina) escribiendonos por email. La Agencia de Acceso a la Informacion
@@ -151,7 +168,7 @@ function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="font-bold text-slate-900">7. Contacto por privacidad</h2>
+          <h2 className="font-bold text-slate-900">8. Contacto por privacidad</h2>
           <p className="mt-1 text-sm text-slate-700">
             Para consultas sobre datos personales, escribinos a{' '}
             <a className="font-semibold text-emerald-700 hover:underline" href="mailto:contacto@aipetfriendly.ar">
