@@ -9,8 +9,10 @@ import {
   ListChecks,
   MapPin,
   Navigation,
+  PhoneCall,
   ShieldCheck,
   Star,
+  Stethoscope,
   Users,
 } from 'lucide-react';
 import { BlogTeaser } from './BlogTeaser';
@@ -122,6 +124,27 @@ export function VeterinaryLandingSection({ onRegister }: VeterinaryLandingSectio
         </div>
       </div>
 
+      {/* CLINICAS, CONSULTORIOS Y HOSPITALES */}
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <Stethoscope size={20} />
+          </span>
+          <div>
+            <h2 className="font-bold text-slate-900">Clínicas, consultorios y hospitales veterinarios</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              La búsqueda incluye clínicas, consultorios y hospitales veterinarios en un mismo
+              listado: AiPetFriendly no separa los resultados por subtipo, porque las fuentes de
+              datos que usamos tampoco siempre distinguen entre ellos.
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Vas a ver, junto con cada resultado, el nombre y la dirección disponibles para que
+              puedas identificar de qué tipo de establecimiento se trata.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* FUENTES DE INFORMACION */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
         <div className="flex items-start gap-3">
@@ -131,12 +154,13 @@ export function VeterinaryLandingSection({ onRegister }: VeterinaryLandingSectio
           <div>
             <h2 className="font-bold text-slate-900">Fuentes de información</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Los resultados combinan información proveniente de OpenStreetMap, Google Places y la
-              base propia de AiPetFriendly.
+              Los resultados combinan veterinarias registradas en OpenStreetMap, en Google Places y
+              perfiles propios reclamados por la veterinaria en AiPetFriendly.
             </p>
             <p className="mt-2 text-sm text-slate-600">
-              La cobertura depende de las fuentes disponibles en cada zona, por lo que puede
-              variar de un lugar a otro.
+              La cobertura depende de qué datos existan en cada fuente para tu zona: puede haber
+              más o menos resultados según el lugar, y algunos establecimientos todavía pueden no
+              aparecer.
             </p>
           </div>
         </div>
@@ -203,6 +227,28 @@ export function VeterinaryLandingSection({ onRegister }: VeterinaryLandingSectio
             </ul>
             <p className="mt-3 text-sm text-slate-600">
               Para resultados externos puede haber información más limitada.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ANTES DE ACUDIR */}
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <PhoneCall size={20} />
+          </span>
+          <div>
+            <h2 className="font-bold text-slate-900">Antes de acudir, confirmá</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Te recomendamos llamar o escribir a la veterinaria antes de ir, para confirmar el
+              horario de atención, si hay turno disponible y si cuenta con el servicio que
+              necesitás.
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Esto es especialmente útil fuera del horario habitual, los fines de semana o si se
+              trata de una urgencia, ya que no todos los establecimientos ofrecen atención en esos
+              horarios.
             </p>
           </div>
         </div>
@@ -296,10 +342,10 @@ export function VeterinaryLandingSection({ onRegister }: VeterinaryLandingSectio
           <div>
             <h2 className="font-bold text-slate-900">La información puede variar</h2>
             <p className="mt-1 text-sm text-slate-700">
-              Los resultados combinan diferentes fuentes de información y pueden cambiar o estar
-              incompletos. Los horarios, teléfonos y otros datos pueden no estar disponibles o
-              quedar desactualizados. Antes de dirigirte a un establecimiento, conviene confirmar
-              la información directamente.
+              Los horarios, teléfonos, servicios y la atención de urgencias pueden cambiar o no
+              estar actualizados en alguna de las fuentes. Confirmá esta información directamente
+              con la veterinaria antes de acudir, sobre todo si se trata de una urgencia fuera del
+              horario habitual.
             </p>
           </div>
         </div>

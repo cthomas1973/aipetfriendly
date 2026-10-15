@@ -7,6 +7,9 @@ build/
 .env.local
 .env.*.local
 
+# Vercel CLI project link (metadata local, no son secretos pero no se commitea)
+.vercel
+
 # IDE
 .vscode/
 .idea/

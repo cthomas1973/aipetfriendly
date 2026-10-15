@@ -214,6 +214,7 @@ export interface BlogPost {
   relatedGuideSlug?: string;
   relatedBlogSlug?: string;
   relatedProductId?: string;
+  metaDescription?: string;
 }
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Calendar, ChevronLeft, Clock, Newspaper } from 'lucide-react';
 import { AdBanner } from './AdBanner';
 import { PublicFooter } from './PublicLegalPages';
@@ -7,6 +7,7 @@ import { useAppState } from '../context/AppStateContext';
 import { fetchBlogPostBySlug, fetchBlogPosts } from '../lib/supabase';
 import { setNotFoundPageMeta, setPageMeta } from '../lib/pageMeta';
 import type { BlogPost } from '../types';
+import { resolveBlogDescription } from '../../shared/seoMeta.mjs';
 
 const SITE_DESCRIPTION_DEFAULT =
   'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
@@ -23,10 +24,48 @@ function isUsablePost(value: BlogPost | null | undefined): value is BlogPost {
   return Boolean(value && value.id && typeof value.content === 'string');
 }
 
+// Reconoce unicamente "[texto](URL)" con URL https:// o ruta relativa de un
+// solo nivel ("/algo", nunca "//algo" para evitar URLs protocol-relative que
+// apunten a otro host). Cualquier otro esquema (http, javascript:, data:,
+// etc.) o marcador incompleto no matchea y queda como texto literal.
+const INLINE_LINK_PATTERN = /\[([^[\]]+)\]\((https:\/\/[^\s()]+|\/(?!\/)[^\s()]*)\)/g;
+
+function renderInlineRich(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let count = 0;
+  INLINE_LINK_PATTERN.lastIndex = 0; // regex global reutilizado: resetear evita arrastrar estado entre parrafos
+  while ((match = INLINE_LINK_PATTERN.exec(text))) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    const [, label, href] = match;
+    const isExternal = href.startsWith('https://');
+    nodes.push(
+      <a
+        key={`${keyPrefix}-${count++}`}
+        href={href}
+        className="font-medium text-emerald-700 underline"
+        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      >
+        {label}
+      </a>,
+    );
+    lastIndex = INLINE_LINK_PATTERN.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return nodes;
+}
+
 // El contenido del post viene como texto plano generado por IA (parrafos
 // separados por linea en blanco, ver api/cron/generate-blog-post.js). Lo
 // separamos en parrafos para poder darle el mismo espaciado que las guias,
-// sin depender de que el modelo devuelva HTML/markdown.
+// sin depender de que el modelo devuelva HTML/markdown. Un parrafo que
+// empieza con "## " se renderiza como subtitulo real; el resto mantiene el
+// comportamiento de siempre (texto plano, con soporte agregado de enlaces).
 function renderContentParagraphs(content: string | null | undefined) {
   if (!content) {
     return null;
@@ -35,11 +74,20 @@ function renderContentParagraphs(content: string | null | undefined) {
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
-    .map((paragraph, index) => (
-      <p key={index} className="mt-3 text-sm leading-relaxed text-slate-700 md:text-base first:mt-0">
-        {paragraph}
-      </p>
-    ));
+    .map((paragraph, index) => {
+      if (paragraph.startsWith('## ')) {
+        return (
+          <h2 key={index} className="mt-5 text-lg font-bold text-slate-900 first:mt-0 md:text-xl">
+            {renderInlineRich(paragraph.slice(3), `h-${index}`)}
+          </h2>
+        );
+      }
+      return (
+        <p key={index} className="mt-3 text-sm leading-relaxed text-slate-700 md:text-base first:mt-0">
+          {renderInlineRich(paragraph, `p-${index}`)}
+        </p>
+      );
+    });
 }
 
 function BackToHomeCta() {
@@ -201,7 +249,11 @@ function BlogDetail({ slug }: { slug: string }) {
 
   useEffect(() => {
     if (isUsablePost(post)) {
-      setPageMeta(`${post.title} | AiPetFriendly`, post.content.slice(0, 150), `/blog/${slug}`);
+      setPageMeta(
+        `${post.title} | AiPetFriendly`,
+        resolveBlogDescription(post.metaDescription, post.content, SITE_DESCRIPTION_DEFAULT),
+        `/blog/${slug}`,
+      );
     } else if (post !== undefined) {
       // Slug sin post publicado valido (no existe o la fila llego incompleta):
       // noindex y sin canonical, no inventamos una URL de contenido valido.
@@ -244,6 +296,10 @@ function BlogDetail({ slug }: { slug: string }) {
         <h1 className="mt-2 text-2xl font-extrabold text-slate-900 md:text-3xl">{post.title}</h1>
         <p className="mt-2 flex flex-wrap items-center gap-1 text-xs font-medium text-slate-500">
           <Calendar size={14} /> Publicado el {formatPostDate(post.createdAt)}
+        </p>
+        <p className="mt-1 text-xs text-slate-500 md:text-sm">
+          Contenido generado con asistencia de IA a partir de fuentes consultadas, revisado y
+          aprobado antes de su publicación.
         </p>
       </header>
 

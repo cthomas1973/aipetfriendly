@@ -2885,6 +2885,7 @@ function mapBlogPostRow(row: any): BlogPost {
     relatedGuideSlug: row.related_guide_slug || undefined,
     relatedBlogSlug: row.related_blog_slug || undefined,
     relatedProductId: row.related_product_id || undefined,
+    metaDescription: row.meta_description || undefined,
   };
 }
 
@@ -2943,6 +2944,7 @@ export async function updateAdminBlogPost(input: {
   relatedGuideSlug?: string | null;
   relatedBlogSlug?: string | null;
   relatedProductId?: string | null;
+  metaDescription?: string | null;
 }): Promise<BlogPost> {
   const { data, error } = await supabase.rpc('admin_update_blog_post', {
     p_id: input.id,
@@ -2952,6 +2954,12 @@ export async function updateAdminBlogPost(input: {
     p_related_guide_slug: input.relatedGuideSlug || null,
     p_related_blog_slug: input.relatedBlogSlug || null,
     p_related_product_id: input.relatedProductId || null,
+    p_meta_description: input.metaDescription || null,
+    // El panel admin siempre conoce el valor vigente a conservar/aplicar (ver
+    // AdminBlogSection.tsx), asi que siempre pide actualizar este campo; el
+    // default false de la RPC es la red de seguridad para otros callers que
+    // no conozcan este parametro.
+    p_update_meta_description: true,
   });
 
   if (error) {

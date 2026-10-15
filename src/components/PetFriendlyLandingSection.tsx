@@ -10,6 +10,7 @@ import {
   ListChecks,
   MapPin,
   Navigation,
+  PhoneCall,
   ShieldCheck,
   ShoppingBag,
   Star,
@@ -146,12 +147,14 @@ export function PetFriendlyLandingSection({ onRegister }: PetFriendlyLandingSect
           <div>
             <h2 className="font-bold text-slate-900">Fuentes de información</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Los resultados combinan información proveniente de OpenStreetMap, Google Places y la
-              base propia de AiPetFriendly.
+              Los resultados combinan lugares marcados como aptos para mascotas en OpenStreetMap
+              (etiquetados como admite perros, con o sin correa), lugares de Google Places
+              marcados como aptos para mascotas y perfiles propios reclamados por el negocio en
+              AiPetFriendly.
             </p>
             <p className="mt-2 text-sm text-slate-600">
-              La cobertura depende de las fuentes disponibles en cada zona, por lo que puede
-              variar de un lugar a otro.
+              Que un lugar no aparezca en los resultados no significa que no acepte mascotas: puede
+              que todavía no esté marcado así en esas fuentes.
             </p>
           </div>
         </div>
@@ -247,6 +250,28 @@ export function PetFriendlyLandingSection({ onRegister }: PetFriendlyLandingSect
         </div>
       </div>
 
+      {/* ANTES DE IR */}
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-sky-100 md:p-6">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+            <PhoneCall size={20} />
+          </span>
+          <div>
+            <h2 className="font-bold text-slate-900">Antes de ir, confirmá</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Que un lugar aparezca en los resultados no garantiza que acepte mascotas en este
+              momento. Te recomendamos confirmar antes de ir la política de ingreso, si hay zonas
+              habilitadas (por ejemplo, solo en el patio o el exterior) y si existen restricciones
+              de tamaño, correa o bozal.
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Esta confirmación es especialmente útil en restaurantes, bares y hoteles, donde la
+              política suele depender del local puntual y no de la zona en general.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* RESEÑAS Y COMENTARIOS */}
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-sky-100 md:p-6">
         <div className="flex items-start gap-3">
@@ -336,10 +361,11 @@ export function PetFriendlyLandingSection({ onRegister }: PetFriendlyLandingSect
           <div>
             <h2 className="font-bold text-slate-900">La información puede variar</h2>
             <p className="mt-1 text-sm text-slate-700">
-              Los resultados combinan diferentes fuentes de información y pueden cambiar o estar
-              incompletos. Los horarios, teléfonos, políticas sobre mascotas y otros datos pueden
-              no estar disponibles o quedar desactualizados. Antes de dirigirte a un lugar,
-              conviene confirmar la información directamente.
+              Los resultados combinan diferentes fuentes y pueden cambiar o estar incompletos. Las
+              políticas sobre mascotas, los horarios y otros datos pueden no estar disponibles,
+              quedar desactualizados o no reflejar la situación actual del lugar. AiPetFriendly no
+              garantiza que un lugar acepte mascotas: la decisión final siempre depende del
+              establecimiento.
             </p>
           </div>
         </div>

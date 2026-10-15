@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2, Pencil, RefreshCw, Trash2, Undo2, X } from 'luci
 import { deleteAdminBlogPost, fetchAdminBlogPosts, fetchAllBeneficiosProductos, updateAdminBlogPost } from '../lib/supabase';
 import { getGuidesSortedByDate } from '../data/petGuides';
 import type { BeneficioProducto, BlogPost } from '../types';
+import { META_DESCRIPTION_MAX_LENGTH, META_DESCRIPTION_MIN_LENGTH } from '../../shared/seoMeta.mjs';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
@@ -20,6 +21,7 @@ export function AdminBlogSection() {
   const [editRelatedGuideSlug, setEditRelatedGuideSlug] = useState('');
   const [editRelatedBlogSlug, setEditRelatedBlogSlug] = useState('');
   const [editRelatedProductId, setEditRelatedProductId] = useState('');
+  const [editMetaDescription, setEditMetaDescription] = useState('');
   const [products, setProducts] = useState<BeneficioProducto[]>([]);
   const guides = getGuidesSortedByDate(true);
 
@@ -53,6 +55,7 @@ export function AdminBlogSection() {
     setEditRelatedGuideSlug(row.relatedGuideSlug || '');
     setEditRelatedBlogSlug(row.relatedBlogSlug || '');
     setEditRelatedProductId(row.relatedProductId || '');
+    setEditMetaDescription(row.metaDescription || '');
     setError(null);
     setMsg(null);
   };
@@ -64,6 +67,7 @@ export function AdminBlogSection() {
     setEditRelatedGuideSlug('');
     setEditRelatedBlogSlug('');
     setEditRelatedProductId('');
+    setEditMetaDescription('');
   };
 
   const persistChange = async (row: BlogPost, status: 'draft' | 'published', useEditedText: boolean) => {
@@ -79,6 +83,7 @@ export function AdminBlogSection() {
         relatedGuideSlug: useEditedText ? editRelatedGuideSlug : row.relatedGuideSlug,
         relatedBlogSlug: useEditedText ? editRelatedBlogSlug : row.relatedBlogSlug,
         relatedProductId: useEditedText ? editRelatedProductId : row.relatedProductId,
+        metaDescription: useEditedText ? editMetaDescription : row.metaDescription,
       });
       setRows((current) => current.map((r) => (r.id === row.id ? updated : r)));
       setMsg(status === 'published' ? 'Post publicado correctamente.' : 'Post pasado a borrador.');
@@ -188,6 +193,28 @@ export function AdminBlogSection() {
                 </select>
               </label>
             </div>
+            <label className="block text-xs font-semibold text-slate-500">
+              Meta description (SEO)
+              <textarea
+                value={editMetaDescription}
+                onChange={(e) => setEditMetaDescription(e.target.value)}
+                rows={2}
+                placeholder="Vacío = se usa la descripción automática generada desde el contenido."
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal text-slate-700"
+              />
+              <span
+                className={
+                  editMetaDescription.trim().length > 0 &&
+                  (editMetaDescription.trim().length < META_DESCRIPTION_MIN_LENGTH ||
+                    editMetaDescription.trim().length > META_DESCRIPTION_MAX_LENGTH)
+                    ? 'mt-1 block text-[11px] font-normal text-amber-600'
+                    : 'mt-1 block text-[11px] font-normal text-slate-400'
+                }
+              >
+                {editMetaDescription.trim().length} caracteres (recomendado {META_DESCRIPTION_MIN_LENGTH}–
+                {META_DESCRIPTION_MAX_LENGTH}; se guarda igual aunque esté fuera de rango)
+              </span>
+            </label>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"

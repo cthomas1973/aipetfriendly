@@ -48,6 +48,7 @@ import sharp from 'sharp';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { sanitizeMetaDescriptionCandidate, META_DESCRIPTION_MIN_LENGTH, META_DESCRIPTION_MAX_LENGTH } from '../../shared/seoMeta.mjs';
 
 // SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
@@ -395,6 +396,10 @@ function parseArticleJson(rawText) {
     estimatedReadingTime: Number.isFinite(Number(parsed.estimated_reading_time))
       ? Math.max(1, Math.round(Number(parsed.estimated_reading_time)))
       : Math.max(1, Math.round(String(parsed.content).split(/\s+/).length / 200)),
+    // Campo opcional: si la IA no lo trae, trae HTML/markdown residual o
+    // queda fuera de rango, se guarda null y el post usa el fallback
+    // automatico (buildBlogDescription) en vez de bloquear la generacion.
+    metaDescription: sanitizeMetaDescriptionCandidate(parsed.meta_description),
   };
 }
 
@@ -478,8 +483,9 @@ export async function generateArticleFromNews(topic, newsItems, petFocus, relate
       'Separa cada parrafo de "content" con una linea en blanco (no uses saltos de linea simples dentro de un mismo bloque de la estructura).',
       '',
       'Respondé UNICAMENTE con un JSON valido (sin texto extra antes ni despues), con esta forma exacta:',
-      '{"title": "...", "content": "...", "source_name": "...", "estimated_reading_time": 2}',
+      '{"title": "...", "content": "...", "source_name": "...", "estimated_reading_time": 2, "meta_description": "..."}',
       'Donde "source_name" es el medio de la noticia que elegiste (una de las 10 de arriba) y "estimated_reading_time" es un numero entero de minutos de lectura.',
+      `"meta_description" es un resumen en texto plano (sin "#", sin "[texto](url)", sin HTML) de entre ${META_DESCRIPTION_MIN_LENGTH} y ${META_DESCRIPTION_MAX_LENGTH} caracteres que describa el valor practico concreto del articulo para usar como meta description SEO; si no podes generar uno que cumpla ese rango, dejalo como string vacio.`,
     ]
       .filter(Boolean)
       .join('\n');
@@ -1040,6 +1046,7 @@ export default async function handler(req, res) {
         image_url: imageUrl,
         source_name: article.sourceName,
         estimated_reading_time: article.estimatedReadingTime,
+        meta_description: article.metaDescription,
         status: 'draft',
         topic,
         pet_focus: effectivePetFocus,
