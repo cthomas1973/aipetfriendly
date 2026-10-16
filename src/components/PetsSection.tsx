@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
-  Circle, ClipboardList, Download, Heart, Mail,
+  Circle, ClipboardList, Download, Heart, Lock, Mail,
   MapPin, MessageCircle, PawPrint, Pill, Plus, QrCode, Shield, Syringe, Tag, Trash2, Utensils, X,
 } from 'lucide-react';
 import jsQR from 'jsqr';
@@ -384,7 +384,8 @@ function HealthSummaryPanel({
 
 export function PetsSection() {
   const { pets, selectedPetId, canAddPet, freePetLimit, addPet, selectPet, removePet, updatePet } = usePets();
-  const { setActiveTab, user } = useAppState();
+  const { setActiveTab, user, subscription } = useAppState();
+  const isPremium = subscription?.isPremiumUser ?? false;
   const { timeline, addClinicalNote, generateClinicalPdf, sendClinicalPdfByEmail } = useClinical();
   const {
     healthBookletEntries,
@@ -2092,13 +2093,21 @@ export function PetsSection() {
         <p className="text-sm text-slate-500">{timeline.length} registro{timeline.length !== 1 ? 's' : ''}</p>
 
         <div className="flex gap-3">
-          <button type="button" onClick={doPdf}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-emerald-400 py-3 font-semibold text-emerald-700">
-            <Download size={16} /> Descargar PDF
+          <button
+            type="button"
+            onClick={doPdf}
+            title={isPremium ? undefined : 'Funcion Premium: descarga el historial en PDF'}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-emerald-400 py-3 font-semibold text-emerald-700"
+          >
+            {isPremium ? <Download size={16} /> : <Lock size={16} />} Descargar PDF{!isPremium && ' (Premium)'}
           </button>
-          <button type="button" onClick={() => setMailModal(true)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 font-bold text-white">
-            <Mail size={16} /> Enviar
+          <button
+            type="button"
+            onClick={() => setMailModal(true)}
+            title={isPremium ? undefined : 'Funcion Premium: envia el historial por email'}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 font-bold text-white"
+          >
+            {isPremium ? <Mail size={16} /> : <Lock size={16} />} Enviar{!isPremium && ' (Premium)'}
           </button>
         </div>
         {msg && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{msg}</p>}

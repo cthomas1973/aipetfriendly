@@ -427,7 +427,9 @@ function AppContent() {
     loading,
     activeTab,
     pets,
+    clinicalEntries,
     preventiveTasks,
+    chatMessages,
     subscription,
     setActiveTab,
     setSelectedPetId,
@@ -569,7 +571,26 @@ function AppContent() {
     }
   }, [user, pets, setSelectedPetId, setActiveTab]);
 
+  // Las mascotas/historial/agenda/chat de un invitado viven solo en memoria
+  // (no se persisten en ningun lado): salir o loguearse con otra cuenta las
+  // pierde para siempre sin aviso. Si ya cargo algo, se confirma antes.
+  const hasUnsavedGuestData = Boolean(
+    user?.isGuest && (pets.length > 0 || clinicalEntries.length > 0 || preventiveTasks.length > 0 || chatMessages.length > 0),
+  );
+
+  const confirmLeaveGuestMode = () => {
+    if (!hasUnsavedGuestData) {
+      return true;
+    }
+    return window.confirm(
+      'Tenes datos cargados como invitado (mascotas, historial, agenda o chat) que todavia no se guardaron. Si continuas, se van a perder. ¿Queres continuar de todos modos?',
+    );
+  };
+
   const onSignOutGuest = () => {
+    if (!confirmLeaveGuestMode()) {
+      return;
+    }
     setUser(null);
   };
 
@@ -582,6 +603,10 @@ function AppContent() {
     // llevar siempre al inicio, no disparar el cambio/cierre de usuario.
     if (isGuidesRoute || isBlogRoute || isLegalRoute) {
       window.location.href = '/';
+      return;
+    }
+
+    if (user?.isGuest && !confirmLeaveGuestMode()) {
       return;
     }
 
@@ -935,6 +960,9 @@ function AppContent() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (!confirmLeaveGuestMode()) {
+                      return;
+                    }
                     window.location.href = '/login';
                   }}
                   className="flex-1 rounded-full border-2 border-white font-semibold py-2 hover:bg-white/20 transition"
