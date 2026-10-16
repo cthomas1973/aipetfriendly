@@ -15,6 +15,20 @@ function currentUsagePeriodKey(): string {
   return new Date().toISOString().slice(0, 7);
 }
 
+const USAGE_RESET_DATE_FORMATTER = new Intl.DateTimeFormat('es-AR', {
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+
+// Etiqueta legible del proximo reinicio mensual del cupo (coincide con el
+// corte UTC que usa currentUsagePeriodKey, para no mostrar una fecha corrida).
+function nextUsageResetLabel(): string {
+  const now = new Date();
+  const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return USAGE_RESET_DATE_FORMATTER.format(nextReset);
+}
+
 function readGuestUsage(): Record<string, number> {
   const raw = window.localStorage.getItem(GUEST_USAGE_KEY);
   if (!raw) {
@@ -463,6 +477,8 @@ export function useChat() {
       limit: currentLimit,
       used: usedForSelectedPet,
       remaining: remainingForSelectedPet,
+      premiumLimit: limits.premiumLimitPerPet,
+      resetLabel: nextUsageResetLabel(),
     },
     sendMessage,
     retryMessage,
