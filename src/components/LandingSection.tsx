@@ -244,8 +244,8 @@ export function LandingSection({ onRegister, onLogin, onGuest }: LandingSectionP
           <div>
             <h2 className="font-bold text-slate-900">Plan gratis y plan Premium</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Empezá gratis con 1 mascota y consultas de IA limitadas por día. Con Premium sumás
-              mascotas ilimitadas, consultas sin límite, envío de historial por email y más.
+              Empezá gratis con 1 mascota y hasta 10 consultas de IA por mes por mascota. Con Premium sumás
+              mascotas ilimitadas, hasta 100 consultas de IA por mes por mascota, envío de historial por email y más.
             </p>
           </div>
         </div>

@@ -276,8 +276,8 @@ export function HowItWorksSection({ onRegister }: HowItWorksSectionProps) {
           <div>
             <h2 className="font-bold text-slate-900">Plan gratis y plan Premium</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Empezá gratis con 1 mascota y consultas de IA limitadas por día. Con Premium sumás
-              mascotas ilimitadas, consultas sin límite, exportación del historial en PDF y más.
+              Empezá gratis con 1 mascota y hasta 10 consultas de IA por mes por mascota. Con Premium sumás
+              mascotas ilimitadas, hasta 100 consultas de IA por mes por mascota, exportación del historial en PDF y más.
             </p>
           </div>
         </div>
@@ -289,7 +289,7 @@ export function HowItWorksSection({ onRegister }: HowItWorksSectionProps) {
                 '1 mascota',
                 'Historial clínico completo',
                 'Preventivos y agenda',
-                'Consultas de IA limitadas por día',
+                'Hasta 10 consultas de IA por mes por mascota',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
@@ -303,7 +303,7 @@ export function HowItWorksSection({ onRegister }: HowItWorksSectionProps) {
             <ul className="mt-3 space-y-2 text-sm text-slate-700">
               {[
                 'Mascotas ilimitadas',
-                'Consultas de IA ilimitadas',
+                'Hasta 100 consultas de IA por mes por mascota',
                 'Historial clínico completo',
                 'Preventivos y agenda',
                 'Exportar PDF del historial',

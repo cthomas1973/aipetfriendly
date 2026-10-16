@@ -10,6 +10,7 @@ import {
   createMercadoPagoOneTimeMonthlyPayment,
   createMercadoPagoRecurringSubscription,
   deleteCotutor,
+  fetchAiUsageSettings,
   fetchBillingPricingSettings,
   fetchBeneficiosProductos,
   fetchCotutors,
@@ -17,7 +18,7 @@ import {
   updateCotutorActive,
   validateDiscountCode,
 } from '../lib/supabase';
-import type { BillingPricingSettings, Cotutor, DiscountCodeValidation, Species } from '../types';
+import type { AiUsageSettings, BillingPricingSettings, Cotutor, DiscountCodeValidation, Species } from '../types';
 
 function detectUserCountryCode(): string {
   const timezoneToCountry: Record<string, string> = {
@@ -123,7 +124,7 @@ export function SubscriptionBanner() {
 /* ── PaywallCard (Mi Cuenta) ────────────────────────── */
 const FEATURES = [
   { label: 'Mascotas ilimitadas',   free: false },
-  { label: 'Consultas IA ilimitadas', free: false },
+  { label: 'Consultas de IA ampliadas', free: false },
   { label: 'Historial clinico completo', free: true },
   { label: 'Preventivos y agenda',  free: true },
   { label: 'Exportar PDF del historial', free: false },
@@ -179,6 +180,7 @@ export function PaywallCard() {
   const [discountValidating, setDiscountValidating] = useState(false);
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [detectedCountryCode] = useState<string>(detectUserCountryCode());
+  const [aiUsageLimits, setAiUsageLimits] = useState<AiUsageSettings | null>(null);
   const [pricing, setPricing] = useState<BillingPricingSettings>({
     premiumMonthlyAutoArs: 9900,
     premiumMonthlyAutoUsd: 9.9,
@@ -248,6 +250,27 @@ export function PaywallCard() {
     };
 
     void loadPricing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAiUsageLimits = async () => {
+      try {
+        const data = await fetchAiUsageSettings();
+        if (!cancelled) {
+          setAiUsageLimits(data);
+        }
+      } catch (error) {
+        console.error('No se pudieron cargar los limites IA para Mi Cuenta:', error);
+      }
+    };
+
+    void loadAiUsageLimits();
 
     return () => {
       cancelled = true;
@@ -666,7 +689,12 @@ export function PaywallCard() {
                 <p className="mt-1 text-xs text-slate-500">Limitaciones del plan gratuito</p>
                 <ul className="mt-3 space-y-2 text-sm text-slate-700">
                   <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Maximo 1 mascota</li>
-                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> IA limitada ({subscription.freeAiDailyLimit} consultas/dia)</li>
+                  <li className="flex items-center gap-2">
+                    <X size={14} className="text-rose-500 shrink-0" />
+                    {aiUsageLimits
+                      ? `Hasta ${aiUsageLimits.freeLimitPerPet} consultas de IA por mes por mascota`
+                      : 'IA limitada (consultas de IA por mes por mascota)'}
+                  </li>
                   <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Sin exportacion PDF avanzada</li>
                 </ul>
               </div>
@@ -676,7 +704,12 @@ export function PaywallCard() {
                 <p className="mt-1 text-xs text-emerald-700">Beneficios incluidos</p>
                 <ul className="mt-3 space-y-2 text-sm text-emerald-900">
                   <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Mascotas ilimitadas</li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Consultas IA ampliadas</li>
+                  <li className="flex items-center gap-2">
+                    <Check size={14} className="text-emerald-600 shrink-0" />
+                    {aiUsageLimits
+                      ? `Hasta ${aiUsageLimits.premiumLimitPerPet} consultas de IA por mes por mascota`
+                      : 'Consultas de IA ampliadas'}
+                  </li>
                   <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Exportar historial clinico en PDF</li>
                 </ul>
               </div>
