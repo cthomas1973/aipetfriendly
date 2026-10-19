@@ -7,8 +7,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+import { loadEnv } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const env = loadEnv('production', path.join(__dirname, '..'), 'VITE_');
 const guidesFile = path.join(__dirname, '..', 'src', 'data', 'petGuides.ts');
 const sitemapFile = path.join(__dirname, '..', 'public', 'sitemap.xml');
 const guidesFeedFile = path.join(__dirname, '..', 'public', 'guides-feed.json');
@@ -21,8 +23,8 @@ const SITE_URL = 'https://www.aipetfriendly.ar';
 // consulta falla, se degrada sin romper el build: el sitemap sale sin el blog,
 // igual que antes de este cambio.
 async function fetchPublishedBlogPosts() {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseUrl = env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.warn('VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY no configuradas: el sitemap se genera sin el blog.');
