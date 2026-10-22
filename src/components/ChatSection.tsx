@@ -60,7 +60,7 @@ function resizeImageToDataUrl(file: File, maxDim = 1024, quality = 0.72): Promis
 
 export function ChatSection() {
   const { pets, selectedPetId, setSelectedPetId, subscription, setActiveTab } = useAppState();
-  const { messages, historyMessages, canUseAI, hasValidSelectedPet, quota, sendMessage, retryMessage, suggestedProductByMessageId, vetVisitRecommendedByMessageId } = useChat();
+  const { messages, historyMessages, persistenceError, canUseAI, hasValidSelectedPet, quota, sendMessage, retryMessage, suggestedProductByMessageId, vetVisitRecommendedByMessageId } = useChat();
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -402,6 +402,7 @@ export function ChatSection() {
           </button>
         </div>
       )}
+      {persistenceError && <p role="alert" className="px-2 text-xs font-semibold text-rose-600">{persistenceError}</p>}
       {imageError && (
         <p className="px-2 text-xs font-semibold text-rose-600">{imageError}</p>
       )}

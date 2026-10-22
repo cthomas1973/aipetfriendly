@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useAppState } from '../context/AppStateContext';
+import { useAppState, useSessionGuard } from '../context/AppStateContext';
 import { createClinicalEntry } from '../lib/supabase';
 import type {
   ClinicalEntryCategory,
@@ -41,6 +41,7 @@ function categoryLabel(category: ClinicalEntryCategory): string {
 
 export function useClinical() {
   const { clinicalEntries, pets, selectedPetId, setClinicalEntries, user, subscription } = useAppState();
+  const assertCurrentSession = useSessionGuard(user?.id);
   const [activeFilter, setActiveFilter] = useState<ClinicalEntryCategory | 'all'>('all');
 
   const selectedPet: Pet | null = useMemo(
@@ -62,6 +63,7 @@ export function useClinical() {
 
   const addClinicalNote = useCallback(
     async (data: ClinicalNoteFormData) => {
+      assertCurrentSession();
       if (!user) {
         throw new Error('Debes iniciar sesion para registrar notas clinicas.');
       }
@@ -87,6 +89,7 @@ export function useClinical() {
         eventDate: data.eventDate,
       });
 
+      assertCurrentSession();
       if (!saved) {
         throw new Error('No se pudo guardar la nota clinica en Supabase.');
       }
@@ -94,7 +97,7 @@ export function useClinical() {
       setClinicalEntries([saved, ...clinicalEntries]);
       return saved;
     },
-    [clinicalEntries, setClinicalEntries, user],
+    [clinicalEntries, setClinicalEntries, user, assertCurrentSession],
   );
 
   const generateClinicalPdf = useCallback(

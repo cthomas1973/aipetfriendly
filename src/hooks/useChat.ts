@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import type { ChatMessage } from '../types';
 import { askPetAssistant, createChatMessage, fetchAiUsageSettings, fetchUserPetAiUsage } from '../lib/supabase';
@@ -91,11 +91,39 @@ export function useChat() {
   const [sessionMessagesByPet, setSessionMessagesByPet] = useState<Record<string, ChatMessage[]>>({});
   const [suggestedProductByMessageId, setSuggestedProductByMessageId] = useState<Record<string, SuggestedProduct>>({});
   const [vetVisitRecommendedByMessageId, setVetVisitRecommendedByMessageId] = useState<Record<string, boolean>>({});
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const identityRef = useRef(user?.id);
+  const sessionRevisionRef = useRef(0);
+  const messagesRef = useRef(chatMessages);
+  if (identityRef.current !== user?.id) sessionRevisionRef.current += 1;
+  const sessionRevision = sessionRevisionRef.current;
+  identityRef.current = user?.id;
+  messagesRef.current = chatMessages;
+
+  useEffect(() => {
+    identityRef.current = user?.id;
+    return () => { identityRef.current = undefined; };
+  }, [user?.id]);
 
   useEffect(() => {
     // Cada inicio/cambio de sesion comienza con consultorio limpio.
     setSessionMessagesByPet({});
+    setPersistenceError(null);
   }, [user?.id]);
+
+  const persistMessages = useCallback(async (items: Array<Pick<ChatMessage, 'petId' | 'role' | 'content' | 'imageUrl'>>) => {
+    if (!user || user.isGuest) return;
+    try {
+      const saved = await Promise.all(items.map(message => createChatMessage(
+        user.id, message.petId ?? null, message.role, message.content, message.imageUrl,
+      )));
+      if (saved.some(message => !message)) throw new Error('Persistencia incompleta');
+    } catch {
+      if (identityRef.current === user.id && sessionRevisionRef.current === sessionRevision) {
+        setPersistenceError('No se pudo guardar parte de la conversacion. Sigue visible en esta sesion, pero podria perderse al recargar.');
+      }
+    }
+  }, [user, sessionRevision]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,7 +203,7 @@ export function useChat() {
       return [] as ChatMessage[];
     }
 
-    return chatMessages.filter((message) => message.petId === selectedPetId && message.role !== 'system');
+    return chatMessages.filter((message) => message.petId === selectedPetId && message.role !== 'system' && !message.isError);
   }, [chatMessages, hasValidSelectedPet, selectedPetId]);
 
   const sessionMessages = useMemo(() => {
@@ -259,6 +287,9 @@ export function useChat() {
           imageBase64: imageDataUrl || null,
           guestContext,
         });
+        if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) {
+          return { text: '', suggestedProduct: null, persistedImageUrl: null, recommendVetVisit: false, isError: true };
+        }
 
         if (response.answer) {
           text = response.answer;
@@ -305,7 +336,7 @@ export function useChat() {
 
       return { text, suggestedProduct, persistedImageUrl, recommendVetVisit, isError };
     },
-    [clinicalEntries, pets, preventiveTasks, user],
+    [clinicalEntries, pets, preventiveTasks, user, sessionRevision],
   );
 
   const sendMessage = useCallback(
@@ -333,10 +364,11 @@ export function useChat() {
         ...current,
         [petId]: nextSessionMessages,
       }));
-      setChatMessages([...chatMessages, userMessage]);
+      messagesRef.current = [...messagesRef.current, userMessage];
+      setChatMessages(messagesRef.current);
 
       const recentMessages = nextMessages
-        .filter((message) => message.role !== 'system')
+        .filter((message) => message.role !== 'system' && !message.isError)
         .slice(-12)
         .map((message) => ({
           role: message.role as 'user' | 'assistant',
@@ -344,6 +376,7 @@ export function useChat() {
         }));
 
       const result = await requestAssistantAnswer(content, petId, imageDataUrl, recentMessages);
+      if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) return;
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -372,17 +405,16 @@ export function useChat() {
         ...current,
         [petId]: [...(current[petId] || []), assistantMessage],
       }));
-      setChatMessages([...chatMessages, userMessage, assistantMessage]);
+      messagesRef.current = [...messagesRef.current, assistantMessage];
+      setChatMessages(messagesRef.current);
 
       if (user && !user.isGuest) {
         // Se persiste aca (despues de la respuesta) para poder guardar la URL
         // publica de Storage de la imagen, ya subida por el edge function.
-        void createChatMessage(user.id, petId, 'user', content, result.persistedImageUrl);
-        if (!result.isError) {
-          // El aviso de error no es una respuesta real: no se guarda en el
-          // historial persistido para no confundir futuras lecturas.
-          void createChatMessage(user.id, petId, 'assistant', result.text);
-        }
+        await persistMessages([
+          { ...userMessage, imageUrl: result.persistedImageUrl },
+          ...(!result.isError ? [assistantMessage] : []),
+        ]);
       }
 
       return assistantMessage;
@@ -394,6 +426,8 @@ export function useChat() {
       setChatMessages,
       requestAssistantAnswer,
       user,
+      persistMessages,
+      sessionRevision,
     ],
   );
 
@@ -416,7 +450,7 @@ export function useChat() {
 
       const promptMessages = list
         .slice(0, idx)
-        .filter((message) => message.role !== 'system')
+        .filter((message) => message.role !== 'system' && !message.isError)
         .slice(-12)
         .map((message) => ({
           role: message.role as 'user' | 'assistant',
@@ -424,6 +458,7 @@ export function useChat() {
         }));
 
       const result = await requestAssistantAnswer(userMessage.content, petId, userMessage.imageUrl, promptMessages);
+      if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) return;
 
       const updatedMessage: ChatMessage = {
         ...failedMessage,
@@ -454,22 +489,22 @@ export function useChat() {
           [petId]: currentList.map((message) => (message.id === assistantMessageId ? updatedMessage : message)),
         };
       });
-      setChatMessages(
-        chatMessages.map((message) => (message.id === assistantMessageId ? updatedMessage : message)),
-      );
+      messagesRef.current = messagesRef.current.map((message) => (message.id === assistantMessageId ? updatedMessage : message));
+      setChatMessages(messagesRef.current);
 
       if (user && !user.isGuest && !result.isError) {
         // El mensaje del usuario ya se persistio en el intento original: solo
         // falta guardar la respuesta valida obtenida en el reintento.
-        void createChatMessage(user.id, petId, 'assistant', result.text);
+        await persistMessages([updatedMessage]);
       }
     },
-    [selectedPetId, sessionMessagesByPet, requestAssistantAnswer, chatMessages, setChatMessages, user],
+    [selectedPetId, sessionMessagesByPet, requestAssistantAnswer, chatMessages, setChatMessages, user, persistMessages, sessionRevision],
   );
 
   return {
     messages: messagesWithSystem,
     historyMessages,
+    persistenceError,
     canUseAI,
     hasValidSelectedPet,
     quota: {

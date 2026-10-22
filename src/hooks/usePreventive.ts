@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useAppState } from '../context/AppStateContext';
+import { useAppState, useSessionGuard } from '../context/AppStateContext';
 import {
   createClinicalEntry,
   createPreventiveTask,
@@ -189,6 +189,7 @@ export function usePreventive() {
   } = useAppState();
 
   const preventiveTasksRef = useRef(preventiveTasks);
+  const assertCurrentSession = useSessionGuard(user?.id);
   const clinicalEntriesRef = useRef(clinicalEntries);
   const inFlightCreatesRef = useRef<Map<string, Promise<PreventiveTask>>>(new Map());
   const recentCreatesRef = useRef<Map<string, { task: PreventiveTask; createdAtMs: number }>>(new Map());
@@ -203,7 +204,8 @@ export function usePreventive() {
 
   const addPreventiveTask = useCallback(
     async (data: PreventiveFormData) => {
-      const fingerprint = buildCreateFingerprint(data);
+      assertCurrentSession();
+      const fingerprint = `${user?.id}:${buildCreateFingerprint(data)}`;
       const now = Date.now();
 
       const inFlight = inFlightCreatesRef.current.get(fingerprint);
@@ -318,6 +320,7 @@ export function usePreventive() {
         foodEntryType: data.foodEntryType,
       });
 
+      assertCurrentSession();
       if (!saved) {
         if (data.category === 'medication') {
           throw new Error('No se pudo guardar "Medicacion". Falta aplicar la migracion de base de datos para esta categoria.');
@@ -365,6 +368,7 @@ export function usePreventive() {
           },
         });
 
+        assertCurrentSession();
         if (clinicalEntry) {
           const nextClinicalEntries = [clinicalEntry, ...clinicalEntriesRef.current];
           clinicalEntriesRef.current = nextClinicalEntries;
@@ -398,7 +402,7 @@ export function usePreventive() {
         inFlightCreatesRef.current.delete(fingerprint);
       }
     },
-    [setClinicalEntries, setPreventiveTasks, user],
+    [setClinicalEntries, setPreventiveTasks, user, assertCurrentSession],
   );
 
   const toggleTask = useCallback(
@@ -421,6 +425,7 @@ export function usePreventive() {
       }
 
       const updated = await togglePreventiveTask(taskId, nextCompleted, nextCompletedAt ?? null);
+      assertCurrentSession();
       if (!updated) {
         throw new Error('No se pudo actualizar el preventivo en Supabase.');
       }
@@ -434,7 +439,7 @@ export function usePreventive() {
         preventiveTasks.map((item) => (item.id === taskId ? task : item)),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user],
+    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
   );
 
   const postponeTask = useCallback(
@@ -461,6 +466,7 @@ export function usePreventive() {
       }
 
       const updated = await updatePreventiveTaskSchedule(taskId, nextDueDate, nextTime);
+      assertCurrentSession();
       if (!updated) {
         throw new Error('No se pudo posponer la alerta en Supabase.');
       }
@@ -473,7 +479,7 @@ export function usePreventive() {
         )),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user],
+    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
   );
 
   // A diferencia de postponeTask (desplaza N minutos desde el horario actual),
@@ -497,6 +503,7 @@ export function usePreventive() {
       }
 
       const updated = await updatePreventiveTaskSchedule(taskId, nextDueDate, nextTime);
+      assertCurrentSession();
       if (!updated) {
         throw new Error('No se pudo reprogramar la alerta en Supabase.');
       }
@@ -509,7 +516,7 @@ export function usePreventive() {
         )),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user],
+    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
   );
 
   const discardTaskReminder = useCallback(
@@ -527,6 +534,7 @@ export function usePreventive() {
       }
 
       const updated = await deletePreventiveTask(taskId);
+      assertCurrentSession();
       if (!updated) {
         throw new Error('No se pudo eliminar la tarea en Supabase.');
       }
@@ -535,7 +543,7 @@ export function usePreventive() {
         preventiveTasks.filter((task) => task.id !== taskId),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user],
+    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
   );
 
   const pendingTasks = useMemo(

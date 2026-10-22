@@ -152,7 +152,7 @@ export const supabase = supabaseUrl && supabaseAnonKey
 
 export { isSupabaseConfigured };
 
-export async function fetchUserProfile(userId: string): Promise<AppUser | null> {
+export async function fetchUserProfile(userId: string, strict = false): Promise<AppUser | null> {
   const { data: user, error } = await supabase
     .from('users')
     .select('*')
@@ -160,14 +160,16 @@ export async function fetchUserProfile(userId: string): Promise<AppUser | null> 
     .single();
 
   if (error || !user) {
+    if (strict) throw new Error('No se pudo recuperar el perfil de usuario.');
     return null;
   }
 
-  const { data: subscription } = await supabase
+  const { data: subscription, error: subscriptionError } = await supabase
     .from('subscriptions')
     .select('*')
     .eq('user_id', userId)
     .single();
+  if (strict && subscriptionError) throw new Error('No se pudo comprobar tu suscripcion. Recarga para reintentar.');
 
   const { data: adminRow } = await supabase
     .from('admin_users')
@@ -326,7 +328,7 @@ export async function deleteCotutor(cotutorId: string): Promise<void> {
   }
 }
 
-export async function fetchPets(userId: string): Promise<Pet[]> {
+export async function fetchPets(userId: string, strict = false): Promise<Pet[]> {
   const { data, error } = await supabase
     .from('pets')
     .select('*')
@@ -335,6 +337,7 @@ export async function fetchPets(userId: string): Promise<Pet[]> {
 
   if (error) {
     console.error('Error fetching pets:', error);
+    if (strict) throw new Error('No se pudieron recuperar tus mascotas. Recarga para reintentar.');
     return [];
   }
 
@@ -596,7 +599,7 @@ export async function createPetWeightLog(
   };
 }
 
-export async function fetchClinicalEntries(petId: string): Promise<ClinicalTimelineEntry[]> {
+export async function fetchClinicalEntries(petId: string, strict = false): Promise<ClinicalTimelineEntry[]> {
   const { data, error } = await supabase
     .from('clinical_entries')
     .select('*')
@@ -605,6 +608,7 @@ export async function fetchClinicalEntries(petId: string): Promise<ClinicalTimel
 
   if (error) {
     console.error('Error fetching clinical entries:', error);
+    if (strict) throw new Error('No se pudo recuperar el historial clinico. Recarga para reintentar.');
     return [];
   }
 
@@ -656,7 +660,7 @@ export async function createClinicalEntry(
   };
 }
 
-export async function fetchPreventiveTasks(petId: string): Promise<PreventiveTask[]> {
+export async function fetchPreventiveTasks(petId: string, strict = false): Promise<PreventiveTask[]> {
   const { data, error } = await supabase
     .from('preventive_tasks')
     .select('*')
@@ -665,6 +669,7 @@ export async function fetchPreventiveTasks(petId: string): Promise<PreventiveTas
 
   if (error) {
     console.error('Error fetching preventive tasks:', error);
+    if (strict) throw new Error('No se pudo recuperar la agenda. Recarga para reintentar.');
     return [];
   }
 
@@ -1960,7 +1965,7 @@ export async function adminDeletePetFriendlyPlaceReview(reviewId: string): Promi
   }
 }
 
-export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> {
+export async function fetchChatMessages(userId: string, strict = false): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from('chat_messages')
     .select('*')
@@ -1969,6 +1974,7 @@ export async function fetchChatMessages(userId: string): Promise<ChatMessage[]> 
 
   if (error) {
     console.error('Error fetching chat messages:', error);
+    if (strict) throw new Error('No se pudieron recuperar las conversaciones. Recarga para reintentar.');
     return [];
   }
 

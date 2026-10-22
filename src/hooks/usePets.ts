@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useAppState } from '../context/AppStateContext';
+import { useAppState, useSessionGuard } from '../context/AppStateContext';
 import { createPet, deletePet, updatePetRecord } from '../lib/supabase';
 import type { Pet, PetFormData } from '../types';
 
@@ -12,9 +12,11 @@ export function usePets() {
     setPets,
     setSelectedPetId,
   } = useAppState();
+  const assertCurrentSession = useSessionGuard(user?.id);
 
   const addPet = useCallback(
     async (data: PetFormData) => {
+      assertCurrentSession();
       if (user?.isGuest) {
         const now = new Date().toISOString();
         const nextPet: Pet = {
@@ -50,6 +52,7 @@ export function usePets() {
       }
 
       const nextPet = await createPet(user.id, data);
+      assertCurrentSession();
       if (!nextPet) {
         throw new Error('No se pudo guardar la mascota en Supabase.');
       }
@@ -61,11 +64,12 @@ export function usePets() {
       }
       return nextPet;
     },
-    [pets, selectedPetId, setPets, setSelectedPetId, subscription.canAddPet, user],
+    [pets, selectedPetId, setPets, setSelectedPetId, subscription.canAddPet, user, assertCurrentSession],
   );
 
   const removePet = useCallback(
     async (petId: string) => {
+      assertCurrentSession();
       if (user?.isGuest) {
         const nextPets = pets.filter((pet) => pet.id !== petId);
         setPets(nextPets);
@@ -76,6 +80,7 @@ export function usePets() {
       }
 
       const deleted = await deletePet(petId);
+      assertCurrentSession();
       if (!deleted) {
         throw new Error('No se pudo eliminar la mascota en Supabase.');
       }
@@ -86,7 +91,7 @@ export function usePets() {
         setSelectedPetId(nextPets[0]?.id ?? null);
       }
     },
-    [pets, selectedPetId, setPets, setSelectedPetId, user?.isGuest],
+    [pets, selectedPetId, setPets, setSelectedPetId, user?.isGuest, assertCurrentSession],
   );
 
   const selectPet = useCallback(
@@ -98,19 +103,21 @@ export function usePets() {
 
   const updatePet = useCallback(
     async (petId: string, updates: Partial<Pet>) => {
+      assertCurrentSession();
       if (user?.isGuest) {
         setPets(pets.map(p => p.id === petId ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p));
         return;
       }
 
       const updated = await updatePetRecord(petId, updates);
+      assertCurrentSession();
       if (!updated) {
         throw new Error('No se pudo actualizar la mascota en Supabase.');
       }
 
       setPets(pets.map((pet) => (pet.id === petId ? updated : pet)));
     },
-    [pets, setPets, user?.isGuest],
+    [pets, setPets, user?.isGuest, assertCurrentSession],
   );
 
   return {

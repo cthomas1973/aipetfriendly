@@ -444,14 +444,16 @@ export function PaywallCard() {
       setError(null);
       setSuccess(null);
 
-      await signUpWithEmail(email.trim().toLowerCase(), password, {
+      const result = await signUpWithEmail(email.trim().toLowerCase(), password, {
         pets,
         clinicalEntries,
         preventiveTasks,
         chatMessages,
       }, newsOptIn);
 
-      setSuccess('Tu cuenta fue creada y la información que cargaste quedó guardada.');
+      setSuccess(result.session
+        ? 'Tu cuenta fue creada y la informacion que cargaste quedo guardada.'
+        : 'Revisa tu email para confirmar la cuenta. Tus datos siguen pendientes en esta pestaña; todavia no se guardaron en tu cuenta.');
     } catch (err) {
       const errorMessage =
         err instanceof Error

@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
 import type {
   AdminUserRow,
   AppTab,
@@ -34,6 +34,24 @@ export interface GlobalAppState {
 }
 
 export const AppStateContext = createContext<GlobalAppState | null>(null);
+
+export function useSessionGuard(userId: string | undefined) {
+  const session = useRef({ userId, active: true, revision: 0 });
+  if (session.current.userId !== userId) {
+    session.current.userId = userId;
+    session.current.revision += 1;
+  }
+  const revision = session.current.revision;
+  useEffect(() => {
+    session.current.active = true;
+    return () => { session.current.active = false; };
+  }, []);
+  return useCallback(() => {
+    if (!session.current.active || session.current.revision !== revision) {
+      throw new Error('La sesion cambio durante la operacion. Recupera tus datos al volver a ingresar.');
+    }
+  }, [revision]);
+}
 
 export function useAppState(): GlobalAppState {
   const context = useContext(AppStateContext);

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   supabase,
   fetchUserProfile,
@@ -10,6 +10,7 @@ import {
   createClinicalEntry,
   createPreventiveTask,
   createChatMessage,
+  isSupabaseConfigured,
 } from '../lib/supabase';
 import { useAppState } from '../context/AppStateContext';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
@@ -25,6 +26,16 @@ interface GuestMigrationSnapshot {
 const GUEST_MIGRATION_KEY = 'aipetfriendly.guest-migration';
 let guestMigrationInProgress = false;
 
+interface PendingGuestMigration {
+  email: string;
+  newsOptIn?: boolean;
+  userId?: string;
+  snapshot: GuestMigrationSnapshot;
+  petIds: Record<string, string>;
+  completed: string[];
+  inFlight?: string;
+}
+
 async function ensureUserBootstrap(userId: string, email: string | null) {
   const { error: userError } = await supabase.from('users').upsert(
     {
@@ -32,7 +43,7 @@ async function ensureUserBootstrap(userId: string, email: string | null) {
       email: email ?? '',
       full_name: '',
     },
-    { onConflict: 'id' },
+    { onConflict: 'id', ignoreDuplicates: true },
   );
 
   if (userError) {
@@ -45,7 +56,7 @@ async function ensureUserBootstrap(userId: string, email: string | null) {
       plan: 'free',
       is_active: false,
     },
-    { onConflict: 'user_id' },
+    { onConflict: 'user_id', ignoreDuplicates: true },
   );
 
   if (subscriptionError) {
@@ -53,66 +64,116 @@ async function ensureUserBootstrap(userId: string, email: string | null) {
   }
 }
 
-function storeGuestMigration(snapshot: GuestMigrationSnapshot) {
-  sessionStorage.setItem(GUEST_MIGRATION_KEY, JSON.stringify(snapshot));
+function storeGuestMigration(pending: PendingGuestMigration) {
+  sessionStorage.setItem(GUEST_MIGRATION_KEY, JSON.stringify(pending));
 }
 
-function readGuestMigration(): GuestMigrationSnapshot | null {
+function readGuestMigration(): PendingGuestMigration | null {
   const raw = sessionStorage.getItem(GUEST_MIGRATION_KEY);
   if (!raw) {
     return null;
   }
 
   try {
-    return JSON.parse(raw) as GuestMigrationSnapshot;
+    const pending = JSON.parse(raw) as PendingGuestMigration;
+    if (!pending.email || !pending.snapshot || !pending.petIds || !Array.isArray(pending.completed)) {
+      throw new Error('Hay datos de visitante pendientes sin identidad verificable. No se importaron.');
+    }
+    return pending;
   } catch {
-    return null;
+    throw new Error('No se pudieron recuperar los datos pendientes del visitante. Se conservaron para revision.');
   }
 }
 
-async function migrateGuestSnapshot(userId: string, snapshot: GuestMigrationSnapshot) {
-  const petIdMap = new Map<string, string>();
+async function migrateGuestSnapshot(userId: string, email: string | null) {
+  const pending = readGuestMigration();
+  if (!pending) return;
+  if (pending.email !== email?.trim().toLowerCase() || (pending.userId && pending.userId !== userId)) {
+    throw new Error('Hay datos de visitante pendientes de otra identidad. Se conservaron y no se importaron a esta cuenta.');
+  }
+  if (pending.inFlight) {
+    throw new Error('La importacion anterior quedo sin confirmar. Tus datos temporales se conservaron; no se reintentara para evitar duplicados.');
+  }
+  const petIds = new Set(pending.snapshot.pets.map(pet => pet.id));
+  const hasOrphanedRecords = pending.snapshot.clinicalEntries.some(entry => !petIds.has(entry.petId))
+    || pending.snapshot.preventiveTasks.some(task => !petIds.has(task.petId) || task.foodSharedPetIds?.some(id => !petIds.has(id)))
+    || pending.snapshot.chatMessages.some(message => !message.isError && message.role !== 'system' && message.petId && !petIds.has(message.petId));
+  if (hasOrphanedRecords) {
+    throw new Error('Hay registros pendientes sin una mascota identificable. Se conservaron todos los datos para revision; no se importaron parcialmente.');
+  }
+  pending.userId = userId;
+  storeGuestMigration(pending);
+  const { snapshot } = pending;
+  const migrate = async (key: string, operation: () => Promise<unknown>) => {
+    if (pending.completed.includes(key)) return;
+    pending.inFlight = key;
+    storeGuestMigration(pending);
+    const saved = await operation();
+    if (!saved) throw new Error('No se pudo confirmar la importacion. Los datos pendientes se conservaron para evitar perdida o duplicados.');
+    pending.completed.push(key);
+    delete pending.inFlight;
+    storeGuestMigration(pending);
+  };
+
+  if (pending.newsOptIn) {
+    await migrate('newsOptIn', async () => {
+      const { error } = await supabase.from('users').update({
+        news_opt_in: true,
+        news_opt_in_at: new Date().toISOString(),
+        news_opt_in_source: 'registro',
+      }).eq('id', userId);
+      if (error) throw new Error('No se pudo guardar el consentimiento. El registro sigue pendiente de revision.');
+      return true;
+    });
+  }
 
   for (const pet of snapshot.pets) {
-    const migrated = await createPet(userId, pet as PetFormData);
-    if (migrated) {
-      petIdMap.set(pet.id, migrated.id);
-    }
+    await migrate(`pet:${pet.id}`, async () => {
+      const migrated = await createPet(userId, pet as PetFormData);
+      if (migrated) pending.petIds[pet.id] = migrated.id;
+      return migrated;
+    });
   }
 
   for (const entry of snapshot.clinicalEntries) {
-    const nextPetId = petIdMap.get(entry.petId);
+    const nextPetId = pending.petIds[entry.petId];
     if (!nextPetId) {
-      continue;
+      throw new Error('No se pudo identificar la mascota del historial pendiente. Se conservaron los datos para revision.');
     }
 
-    await createClinicalEntry(nextPetId, {
+    await migrate(`clinical:${entry.id}`, () => createClinicalEntry(nextPetId, {
       category: entry.category,
       title: entry.title,
       description: entry.description,
       eventDate: entry.eventDate,
       metadata: entry.metadata,
-    });
+    }));
   }
 
   for (const task of snapshot.preventiveTasks) {
-    const nextPetId = petIdMap.get(task.petId);
+    const nextPetId = pending.petIds[task.petId];
     if (!nextPetId) {
-      continue;
+      throw new Error('No se pudo identificar la mascota de la agenda pendiente. Se conservaron los datos para revision.');
     }
 
-    await createPreventiveTask(nextPetId, {
+    await migrate(`task:${task.id}`, () => createPreventiveTask(nextPetId, {
+      ...task,
+      foodSharedPetIds: task.foodSharedPetIds?.map(id => pending.petIds[id]).filter((id): id is string => Boolean(id)),
       title: task.title,
       category: task.category,
       dueDate: task.dueDate,
       completed: task.completed,
       notes: task.notes,
-    });
+    }));
   }
 
   for (const message of snapshot.chatMessages) {
-    await createChatMessage(userId, message.petId ?? null, message.role, message.content);
+    if (message.isError || message.role === 'system') continue;
+    const nextPetId = message.petId ? pending.petIds[message.petId] : null;
+    if (message.petId && !nextPetId) throw new Error('No se pudo identificar la mascota de la conversacion pendiente. Se conservaron los datos para revision.');
+    await migrate(`chat:${message.id}`, () => createChatMessage(userId, nextPetId ?? null, message.role, message.content));
   }
+  sessionStorage.removeItem(GUEST_MIGRATION_KEY);
 }
 
 export function useSupabaseSync() {
@@ -123,125 +184,106 @@ export function useSupabaseSync() {
     setPreventiveTasks,
     setChatMessages,
     setAdminUsers,
+    setSelectedPetId,
     setUser: contextSetUser,
   } = useAppState();
 
-  // Se usa dentro del listener de Supabase (que se suscribe una sola vez al
-  // montar) para saber, en cada evento, si el usuario actual en pantalla es
-  // un invitado (auto-guest). Sin esto, el evento inicial de
-  // onAuthStateChange (sin sesion real) pisaba el usuario invitado con null
-  // apenas cargaba la app, mostrando la landing en vez del modo visitante.
+  const [syncError, setSyncError] = useState<string | null>(null);
   const userRef = useRef(user);
-  useEffect(() => {
-    userRef.current = user;
-  }, [user]);
+  userRef.current = user;
 
   useEffect(() => {
-    const initializeSupabase = async () => {
+    let disposed = false;
+    let revision = 0;
+    let scheduled: ReturnType<typeof setTimeout> | undefined;
+    const clear = () => {
+      contextSetUser(null);
+      userRef.current = null;
+      setPets([]);
+      setSelectedPetId(null);
+      setClinicalEntries([]);
+      setPreventiveTasks([]);
+      setChatMessages([]);
+      setAdminUsers([]);
+    };
+    const load = async (authUser: { id: string; email?: string }, ticket: number) => {
+      const isCurrent = () => !disposed && ticket === revision;
+      if (!isCurrent()) return;
+      if (userRef.current?.id !== authUser.id) clear();
+      const previousIdentity = userRef.current?.id ?? null;
+      const identityUnchanged = () => isCurrent() && (userRef.current?.id ?? null) === previousIdentity;
+      setSyncError(null);
       try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-        // Si no hay variables, modo desarrollo local sin Supabase
-        if (!supabaseUrl || !supabaseAnonKey) {
-          console.warn('Modo desarrollo: Supabase no configurado. Usando estado local.');
-          return;
-        }
-
-        // Obtener usuario autenticado actual
-        const {
-          data: { user: authUser },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError || !authUser) {
-          return;
-        }
-
         await ensureUserBootstrap(authUser.id, authUser.email ?? null);
-
-        const storedGuestMigration = !guestMigrationInProgress ? readGuestMigration() : null;
-        if (storedGuestMigration) {
+        if (!identityUnchanged()) return;
+        if (!guestMigrationInProgress) {
           guestMigrationInProgress = true;
-          await migrateGuestSnapshot(authUser.id, storedGuestMigration);
-          sessionStorage.removeItem(GUEST_MIGRATION_KEY);
-          guestMigrationInProgress = false;
+          try {
+            await migrateGuestSnapshot(authUser.id, authUser.email ?? null);
+          } catch (error) {
+            if (identityUnchanged()) setSyncError(error instanceof Error ? error.message : 'No se pudo importar el progreso del visitante.');
+          } finally {
+            guestMigrationInProgress = false;
+          }
         }
-
-        // Cargar perfil de usuario
-        const userProfile = await fetchUserProfile(authUser.id);
-        if (userProfile) {
-          contextSetUser(userProfile);
-
-          // Cargar mascotas
-          const pets = await fetchPets(authUser.id);
-          setPets(pets);
-
-          const [clinicalByPet, preventiveByPet, chatMessages] = await Promise.all([
-            Promise.all(pets.map((pet) => fetchClinicalEntries(pet.id))),
-            Promise.all(pets.map((pet) => fetchPreventiveTasks(pet.id))),
-            fetchChatMessages(authUser.id),
-          ]);
-
-          setClinicalEntries(clinicalByPet.flat());
-          setPreventiveTasks(preventiveByPet.flat());
-          setChatMessages(chatMessages);
-        }
-      } catch (err) {
-        console.error('Error initializing Supabase:', err);
+        if (!identityUnchanged()) return;
+        const userProfile = await fetchUserProfile(authUser.id, true);
+        if (!userProfile) throw new Error('No se pudo recuperar tu perfil. Tus datos guardados no se modificaron.');
+        const pets = await fetchPets(authUser.id, true);
+        const [clinicalByPet, preventiveByPet, chatMessages] = await Promise.all([
+          Promise.all(pets.map((pet) => fetchClinicalEntries(pet.id, true))),
+          Promise.all(pets.map((pet) => fetchPreventiveTasks(pet.id, true))),
+          fetchChatMessages(authUser.id, true),
+        ]);
+        if (!identityUnchanged()) return;
+        contextSetUser(userProfile);
+        userRef.current = userProfile;
+        setPets(pets);
+        setClinicalEntries(clinicalByPet.flat());
+        setPreventiveTasks(preventiveByPet.flat());
+        setChatMessages(chatMessages);
+      } catch (error) {
+        if (identityUnchanged()) setSyncError(error instanceof Error ? error.message : 'No se pudieron recuperar tus datos. Recarga para reintentar.');
       }
     };
-
-    initializeSupabase();
-
-    // Escuchar cambios de sesion
+    const initialize = async () => {
+      if (!isSupabaseConfigured) return;
+      const ticket = ++revision;
+      try {
+        const { data: { user: authUser }, error } = await supabase.auth.getUser();
+        if (disposed || ticket !== revision) return;
+        if (error?.name === 'AuthSessionMissingError') return;
+        if (error) throw error;
+        if (authUser) await load(authUser, ticket);
+      } catch {
+        if (!disposed && ticket === revision) setSyncError('No se pudo comprobar la sesion. Recarga para reintentar.');
+      }
+    };
+    void initialize();
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
+      if (event !== 'SIGNED_OUT' && event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION' && event !== 'USER_UPDATED') return;
+      const ticket = ++revision;
+      clearTimeout(scheduled);
       if (event === 'SIGNED_OUT' || !session) {
-        // Si el usuario actual es un invitado (auto-guest o manual), no hay
-        // sesion real que "cerrar": no lo pisamos con null.
-        if (userRef.current?.isGuest) {
-          return;
-        }
-        contextSetUser(null);
-        setPets([]);
-        setClinicalEntries([]);
-        setPreventiveTasks([]);
-        setChatMessages([]);
-        setAdminUsers([]);
-      } else if (event === 'SIGNED_IN' && session.user) {
-        await ensureUserBootstrap(session.user.id, session.user.email ?? null);
-        const storedGuestMigration = !guestMigrationInProgress ? readGuestMigration() : null;
-        if (storedGuestMigration) {
-          guestMigrationInProgress = true;
-          await migrateGuestSnapshot(session.user.id, storedGuestMigration);
-          sessionStorage.removeItem(GUEST_MIGRATION_KEY);
-          guestMigrationInProgress = false;
-        }
-        const userProfile = await fetchUserProfile(session.user.id);
-        if (userProfile) {
-          contextSetUser(userProfile);
-          const pets = await fetchPets(session.user.id);
-          setPets(pets);
-
-          const [clinicalByPet, preventiveByPet, chatMessages] = await Promise.all([
-            Promise.all(pets.map((pet) => fetchClinicalEntries(pet.id))),
-            Promise.all(pets.map((pet) => fetchPreventiveTasks(pet.id))),
-            fetchChatMessages(session.user.id),
-          ]);
-
-          setClinicalEntries(clinicalByPet.flat());
-          setPreventiveTasks(preventiveByPet.flat());
-          setChatMessages(chatMessages);
-        }
+        if (!userRef.current?.isGuest) clear();
+        setSyncError(null);
+      } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
+        scheduled = setTimeout(() => { void load(session.user, ticket); }, 0);
       }
     });
-
+    const refresh = () => { void initialize(); };
+    window.addEventListener('aipetfriendly:guest-migrated', refresh);
     return () => {
+      disposed = true;
+      revision += 1;
+      clearTimeout(scheduled);
+      window.removeEventListener('aipetfriendly:guest-migrated', refresh);
       subscription?.unsubscribe();
     };
-  }, [contextSetUser, setAdminUsers, setChatMessages, setClinicalEntries, setPreventiveTasks, setPets]);
+  }, [contextSetUser, setAdminUsers, setChatMessages, setClinicalEntries, setPreventiveTasks, setPets, setSelectedPetId]);
+  return { syncError };
 }
 
 export async function signUpWithEmail(
@@ -250,52 +292,41 @@ export async function signUpWithEmail(
   guestSnapshot?: GuestMigrationSnapshot,
   newsOptIn?: boolean,
 ) {
-  if (guestSnapshot) {
-    guestMigrationInProgress = true;
-    storeGuestMigration(guestSnapshot);
+  if (guestMigrationInProgress) throw new Error('Ya hay un registro en curso.');
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = readGuestMigration();
+  if (existing && existing.email !== normalizedEmail) {
+    throw new Error('Hay datos pendientes de otro registro. No se importaran a una cuenta diferente.');
   }
-
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-  });
-
-  if (error) {
-    throw error;
+  if (existing?.inFlight) {
+    throw new Error('La importacion anterior quedo sin confirmar. Se conserva el pendiente y se bloquea el reintento para evitar duplicados.');
   }
-
-  // Crear perfil de usuario y suscripcion inicial
-  if (data.user) {
-    await ensureUserBootstrap(data.user.id, data.user.email ?? null);
-
-    // Consentimiento explicito para recibir novedades por email (opt-in, no se marca solo).
-    if (newsOptIn) {
-      const { error: newsOptInError } = await supabase
-        .from('users')
-        .update({
-          news_opt_in: true,
-          news_opt_in_at: new Date().toISOString(),
-          news_opt_in_source: 'registro',
-        })
-        .eq('id', data.user.id);
-
-      if (newsOptInError) {
-        console.error('Error guardando consentimiento de novedades:', newsOptInError);
-      }
+  if ((guestSnapshot || newsOptIn) && !existing) {
+    storeGuestMigration({
+      email: normalizedEmail,
+      newsOptIn: Boolean(newsOptIn),
+      snapshot: guestSnapshot ?? { pets: [], clinicalEntries: [], preventiveTasks: [], chatMessages: [] },
+      petIds: {}, completed: [],
+    });
+  }
+  guestMigrationInProgress = true;
+  try {
+    const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
+    if (error) throw error;
+    const pending = readGuestMigration();
+    if (pending && data.user && !pending.userId) {
+      pending.userId = data.user.id;
+      storeGuestMigration(pending);
     }
-
-    if (guestSnapshot) {
-      await migrateGuestSnapshot(data.user.id, guestSnapshot);
-      sessionStorage.removeItem(GUEST_MIGRATION_KEY);
-      guestMigrationInProgress = false;
+    if (data.user && data.session) {
+      await ensureUserBootstrap(data.user.id, data.user.email ?? null);
+      await migrateGuestSnapshot(data.user.id, data.user.email ?? normalizedEmail);
     }
-  }
-
-  if (guestSnapshot && !data.user) {
+    return data;
+  } finally {
     guestMigrationInProgress = false;
+    window.dispatchEvent(new Event('aipetfriendly:guest-migrated'));
   }
-
-  return data;
 }
 
 export async function signInWithEmail(email: string, password: string) {

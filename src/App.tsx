@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -441,6 +441,10 @@ function AppContent() {
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
   const [popupQueue, setPopupQueue] = useState<ReminderPopupItem[]>([]);
   const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
+  useEffect(() => {
+    setPopupQueue([]);
+    setPopupPostponeId(null);
+  }, [user?.id]);
   const { toggleTask, postponeTask, discardTaskReminder } = usePreventive();
   const currentPath = window.location.pathname;
   const normalizedPath = currentPath.length > 1 ? currentPath.replace(/\/+$/, '') : currentPath;
@@ -510,7 +514,7 @@ function AppContent() {
   };
 
   // Sincronizar con Supabase
-  useSupabaseSync();
+  const { syncError } = useSupabaseSync();
 
   // Si el usuario llego desde un CTA especifico (ej. "Quiero Premium" en /social)
   // y recien ahora tiene sesion iniciada (pudo requerir confirmacion por email,
@@ -982,6 +986,7 @@ function AppContent() {
         )}
 
         <section className="mt-4 md:mt-5">
+          {syncError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{syncError}</p>}
           {loading ? (
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <p className="text-sm text-slate-500">Cargando estado de usuario...</p>
@@ -1111,7 +1116,7 @@ function MobileAdsGate() {
 }
 
 export default function App() {
-  const [user, setUser] = useState<AppUser | null>(() => (shouldAutoStartAsGuest() ? createGuestUser() : null));
+  const [user, setCurrentUser] = useState<AppUser | null>(() => (shouldAutoStartAsGuest() ? createGuestUser() : null));
   const [loading] = useState<boolean>(false);
   const [pets, setPets] = useState<Pet[]>([]);
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
@@ -1121,6 +1126,21 @@ export default function App() {
   const [preventiveTasks, setPreventiveTasks] = useState<PreventiveTask[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserRow[]>([]);
+  const identityRef = useRef(user?.id ?? null);
+  const setUser = useCallback((nextUser: AppUser | null) => {
+    const nextIdentity = nextUser?.id ?? null;
+    if (identityRef.current !== nextIdentity) {
+      setPets([]);
+      setSelectedPetId(null);
+      setClinicalEntries([]);
+      setPreventiveTasks([]);
+      setChatMessages([]);
+      setAdminUsers([]);
+      setAiDailyUsage(0);
+      identityRef.current = nextIdentity;
+    }
+    setCurrentUser(nextUser);
+  }, []);
 
   const subscriptionState: SubscriptionState = useMemo(() => {
     const isSubscribed = Boolean(user?.subscription?.isActive);
