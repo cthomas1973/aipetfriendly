@@ -8,6 +8,7 @@
     "build": "node scripts/generate-sitemap.mjs && tsc -b && vite build",
     "generate-sitemap": "node scripts/generate-sitemap.mjs",
     "preview": "vite preview",
+    "test": "vitest run",
     "cap:sync": "npx cap sync",
     "android:sync": "npm run build && node scripts/fix-capacitor-windows.mjs && npx cap sync android",
     "android:open": "npx cap open android",
@@ -48,6 +49,7 @@
     "tailwindcss": "^3.4.14",
     "typescript": "^5.7.2",
     "vite": "^6.4.3",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^4.1.11"
   }
 }
