@@ -441,7 +441,7 @@ export function ChatSection() {
           }
           className="flex-1 rounded-full bg-white px-5 py-3.5 text-sm ring-1 ring-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-50"
         />
-        <button type="submit" disabled={view !== 'new' || !canUseAI || (!input.trim() && !pendingImage) || sending || !hasValidSelectedPet}
+        <button type="submit" aria-label="Enviar consulta" disabled={view !== 'new' || !canUseAI || (!input.trim() && !pendingImage) || sending || !hasValidSelectedPet}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition disabled:opacity-40">
           <Send size={18} />
         </button>

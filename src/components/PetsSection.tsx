@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
   Circle, ClipboardList, Download, Heart, Lock, Mail,
@@ -383,6 +383,7 @@ function HealthSummaryPanel({
 }
 
 export function PetsSection() {
+  const formId = useId();
   const { pets, selectedPetId, canAddPet, freePetLimit, addPet, selectPet, removePet, updatePet } = usePets();
   const { setActiveTab, user, subscription } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
@@ -1231,24 +1232,24 @@ export function PetsSection() {
         {step === 1 && (
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-2">
-              <button type="button" onClick={() => photoRef.current?.click()}
+              <button type="button" aria-label="Agregar foto de la mascota" onClick={() => photoRef.current?.click()}
                 className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-emerald-300 bg-emerald-50 transition hover:bg-emerald-100">
                 {form.photoUrl
                   ? <img src={form.photoUrl} alt="preview" className="h-full w-full object-cover" />
                   : <Camera size={28} className="text-emerald-400" />
                 }
               </button>
-              <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={e => onPhoto(e)} />
+              <input ref={photoRef} type="file" aria-label="Foto de la mascota" accept="image/*" className="hidden" onChange={e => onPhoto(e)} />
               <p className="text-xs text-slate-400">{imgBusy ? 'Procesando...' : 'Toca para agregar una foto'}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Nombre *</label>
-              <input value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))}
+              <label htmlFor={`${formId}-name`} className="block text-sm font-medium text-slate-700">Nombre *</label>
+              <input id={`${formId}-name`} value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))}
                 placeholder="¿Como se llama?" className={`mt-1.5 ${inp}`} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Especie *</label>
-              <select value={form.species} onChange={e => setForm(p => ({...p, species: e.target.value as Species}))}
+              <label htmlFor={`${formId}-species`} className="block text-sm font-medium text-slate-700">Especie *</label>
+              <select id={`${formId}-species`} value={form.species} onChange={e => setForm(p => ({...p, species: e.target.value as Species}))}
                 className={`mt-1.5 ${inp}`}>
                 <option value="dog">🐕 Perro</option>
                 <option value="cat">🐈 Gato</option>
@@ -1256,8 +1257,8 @@ export function PetsSection() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Raza *</label>
-              <input value={form.breed} onChange={e => setForm(p => ({...p, breed: e.target.value}))}
+              <label htmlFor={`${formId}-breed`} className="block text-sm font-medium text-slate-700">Raza *</label>
+              <input id={`${formId}-breed`} value={form.breed} onChange={e => setForm(p => ({...p, breed: e.target.value}))}
                 placeholder="Ej: Golden Retriever, Persa..." className={`mt-1.5 ${inp}`} />
             </div>
           </div>
@@ -1271,28 +1272,28 @@ export function PetsSection() {
                 onChange={e => onToggleBirthDateUnknown(e.target.checked)} className="h-4 w-4" />
             </label>
             {birthDateUnknown ? (
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Edad aproximada *</label>
+              <div role="group" aria-labelledby={`${formId}-age`}>
+                <p id={`${formId}-age`} className="block text-sm font-medium text-slate-700">Edad aproximada *</p>
                 <div className="mt-1.5 flex gap-3">
                   <div className="flex-1">
-                    <input type="number" min={0} max={40} step={1} value={form.ageYears}
+                    <input id={`${formId}-age-years`} aria-labelledby={`${formId}-age ${formId}-age-years-label`} type="number" min={0} max={40} step={1} value={form.ageYears}
                       onChange={e => onEstimatedAge('ageYears', Number(e.target.value))}
                       placeholder="Años" className={inp} />
-                    <p className="mt-1 text-center text-xs text-slate-400">Años</p>
+                    <label id={`${formId}-age-years-label`} htmlFor={`${formId}-age-years`} className="mt-1 block text-center text-xs text-slate-400">Años</label>
                   </div>
                   <div className="flex-1">
-                    <input type="number" min={0} max={11} step={1} value={form.ageMonths}
+                    <input id={`${formId}-age-months`} aria-labelledby={`${formId}-age ${formId}-age-months-label`} type="number" min={0} max={11} step={1} value={form.ageMonths}
                       onChange={e => onEstimatedAge('ageMonths', Number(e.target.value))}
                       placeholder="Meses" className={inp} />
-                    <p className="mt-1 text-center text-xs text-slate-400">Meses</p>
+                    <label id={`${formId}-age-months-label`} htmlFor={`${formId}-age-months`} className="mt-1 block text-center text-xs text-slate-400">Meses</label>
                   </div>
                 </div>
                 <p className="mt-1.5 text-xs text-amber-600">La edad se guardara como estimada, no como fecha exacta.</p>
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
-                <input type="date" max={new Date().toISOString().split('T')[0]}
+                <label htmlFor={`${formId}-birth-date`} className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
+                <input id={`${formId}-birth-date`} type="date" max={new Date().toISOString().split('T')[0]}
                   value={form.birthDate} onChange={e => onBirth(e.target.value)}
                   className={`mt-1.5 ${inp}`} />
                 {form.birthDate && !err && (
@@ -1301,14 +1302,14 @@ export function PetsSection() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-slate-700">Peso (kg) *</label>
-              <input type="number" min={0.1} step={0.1} value={form.weightKg}
+              <label htmlFor={`${formId}-weight`} className="block text-sm font-medium text-slate-700">Peso (kg) *</label>
+              <input id={`${formId}-weight`} type="number" min={0.1} step={0.1} value={form.weightKg}
                 onChange={e => setForm(p => ({...p, weightKg: Number(e.target.value)}))}
                 placeholder="Ej: 12.5" className={`mt-1.5 ${inp}`} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Sexo</label>
-              <select value={form.sex} onChange={e => setForm(p => ({...p, sex: e.target.value as PetSex}))}
+              <label htmlFor={`${formId}-sex`} className="block text-sm font-medium text-slate-700">Sexo</label>
+              <select id={`${formId}-sex`} value={form.sex} onChange={e => setForm(p => ({...p, sex: e.target.value as PetSex}))}
                 className={`mt-1.5 ${inp}`}>
                 <option value="female">Hembra</option>
                 <option value="male">Macho</option>
@@ -1316,8 +1317,8 @@ export function PetsSection() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Señas particulares (opcional)</label>
-              <textarea value={form.distinguishingMarks ?? ''} onChange={e => setForm(p => ({...p, distinguishingMarks: e.target.value}))}
+              <label htmlFor={`${formId}-marks`} className="block text-sm font-medium text-slate-700">Señas particulares (opcional)</label>
+              <textarea id={`${formId}-marks`} value={form.distinguishingMarks ?? ''} onChange={e => setForm(p => ({...p, distinguishingMarks: e.target.value}))}
                 placeholder="Ej: lunar en la lengua, mancha en la oreja, tímido..." rows={2}
                 className={`mt-1.5 ${inp}`} />
             </div>
@@ -1371,28 +1372,28 @@ export function PetsSection() {
         <div className="space-y-4">
           {/* photo */}
           <div className="flex flex-col items-center gap-2">
-            <button type="button" onClick={() => photoRef.current?.click()}
+            <button type="button" aria-label="Cambiar foto de la mascota" onClick={() => photoRef.current?.click()}
               className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-emerald-300 bg-emerald-50 transition hover:bg-emerald-100">
               {form.photoUrl
                 ? <img src={form.photoUrl} alt="preview" className="h-full w-full object-cover" />
                 : <Camera size={28} className="text-emerald-400" />
               }
             </button>
-            <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={e => onPhoto(e)} />
+            <input ref={photoRef} type="file" aria-label="Foto de la mascota" accept="image/*" className="hidden" onChange={e => onPhoto(e)} />
             <p className="text-xs text-slate-400">{imgBusy ? 'Procesando...' : 'Toca para cambiar foto'}</p>
           </div>
 
           {/* nombre */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">Nombre *</label>
-            <input value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))}
+            <label htmlFor={`${formId}-name`} className="block text-sm font-medium text-slate-700">Nombre *</label>
+            <input id={`${formId}-name`} value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))}
               placeholder="¿Como se llama?" className={`mt-1.5 ${inp}`} />
           </div>
 
           {/* especie */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">Especie *</label>
-            <select value={form.species} onChange={e => setForm(p => ({...p, species: e.target.value as Species}))}
+            <label htmlFor={`${formId}-species`} className="block text-sm font-medium text-slate-700">Especie *</label>
+            <select id={`${formId}-species`} value={form.species} onChange={e => setForm(p => ({...p, species: e.target.value as Species}))}
               className={`mt-1.5 ${inp}`}>
               <option value="dog">🐕 Perro</option>
               <option value="cat">🐈 Gato</option>
@@ -1402,8 +1403,8 @@ export function PetsSection() {
 
           {/* raza */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">Raza *</label>
-            <input value={form.breed} onChange={e => setForm(p => ({...p, breed: e.target.value}))}
+            <label htmlFor={`${formId}-breed`} className="block text-sm font-medium text-slate-700">Raza *</label>
+            <input id={`${formId}-breed`} value={form.breed} onChange={e => setForm(p => ({...p, breed: e.target.value}))}
               placeholder="Ej: Golden Retriever, Persa..." className={`mt-1.5 ${inp}`} />
           </div>
 
@@ -1414,28 +1415,28 @@ export function PetsSection() {
               onChange={e => onToggleBirthDateUnknown(e.target.checked)} className="h-4 w-4" />
           </label>
           {birthDateUnknown ? (
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Edad aproximada *</label>
+            <div role="group" aria-labelledby={`${formId}-age`}>
+              <p id={`${formId}-age`} className="block text-sm font-medium text-slate-700">Edad aproximada *</p>
               <div className="mt-1.5 flex gap-3">
                 <div className="flex-1">
-                  <input type="number" min={0} max={40} step={1} value={form.ageYears}
+                  <input id={`${formId}-age-years`} aria-labelledby={`${formId}-age ${formId}-age-years-label`} type="number" min={0} max={40} step={1} value={form.ageYears}
                     onChange={e => onEstimatedAge('ageYears', Number(e.target.value))}
                     placeholder="Años" className={inp} />
-                  <p className="mt-1 text-center text-xs text-slate-400">Años</p>
+                  <label id={`${formId}-age-years-label`} htmlFor={`${formId}-age-years`} className="mt-1 block text-center text-xs text-slate-400">Años</label>
                 </div>
                 <div className="flex-1">
-                  <input type="number" min={0} max={11} step={1} value={form.ageMonths}
+                  <input id={`${formId}-age-months`} aria-labelledby={`${formId}-age ${formId}-age-months-label`} type="number" min={0} max={11} step={1} value={form.ageMonths}
                     onChange={e => onEstimatedAge('ageMonths', Number(e.target.value))}
                     placeholder="Meses" className={inp} />
-                  <p className="mt-1 text-center text-xs text-slate-400">Meses</p>
+                  <label id={`${formId}-age-months-label`} htmlFor={`${formId}-age-months`} className="mt-1 block text-center text-xs text-slate-400">Meses</label>
                 </div>
               </div>
               <p className="mt-1.5 text-xs text-amber-600">La edad se guardara como estimada, no como fecha exacta.</p>
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
-              <input type="date" max={new Date().toISOString().split('T')[0]}
+              <label htmlFor={`${formId}-birth-date`} className="block text-sm font-medium text-slate-700">Fecha de nacimiento *</label>
+              <input id={`${formId}-birth-date`} type="date" max={new Date().toISOString().split('T')[0]}
                 value={form.birthDate} onChange={e => onBirth(e.target.value)}
                 className={`mt-1.5 ${inp}`} />
               {form.birthDate && !err && (
@@ -1446,16 +1447,16 @@ export function PetsSection() {
 
           {/* peso */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">Peso (kg) *</label>
-            <input type="number" min={0.1} step={0.1} value={form.weightKg}
+            <label htmlFor={`${formId}-weight`} className="block text-sm font-medium text-slate-700">Peso (kg) *</label>
+            <input id={`${formId}-weight`} type="number" min={0.1} step={0.1} value={form.weightKg}
               onChange={e => setForm(p => ({...p, weightKg: Number(e.target.value)}))}
               placeholder="Ej: 12.5" className={`mt-1.5 ${inp}`} />
           </div>
 
           {/* sexo */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">Sexo</label>
-            <select value={form.sex} onChange={e => setForm(p => ({...p, sex: e.target.value as PetSex}))}
+            <label htmlFor={`${formId}-sex`} className="block text-sm font-medium text-slate-700">Sexo</label>
+            <select id={`${formId}-sex`} value={form.sex} onChange={e => setForm(p => ({...p, sex: e.target.value as PetSex}))}
               className={`mt-1.5 ${inp}`}>
               <option value="female">Hembra</option>
               <option value="male">Macho</option>
@@ -1465,8 +1466,8 @@ export function PetsSection() {
 
           {/* señas particulares */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">Señas particulares (opcional)</label>
-            <textarea value={form.distinguishingMarks ?? ''} onChange={e => setForm(p => ({...p, distinguishingMarks: e.target.value}))}
+            <label htmlFor={`${formId}-marks`} className="block text-sm font-medium text-slate-700">Señas particulares (opcional)</label>
+            <textarea id={`${formId}-marks`} value={form.distinguishingMarks ?? ''} onChange={e => setForm(p => ({...p, distinguishingMarks: e.target.value}))}
               placeholder="Ej: lunar en la lengua, mancha en la oreja, tímido..." rows={2}
               className={`mt-1.5 ${inp}`} />
           </div>

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
@@ -138,6 +138,7 @@ function formatCompletedAtLabel(completedAt?: string) {
 }
 
 export function AgendaSection() {
+  const formId = useId();
   const { pets, selectedPetId, user } = useAppState();
   const { preventiveTasks, addPreventiveTask, toggleTask, postponeTask, discardTaskReminder } = usePreventive();
 
@@ -567,8 +568,9 @@ export function AgendaSection() {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-3xl bg-white p-4 shadow-sm md:col-span-1">
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">Filtrar por mascota</label>
+          <label htmlFor={`${formId}-filter-pet`} className="mb-1.5 block text-sm font-medium text-slate-700">Filtrar por mascota</label>
           <select
+            id={`${formId}-filter-pet`}
             value={petFilter}
             onChange={(e) => setPetFilter(e.target.value)}
             className={inp}
@@ -708,8 +710,9 @@ export function AgendaSection() {
             {tab !== 'food' ? (
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Mascota</label>
+                  <label htmlFor={`${formId}-pet`} className="mb-1.5 block text-sm font-medium text-slate-700">Mascota</label>
                   <select
+                    id={`${formId}-pet`}
                     value={pPetId}
                     onChange={e => setPPetId(e.target.value)}
                     className={inp}
@@ -726,8 +729,8 @@ export function AgendaSection() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
-                  <select value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
+                  <label htmlFor={`${formId}-category`} className="mb-1.5 block text-sm font-medium text-slate-700">Tipo</label>
+                  <select id={`${formId}-category`} value={pCat} onChange={e => setPCat(e.target.value as PreventiveCategory)} className={inp}>
                     <option value="medication">💊 Cuidados</option>
                     <option value="vaccine">💉 Vacuna</option>
                     <option value="deworming">🪱 Desparasitacion</option>
@@ -736,13 +739,13 @@ export function AgendaSection() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Nombre *</label>
-                  <input value={pTitle} onChange={e => setPTitle(e.target.value)}
+                  <label htmlFor={`${formId}-title`} className="mb-1.5 block text-sm font-medium text-slate-700">Nombre *</label>
+                  <input id={`${formId}-title`} value={pTitle} onChange={e => setPTitle(e.target.value)}
                     placeholder="Ej: Rabia, Moquillo, Desparasitante..." className={inp} required />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
-                  <input type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
+                  <label htmlFor={`${formId}-date`} className="mb-1.5 block text-sm font-medium text-slate-700">Fecha *</label>
+                  <input id={`${formId}-date`} type="date" value={pDate} onChange={e => setPDate(e.target.value)} className={inp} required />
                 </div>
                 <label className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
                   <span className="text-sm font-medium text-emerald-800">Activar recordatorios</span>
@@ -780,8 +783,9 @@ export function AgendaSection() {
                     </div>
                     {pNotificationChannels.includes('Email') && (
                       <div className="mt-3">
-                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Email para notificacion</label>
+                        <label htmlFor={`${formId}-email`} className="mb-1.5 block text-sm font-medium text-slate-700">Email para notificacion</label>
                         <input
+                          id={`${formId}-email`}
                           type="email"
                           value={pNotificationEmail}
                           onChange={(e) => setPNotificationEmail(e.target.value)}
@@ -792,9 +796,10 @@ export function AgendaSection() {
                     )}
                     {pNotificationChannels.includes('WhatsApp') && (
                       <div className="mt-3">
-                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp (con codigo pais)</label>
+                        <label htmlFor={`${formId}-phone`} className="mb-1.5 block text-sm font-medium text-slate-700">Celular WhatsApp (con codigo pais)</label>
                         <div className="grid grid-cols-3 gap-2">
                           <select
+                            aria-label="Codigo de pais para WhatsApp"
                             value={pNotificationPhoneCountry}
                             onChange={(e) => setPNotificationPhoneCountry(e.target.value)}
                             className={`${inp} col-span-1`}
@@ -804,6 +809,7 @@ export function AgendaSection() {
                             ))}
                           </select>
                           <input
+                            id={`${formId}-phone`}
                             value={pNotificationPhoneLocal}
                             onChange={(e) => setPNotificationPhoneLocal(sanitizePhoneLocalInput(e.target.value))}
                             className={`${inp} col-span-2`}
@@ -822,8 +828,8 @@ export function AgendaSection() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Marca</label>
+                <div role="group" aria-labelledby={`${formId}-food-brand`}>
+                  <p id={`${formId}-food-brand`} className="mb-1.5 block text-sm font-medium text-slate-700">Marca</p>
                   <div className="grid grid-cols-2 gap-2">
                     {FOOD_BRANDS.map((brand) => (
                       <button
@@ -839,26 +845,26 @@ export function AgendaSection() {
                 </div>
                 {foodBrand === 'Otro' && (
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Otra marca</label>
-                    <input value={foodCustomBrand} onChange={(e) => setFoodCustomBrand(e.target.value)} className={inp} placeholder="Nombre de la marca" required />
+                    <label htmlFor={`${formId}-custom-brand`} className="mb-1.5 block text-sm font-medium text-slate-700">Otra marca</label>
+                    <input id={`${formId}-custom-brand`} value={foodCustomBrand} onChange={(e) => setFoodCustomBrand(e.target.value)} className={inp} placeholder="Nombre de la marca" required />
                   </div>
                 )}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Variedad (opcional)</label>
-                  <input value={foodVariety} onChange={(e) => setFoodVariety(e.target.value)} className={inp} placeholder="Ej: Adulto, Sensitive..." />
+                  <label htmlFor={`${formId}-food-variety`} className="mb-1.5 block text-sm font-medium text-slate-700">Variedad (opcional)</label>
+                  <input id={`${formId}-food-variety`} value={foodVariety} onChange={(e) => setFoodVariety(e.target.value)} className={inp} placeholder="Ej: Adulto, Sensitive..." />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Peso bolsa (kg) *</label>
-                    <input type="number" min={0.1} step={0.1} value={foodBagWeightKg} onChange={(e) => setFoodBagWeightKg(e.target.value)} className={inp} placeholder="Ej: 15" required />
+                    <label htmlFor={`${formId}-food-weight`} className="mb-1.5 block text-sm font-medium text-slate-700">Peso bolsa (kg) *</label>
+                    <input id={`${formId}-food-weight`} type="number" min={0.1} step={0.1} value={foodBagWeightKg} onChange={(e) => setFoodBagWeightKg(e.target.value)} className={inp} placeholder="Ej: 15" required />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Fecha de compra *</label>
-                    <input type="date" value={pDate} onChange={(e) => setPDate(e.target.value)} className={inp} required />
+                    <label htmlFor={`${formId}-purchase-date`} className="mb-1.5 block text-sm font-medium text-slate-700">Fecha de compra *</label>
+                    <input id={`${formId}-purchase-date`} type="date" value={pDate} onChange={(e) => setPDate(e.target.value)} className={inp} required />
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Aplicar a mascotas</label>
+                <div role="group" aria-labelledby={`${formId}-food-pets`}>
+                  <p id={`${formId}-food-pets`} className="mb-1.5 block text-sm font-medium text-slate-700">Aplicar a mascotas</p>
                   <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     {pets.map((pet) => {
                       const checked = foodSelectedPetIds.includes(pet.id);
