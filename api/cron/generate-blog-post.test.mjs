@@ -16,7 +16,7 @@
 // dispatcher que responde segun la URL (guides-feed.json / SerpApi / IA de
 // texto / IA de imagen), nunca golpea una API real.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sanitizeMetaDescriptionCandidate } from '../../shared/seoMeta.mjs';
+import { injectPageMeta, resolveBlogDescription, sanitizeMetaDescriptionCandidate } from '../../shared/seoMeta.mjs';
 
 let currentAdmin = null;
 
@@ -199,6 +199,34 @@ describe('sanitizeMetaDescriptionCandidate (shared/seoMeta.mjs)', () => {
     expect(sanitizeMetaDescriptionCandidate(undefined)).toBeNull();
     expect(sanitizeMetaDescriptionCandidate(null)).toBeNull();
     expect(sanitizeMetaDescriptionCandidate(123)).toBeNull();
+  });
+});
+
+describe('resolveBlogDescription (shared/seoMeta.mjs)', () => {
+  it('conserva la descripcion manual cuando no supera 160 caracteres', () => {
+    const manual = 'Descripcion editorial breve y clara para el articulo sobre cuidados de perros y gatos en cada etapa de su vida.';
+    expect(manual.length).toBeLessThanOrEqual(160);
+    expect(resolveBlogDescription(manual, 'Contenido del articulo.', 'Fallback.')).toBe(manual);
+  });
+
+  it('reemplaza una descripcion manual demasiado larga por un extracto del contenido', () => {
+    const content = 'Este articulo explica como cuidar a perros y gatos con recomendaciones practicas para cada etapa de la vida.';
+    const description = resolveBlogDescription('Descripcion excesivamente larga. '.repeat(20), content, 'Fallback.');
+    expect(description).toBe(content);
+    expect(description.length).toBeLessThanOrEqual(160);
+  });
+
+  it('limita a 155 caracteres la descripcion que se inyecta en el HTML', () => {
+    const description = 'Descripcion extensa para una pagina publica. '.repeat(8);
+    const html = '<html><head><title>Inicial</title><meta name="description" content="Inicial" /></head></html>';
+    const output = injectPageMeta(html, {
+      title: 'Pagina publica',
+      description,
+      canonicalUrl: 'https://www.aipetfriendly.ar/como-funciona',
+      robots: 'index, follow',
+    });
+    const injectedDescription = output.match(/<meta name="description" content="([^"]*)" \/>/)?.[1] ?? '';
+    expect(injectedDescription.length).toBeLessThanOrEqual(155);
   });
 });
 

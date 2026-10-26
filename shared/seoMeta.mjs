@@ -62,14 +62,12 @@ export function buildBlogDescription(content, fallback) {
 }
 
 // Prioridad unica de description para un post de blog (PASO 19.3.8/19.3.9):
-// una meta_description manual/custom valida siempre gana, tal cual (sin
-// pasarla de nuevo por el truncado de buildBlogDescription); si no hay
-// ninguna, se cae al fallback automatico de siempre. Recibe los valores ya
-// extraidos (no la fila/objeto completo) para que sirva igual desde el
-// server (snake_case) y desde el cliente (camelCase).
+// una meta_description manual/custom de hasta 160 caracteres gana, tal cual;
+// si es demasiado larga o no existe, se cae al extracto automatico del
+// contenido. Recibe valores ya extraidos para servir igual en server y cliente.
 export function resolveBlogDescription(metaDescription, content, fallback) {
   const custom = typeof metaDescription === 'string' ? metaDescription.trim() : '';
-  if (custom) {
+  if (custom && custom.length <= META_DESCRIPTION_MAX_LENGTH) {
     return custom;
   }
   return buildBlogDescription(content, fallback);
@@ -228,7 +226,7 @@ function replaceTag(html, regex, replacement) {
 // encontrado | AiPetFriendly"), nunca de los de la Home.
 export function injectPageMeta(html, { title, description, canonicalUrl, robots }) {
   const safeTitle = escapeHtml(title);
-  const safeDescription = escapeHtml(description);
+  const safeDescription = escapeHtml(buildBlogDescription(description, ''));
   const safeRobots = escapeHtml(robots);
 
   let result = html;

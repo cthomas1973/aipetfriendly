@@ -1,3 +1,5 @@
+import { buildBlogDescription } from '../../shared/seoMeta.mjs';
+
 const SITE_ORIGIN = 'https://www.aipetfriendly.ar';
 
 // Normaliza una ruta de la SPA a la URL absoluta canonica bajo el dominio
@@ -38,7 +40,7 @@ export function setPageMeta(title: string, description: string, canonicalPath: s
   document.title = title;
   const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
   if (metaDescription) {
-    metaDescription.setAttribute('content', description);
+    metaDescription.setAttribute('content', buildBlogDescription(description, ''));
   }
   upsertCanonicalLink(buildCanonicalUrl(canonicalPath));
   upsertMetaRobots('index, follow');
@@ -51,7 +53,7 @@ export function setNotFoundPageMeta(title: string, description: string) {
   document.title = title;
   const metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
   if (metaDescription) {
-    metaDescription.setAttribute('content', description);
+    metaDescription.setAttribute('content', buildBlogDescription(description, ''));
   }
   removeCanonicalLink();
   upsertMetaRobots('noindex, follow');
