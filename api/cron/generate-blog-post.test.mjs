@@ -17,6 +17,7 @@
 // texto / IA de imagen), nunca golpea una API real.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { injectPageMeta, resolveBlogDescription, sanitizeMetaDescriptionCandidate } from '../../shared/seoMeta.mjs';
+import middleware, { config as middlewareConfig } from '../../middleware.js';
 
 let currentAdmin = null;
 
@@ -227,6 +228,22 @@ describe('resolveBlogDescription (shared/seoMeta.mjs)', () => {
     });
     const injectedDescription = output.match(/<meta name="description" content="([^"]*)" \/>/)?.[1] ?? '';
     expect(injectedDescription.length).toBeLessThanOrEqual(155);
+  });
+});
+
+describe('rutas privadas (middleware.js)', () => {
+  it.each(['/login', '/reset-password', '/admin'])('sirve %s como noindex y sin canonical', async (pathname) => {
+    const indexHtml = '<html><head><title>Home</title><meta name="description" content="Home" /><meta name="robots" content="index, follow" /><link rel="canonical" href="https://www.aipetfriendly.ar/" /><meta property="og:url" content="https://www.aipetfriendly.ar/" /></head><body><div id="root"></div></body></html>';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(indexHtml, { status: 200 })));
+
+    expect(middlewareConfig.matcher).toContain(pathname);
+    const response = await middleware({ url: `https://www.aipetfriendly.ar${pathname}` });
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('<meta name="robots" content="noindex, follow" />');
+    expect(html).not.toContain('rel="canonical"');
+    expect(html).not.toContain('property="og:url"');
   });
 });
 

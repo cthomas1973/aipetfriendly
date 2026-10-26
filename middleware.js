@@ -24,7 +24,9 @@
 // como en el array `matcher` de aca abajo.
 
 import { next } from '@vercel/functions';
-import { PUBLIC_PAGES_META, buildCanonicalUrl, injectPageMeta } from './shared/seoMeta.mjs';
+import { PUBLIC_PAGES_META, SITE_DESCRIPTION_DEFAULT, buildCanonicalUrl, injectPageMeta } from './shared/seoMeta.mjs';
+
+const NON_INDEXABLE_ROUTES = ['/login', '/reset-password', '/admin'];
 
 export const config = {
   matcher: [
@@ -43,6 +45,7 @@ export const config = {
     '/terminos',
     '/contacto',
     '/sobre-nosotros',
+    ...NON_INDEXABLE_ROUTES,
   ],
 };
 
@@ -50,10 +53,11 @@ export default async function middleware(request) {
   const url = new URL(request.url);
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
   const meta = PUBLIC_PAGES_META[pathname];
+  const isNonIndexable = NON_INDEXABLE_ROUTES.includes(pathname);
 
   // No deberia pasar (el matcher ya restringe las rutas), pero si pasa no se
   // inventa nada: se deja pasar la request tal cual (comportamiento actual).
-  if (!meta) {
+  if (!meta && !isNonIndexable) {
     return next();
   }
 
@@ -72,10 +76,10 @@ export default async function middleware(request) {
   }
 
   const injected = injectPageMeta(html, {
-    title: meta.title,
-    description: meta.description,
-    canonicalUrl: buildCanonicalUrl(pathname),
-    robots: 'index, follow',
+    title: meta?.title ?? 'Acceso a AiPetFriendly',
+    description: meta?.description ?? SITE_DESCRIPTION_DEFAULT,
+    canonicalUrl: meta ? buildCanonicalUrl(pathname) : null,
+    robots: meta ? 'index, follow' : 'noindex, follow',
   });
 
   return new Response(injected, {
