@@ -45,7 +45,9 @@ export const config = {
     '/terminos',
     '/contacto',
     '/sobre-nosotros',
-    ...NON_INDEXABLE_ROUTES,
+    '/login',
+    '/reset-password',
+    '/admin',
   ],
 };
 
