@@ -113,7 +113,7 @@ export const PUBLIC_PAGES_META = {
   '/': {
     title: 'AiPetFriendly - Cuidado inteligente para tu mascota',
     description:
-      'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.',
+      'AiPetFriendly: asistente IA y herramientas para organizar vacunas, cuidados, historial clinico y veterinarias cercanas.',
   }, // src/components/LandingSection.tsx
   '/como-funciona': {
     title: 'AiPetFriendly | Cómo funciona',
@@ -188,7 +188,7 @@ export const PUBLIC_PAGES_META = {
 // Mismo texto que SITE_DESCRIPTION_DEFAULT en BlogSection.tsx/PetGuidesSection.tsx,
 // usado como description de las paginas de blog/guia "no encontrado".
 export const SITE_DESCRIPTION_DEFAULT =
-  'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
+  'AiPetFriendly: asistente IA y herramientas para organizar vacunas, cuidados, historial clinico y veterinarias cercanas.';
 
 // Mismo formato que buildCanonicalUrl() en src/lib/pageMeta.ts.
 export function buildCanonicalUrl(pathname) {

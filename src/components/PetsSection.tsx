@@ -1637,7 +1637,7 @@ export function PetsSection() {
         </button>
         <button type="button" onClick={() => setActiveTab('clinical')}
           className="w-full rounded-3xl bg-emerald-500 py-4 text-center font-bold text-white shadow-sm">
-          Consultar con veterinario IA
+          Consultar con el asistente IA
         </button>
         <button type="button" onClick={() => { setErr(null); setPrevModal(true); }}
           className="w-full rounded-3xl border-2 border-emerald-300 bg-white py-4 text-center font-semibold text-emerald-700 shadow-sm">

@@ -15,7 +15,7 @@ export default defineConfig({
         name: 'AiPetFriendly - Cuidado inteligente para tu mascota',
         short_name: 'AiPetFriendly',
         description:
-          'Consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas.',
+          'Asistente IA y herramientas para organizar vacunas, cuidados, historial clinico y veterinarias cercanas.',
         start_url: '/',
         scope: '/',
         display: 'standalone',

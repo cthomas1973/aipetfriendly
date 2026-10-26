@@ -10,7 +10,7 @@ import type { BlogPost } from '../types';
 import { resolveBlogDescription } from '../../shared/seoMeta.mjs';
 
 const SITE_DESCRIPTION_DEFAULT =
-  'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
+  'AiPetFriendly: asistente IA y herramientas para organizar vacunas, cuidados, historial clinico y veterinarias cercanas.';
 
 function formatPostDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
