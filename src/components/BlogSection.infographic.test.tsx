@@ -13,7 +13,7 @@ import { BlogSection } from './BlogSection';
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe('infografía final del artículo', () => {
   it('muestra la segunda imagen después de la conclusión y antes de relacionados', async () => {
-    fetchPost.mockResolvedValue({ id: 'post', slug: 'articulo', title: 'Artículo de prueba', content: '## Para cerrar\n\nOrganizá las instrucciones para tu cuidador.',
+    fetchPost.mockResolvedValue({ id: 'post', slug: 'articulo', title: 'Artículo de prueba', content: '## Organización\n\n### Instrucciones\n\n- Revisá los contactos.\n- Acordá un respaldo.\n\n## Para cerrar\n\nOrganizá las instrucciones para tu cuidador.',
       createdAt: '2026-10-27T12:00:00Z', estimatedReadingTime: 3, status: 'published', imageUrl: 'https://example.test/cover.png',
       editorialMetadata: { cover_alt: 'Portada del gato y su cuidador', infographic_url: 'https://example.test/info.png', infographic_alt: 'Resumen visual de las instrucciones',
         infographic_caption: 'Ideas principales del artículo', sources: [{ id: 'source', title: 'Fuente primaria', organization: 'Cats Protection', url: 'https://www.cats.org.uk/example', consulted_at: '2026-10-27T12:00:00Z' }] } });
@@ -27,5 +27,7 @@ describe('infografía final del artículo', () => {
     expect(image.getAttribute('width')).toBe('1080');
     expect(image.getAttribute('height')).toBe('1350');
     expect(screen.getByRole('link', { name: 'Fuente primaria' }).getAttribute('href')).toBe('https://www.cats.org.uk/example');
+    expect(screen.getByRole('heading', { level: 3, name: 'Instrucciones' })).toBeTruthy();
+    expect(screen.getAllByRole('listitem').some((item) => item.textContent === 'Revisá los contactos.')).toBe(true);
   });
 });

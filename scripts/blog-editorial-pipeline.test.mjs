@@ -78,7 +78,14 @@ describe('fuentes verificadas', () => {
 
 describe('imagenes completas e idempotentes', () => {
   it('renderiza PNG vertical 4:5 de 1080x1350', async () => {
-    const article = { ...articleFixture(), quality: { ready: true } };
+    const article = { ...articleFixture(), quality: { ready: true }, visual_plan: {
+      kind: 'process', title: 'Organizá el cuidado de tu gato', closing: 'Esta informacion no reemplaza la consulta veterinaria.',
+      sections: [
+        { heading: 'Prepará', layout: 'timeline', items: [{ icon: 'record', label: 'Instrucciones', anchor: 'Deja instrucciones escritas para quien cuide a tu gato.' }] },
+        { heading: 'Acordá', layout: 'conversation', items: [{ icon: 'message', label: 'Novedades', anchor: 'Acorda como compartir las novedades de cada visita.' }] },
+        { heading: 'Organizá', layout: 'record', items: [{ icon: 'food', label: 'Alimento', anchor: 'Anota donde estan sus platos y el alimento habitual.' }] },
+      ],
+    } };
     const buffer = await renderInfographic(article);
     expect(await sharp(buffer).metadata()).toMatchObject({ format: 'png', width: 1080, height: 1350 });
   });

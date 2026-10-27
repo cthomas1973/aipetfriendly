@@ -219,6 +219,7 @@ export interface BlogPost {
 }
 
 export interface BlogEditorialMetadata {
+  editorial_version?: string;
   cover_alt?: string;
   infographic_url?: string;
   infographic_alt?: string;
@@ -226,8 +227,10 @@ export interface BlogEditorialMetadata {
   category?: string;
   tags?: string[];
   generated_at?: string;
-  sources?: Array<{ id: string; title: string; url: string; organization: string; consulted_at: string }>;
-  quality?: { ready: boolean; failed: string[]; veterinaryReviewRequired: boolean; humanEditorialReviewRequired: boolean };
+  sources?: Array<{ id: string; title: string; url: string; organization: string; consulted_at: string; supports?: string }>;
+  infographic_validation?: { valid: boolean; content_hash?: string; logo_sha256?: string; renderer?: string };
+  quality?: { ready: boolean; failed: string[]; veterinaryReviewRequired: boolean; humanEditorialReviewRequired: boolean;
+    criteria?: Record<string, boolean>; wordCount?: number; reviewScope?: string };
 }
 
 export interface BlogGenerationRun {

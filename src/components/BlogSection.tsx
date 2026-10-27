@@ -76,12 +76,18 @@ function renderContentParagraphs(content: string | null | undefined) {
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
     .map((paragraph, index) => {
+      if (paragraph.startsWith('### ')) {
+        return <h3 key={index} className="mt-4 text-base font-bold text-slate-900 md:text-lg">{renderInlineRich(paragraph.slice(4), `h3-${index}`)}</h3>;
+      }
       if (paragraph.startsWith('## ')) {
         return (
           <h2 key={index} className="mt-5 text-lg font-bold text-slate-900 first:mt-0 md:text-xl">
             {renderInlineRich(paragraph.slice(3), `h-${index}`)}
           </h2>
         );
+      }
+      if (paragraph.split('\n').every((line) => line.startsWith('- '))) {
+        return <ul key={index} className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-700 md:text-base">{paragraph.split('\n').map((line, itemIndex) => <li key={itemIndex}>{renderInlineRich(line.slice(2), `li-${index}-${itemIndex}`)}</li>)}</ul>;
       }
       return (
         <p key={index} className="mt-3 text-sm leading-relaxed text-slate-700 md:text-base first:mt-0">

@@ -118,6 +118,9 @@ export function AdminBlogSection() {
 
   const renderRow = (row: BlogPost) => {
     const isEditing = editingId === row.id;
+    const pendingValidation = row.editorialMetadata?.quality?.ready === false
+      || row.editorialMetadata?.quality?.veterinaryReviewRequired === true
+      || (row.editorialMetadata?.editorial_version === 'editorial-v2' && row.editorialMetadata.infographic_validation?.valid !== true);
 
     return (
       <div key={row.id} className="rounded-2xl border border-slate-200 p-4">
@@ -253,7 +256,7 @@ export function AdminBlogSection() {
             {row.status === 'draft' ? (
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || pendingValidation}
                 onClick={() => persistChange(row, 'published', false)}
                 className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-70"
               >
@@ -280,6 +283,7 @@ export function AdminBlogSection() {
             )}
           </div>
         )}
+        {pendingValidation && <p className="mt-2 text-sm text-amber-800">Publicación bloqueada: revisión editorial, gráfica o veterinaria pendiente.</p>}
         {row.editorialMetadata && (
           <details className="mt-4 border-t border-slate-200 pt-3">
             <summary className="cursor-pointer text-sm font-semibold text-emerald-700">Revisión editorial y recursos</summary>
@@ -287,6 +291,14 @@ export function AdminBlogSection() {
               {row.editorialMetadata.quality?.ready ? 'Controles automáticos completos. Pendiente de revisión humana.' : 'Contenido incompleto o retenido.'}
               {row.editorialMetadata.quality?.veterinaryReviewRequired && ' Requiere revisión veterinaria documentada.'}
             </p>
+            <dl className="mb-4 grid grid-cols-1 gap-2 text-sm text-slate-600 md:grid-cols-2">
+              <div><dt className="font-semibold">Slug</dt><dd className="break-all">{row.slug}</dd></div>
+              <div><dt className="font-semibold">Meta descripción</dt><dd>{row.metaDescription || 'Automática'}</dd></div>
+              <div><dt className="font-semibold">Revisión</dt><dd>{row.editorialMetadata.quality?.reviewScope || 'Validación automática; no es aprobación humana.'}</dd></div>
+              <div><dt className="font-semibold">Infografía</dt><dd>{row.editorialMetadata.infographic_validation?.valid ? 'Vinculada al texto validado' : 'Pendiente de validar'}</dd></div>
+            </dl>
+            {row.editorialMetadata.quality?.criteria && <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">{Object.entries(row.editorialMetadata.quality.criteria).map(([name, valid]) => <li key={name}>{name}: {valid ? 'Comprobado' : 'Pendiente'}</li>)}</ul>}
+            {row.editorialMetadata.quality?.failed?.length ? <p className="mb-3 text-sm text-red-700">Motivos: {row.editorialMetadata.quality.failed.join(', ')}</p> : null}
             {row.imageUrl && <img src={row.imageUrl} alt={row.editorialMetadata.cover_alt || row.title} className="mx-auto mb-4 max-h-80 max-w-full object-contain" />}
             <div className="mb-4 whitespace-pre-line text-sm text-slate-700">{row.content}</div>
             <BlogEditorialAssets metadata={row.editorialMetadata} />

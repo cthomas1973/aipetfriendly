@@ -22,6 +22,7 @@ export function BlogEditorialAssets({ metadata }: { metadata?: BlogEditorialMeta
               <li key={source.id}>
                 <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline">{source.title}</a>
                 <span> · {source.organization} · Consulta: {source.consulted_at.slice(0, 10)}</span>
+                {source.supports && <p className="mt-1 text-slate-500">{source.supports}</p>}
               </li>
             ))}
           </ul>
