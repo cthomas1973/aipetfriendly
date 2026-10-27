@@ -21,6 +21,7 @@ export interface PetGuide {
   // para mostrar la etiqueta "Nuevo". Al sumar guias nuevas cada semana, basta
   // con agregarlas al array con la fecha del dia.
   publishedAt: string;
+  publicationStatus?: 'pending_veterinary_review';
   summary: string;
   readingTime: string;
   coverImage?: PetGuideImage;
@@ -778,6 +779,7 @@ export const PET_GUIDES: PetGuide[] = [
     category: 'salud',
     petTypes: ['perro', 'gato'],
     publishedAt: '2026-09-28',
+    publicationStatus: 'pending_veterinary_review',
     summary:
       'El atragantamiento con objetos como juguetes, huesos o piedras es una emergencia hogareña que exige actuar rápido. Guía paso a paso para identificarlo, actuar con seguridad y saber qué nunca hay que hacer.',
     readingTime: '5 min',
@@ -1230,6 +1232,8 @@ export function getEffectiveReleaseDateLabel(slug: string): string {
 }
 
 export function isGuidePublished(slug: string, now: number = Date.now()): boolean {
+  const guide = PET_GUIDES.find((item) => item.slug === slug);
+  if (!guide || guide.publicationStatus === 'pending_veterinary_review') return false;
   return now >= getEffectiveReleaseTime(slug);
 }
 
@@ -1237,13 +1241,14 @@ export function isGuidePublished(slug: string, now: number = Date.now()): boolea
 // poder previsualizarlas; el resto de los usuarios y visitantes solo ven las que ya
 // llegaron a su fecha efectiva de publicacion (minimo 7 dias desde la ultima guia).
 export function getVisiblePetGuides(isAdmin: boolean): PetGuide[] {
-  if (isAdmin) return PET_GUIDES;
-  return PET_GUIDES.filter((guide) => isGuidePublished(guide.slug));
+  const reviewClearedGuides = PET_GUIDES.filter((guide) => guide.publicationStatus !== 'pending_veterinary_review');
+  if (isAdmin) return reviewClearedGuides;
+  return reviewClearedGuides.filter((guide) => isGuidePublished(guide.slug));
 }
 
 export function getPetGuideBySlug(slug: string, isAdmin = false): PetGuide | undefined {
   const guide = PET_GUIDES.find((item) => item.slug === slug);
-  if (!guide) return undefined;
+  if (!guide || guide.publicationStatus === 'pending_veterinary_review') return undefined;
   if (!isAdmin && !isGuidePublished(guide.slug)) return undefined;
   return guide;
 }

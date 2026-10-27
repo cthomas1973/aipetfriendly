@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { isBlogPostPubliclyAvailable } from '../../shared/seoMeta.mjs';
 import type {
   AdminAiAuditEntry,
   AdminAiDashboardMetrics,
@@ -2903,10 +2904,12 @@ export async function fetchBlogPosts(limit = 20, offset = 0): Promise<BlogPost[]
     throw error;
   }
 
-  return (data || []).map(mapBlogPostRow);
+  return (data || []).map(mapBlogPostRow).filter((post: BlogPost) => isBlogPostPubliclyAvailable(post.slug));
 }
 
 export async function fetchBlogPostBySlug(slug: string): Promise<BlogPost | null> {
+  if (!isBlogPostPubliclyAvailable(slug)) return null;
+
   const { data, error } = await supabase.rpc('get_blog_post_by_slug', { p_slug: slug });
 
   if (error) {

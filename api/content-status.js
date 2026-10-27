@@ -46,7 +46,7 @@
 // para no ocultar/des-indexar contenido real por un error transitorio.
 
 import { createClient } from '@supabase/supabase-js';
-import { injectPageMeta, buildCanonicalUrl, resolveBlogDescription, SITE_DESCRIPTION_DEFAULT } from '../shared/seoMeta.mjs';
+import { injectPageMeta, buildCanonicalUrl, isBlogPostPubliclyAvailable, resolveBlogDescription, SITE_DESCRIPTION_DEFAULT } from '../shared/seoMeta.mjs';
 
 const CACHE_TTL_MS = 60_000;
 let indexHtmlCache = { html: null, fetchedAt: 0 };
@@ -90,6 +90,8 @@ async function getPublishedGuidesBySlug(origin) {
 // Devuelve la fila completa del post (title/content incluidos) o null si no
 // existe un post publicado con ese slug.
 async function fetchBlogPost(slug) {
+  if (!isBlogPostPubliclyAvailable(slug)) return null;
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !anonKey) {

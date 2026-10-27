@@ -23,6 +23,14 @@
 
 export const SITE_ORIGIN = 'https://www.aipetfriendly.ar';
 
+export const VETERINARY_REVIEW_REQUIRED_BLOG_SLUGS = new Set([
+  'primeros-auxilios-para-perros-y-gatos-que-hacer-si-se-atragantan',
+]);
+
+export function isBlogPostPubliclyAvailable(slug) {
+  return !VETERINARY_REVIEW_REQUIRED_BLOG_SLUGS.has(slug);
+}
+
 const DESCRIPTION_MAX_LENGTH = 155;
 
 // Limpia contenido de blog (texto plano con el markdown minimo que soporta

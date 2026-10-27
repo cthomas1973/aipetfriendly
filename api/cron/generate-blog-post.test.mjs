@@ -16,8 +16,9 @@
 // dispatcher que responde segun la URL (guides-feed.json / SerpApi / IA de
 // texto / IA de imagen), nunca golpea una API real.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { injectPageMeta, resolveBlogDescription, sanitizeMetaDescriptionCandidate } from '../../shared/seoMeta.mjs';
+import { injectPageMeta, isBlogPostPubliclyAvailable, resolveBlogDescription, sanitizeMetaDescriptionCandidate } from '../../shared/seoMeta.mjs';
 import middleware, { config as middlewareConfig } from '../../middleware.js';
+import { getPetGuideBySlug, getVisiblePetGuides, isGuidePublished } from '../../src/data/petGuides.ts';
 
 let currentAdmin = null;
 
@@ -244,6 +245,25 @@ describe('rutas privadas (middleware.js)', () => {
     expect(html).toContain('<meta name="robots" content="noindex, follow" />');
     expect(html).not.toContain('rel="canonical"');
     expect(html).not.toContain('property="og:url"');
+  });
+});
+
+describe('guias pendientes de revisión veterinaria', () => {
+  const slug = 'que-hacer-si-tu-mascota-se-atraganta';
+
+  it('no aparecen en listados, detalle ni vista admin', () => {
+    expect(getVisiblePetGuides(false).some((guide) => guide.slug === slug)).toBe(false);
+    expect(getVisiblePetGuides(true).some((guide) => guide.slug === slug)).toBe(false);
+    expect(getPetGuideBySlug(slug)).toBeUndefined();
+    expect(getPetGuideBySlug(slug, true)).toBeUndefined();
+    expect(isGuidePublished(slug)).toBe(false);
+  });
+});
+
+describe('posts pendientes de revisión veterinaria', () => {
+  it('retiene el post de atragantamiento y mantiene disponibles los demás slugs', () => {
+    expect(isBlogPostPubliclyAvailable('primeros-auxilios-para-perros-y-gatos-que-hacer-si-se-atragantan')).toBe(false);
+    expect(isBlogPostPubliclyAvailable('snacks-saludables-para-perros-y-gatos')).toBe(true);
   });
 });
 

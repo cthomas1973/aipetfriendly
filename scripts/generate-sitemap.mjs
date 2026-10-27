@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { loadEnv } from 'vite';
+import { isBlogPostPubliclyAvailable } from '../shared/seoMeta.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = loadEnv('production', path.join(__dirname, '..'), 'VITE_');
@@ -52,7 +53,7 @@ async function fetchPublishedBlogPosts() {
     return [];
   }
 
-  return posts;
+  return posts.filter((post) => isBlogPostPubliclyAvailable(post.slug));
 }
 
 const source = readFileSync(guidesFile, 'utf8');
@@ -68,7 +69,10 @@ const guides = [];
 let match;
 while ((match = guideBlockRegex.exec(source)) !== null) {
   const [, slug, title, category, publishedAt, summary, coverImageSrc, relatedProductId] = match;
-  guides.push({ slug, title, category, publishedAt, summary, coverImageSrc: coverImageSrc || null, relatedProductId: relatedProductId || null });
+  const nextGuideIndex = source.indexOf('    slug:', match.index + match[0].length);
+  const guideBlock = source.slice(match.index, nextGuideIndex === -1 ? source.length : nextGuideIndex);
+  const publicationStatus = guideBlock.match(/publicationStatus:\s*'([^']+)'/)?.[1] || null;
+  guides.push({ slug, title, category, publishedAt, summary, coverImageSrc: coverImageSrc || null, relatedProductId: relatedProductId || null, publicationStatus });
 }
 
 if (guides.length === 0) {
@@ -105,8 +109,10 @@ guides.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt
 const GUIDE_RELEASE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const now = Date.now();
 
-const alreadyDue = guides.filter((guide) => new Date(guide.publishedAt).getTime() <= now);
+const reviewClearedGuides = guides.filter((guide) => guide.publicationStatus !== 'pending_veterinary_review');
+const alreadyDue = reviewClearedGuides.filter((guide) => new Date(guide.publishedAt).getTime() <= now);
 const pending = guides
+  .filter((guide) => guide.publicationStatus !== 'pending_veterinary_review')
   .filter((guide) => new Date(guide.publishedAt).getTime() > now)
   .sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
 

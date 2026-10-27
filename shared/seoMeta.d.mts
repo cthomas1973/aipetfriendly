@@ -8,6 +8,8 @@ export declare const META_DESCRIPTION_MIN_LENGTH: number;
 export declare const META_DESCRIPTION_MAX_LENGTH: number;
 export declare function sanitizeMetaDescriptionCandidate(raw: unknown): string | null;
 export declare const SITE_ORIGIN: string;
+export declare const VETERINARY_REVIEW_REQUIRED_BLOG_SLUGS: ReadonlySet<string>;
+export declare function isBlogPostPubliclyAvailable(slug: string): boolean;
 export declare const SITE_DESCRIPTION_DEFAULT: string;
 export declare function buildCanonicalUrl(pathname: string): string;
 export declare function injectPageMeta(

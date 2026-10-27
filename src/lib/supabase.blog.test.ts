@@ -5,7 +5,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ rpc: mockRpc }),
 }));
 
-import { updateAdminBlogPost } from './supabase';
+import { fetchAdminBlogPosts, fetchBlogPostBySlug, fetchBlogPosts, updateAdminBlogPost } from './supabase';
 
 const postRow = {
   id: 'post-test-1',
@@ -25,6 +25,25 @@ const postRow = {
 
 afterEach(() => {
   mockRpc.mockReset();
+});
+
+describe('retencion publica por revision veterinaria', () => {
+  const heldRow = { ...postRow, slug: 'primeros-auxilios-para-perros-y-gatos-que-hacer-si-se-atragantan' };
+
+  it('omite el post retenido del listado publico sin ocultar otros posts', async () => {
+    mockRpc.mockResolvedValue({ data: [heldRow, postRow], error: null });
+    expect(await fetchBlogPosts()).toEqual([expect.objectContaining({ slug: postRow.slug })]);
+  });
+
+  it('no consulta la RPC para el detalle retenido', async () => {
+    expect(await fetchBlogPostBySlug(heldRow.slug)).toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('conserva el post disponible para revision desde el listado admin', async () => {
+    mockRpc.mockResolvedValue({ data: [heldRow], error: null });
+    expect(await fetchAdminBlogPosts()).toEqual([expect.objectContaining({ slug: heldRow.slug })]);
+  });
 });
 
 describe('updateAdminBlogPost', () => {
