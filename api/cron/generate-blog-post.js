@@ -49,6 +49,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { sanitizeMetaDescriptionCandidate, META_DESCRIPTION_MIN_LENGTH, META_DESCRIPTION_MAX_LENGTH } from '../../shared/seoMeta.mjs';
+import { generatePipelineCover, runEditorialGeneration } from './_blog-editorial-pipeline.js';
 
 // SerpApi + IA de texto + IA de imagen + upload pueden tardar mas de los 10s
 // que da Vercel Hobby por defecto; 60s es el maximo permitido en ese plan.
@@ -76,7 +77,6 @@ const TOPICS = [
   'comportamiento y adiestramiento de perros y gatos',
   'bienestar emocional y enriquecimiento ambiental para mascotas',
   'cuidados generales e higiene para mascotas',
-  'primeros auxilios y emergencias con mascotas',
   'ejercicio, paseos y actividad fisica para perros y gatos',
   'cuidado de mascotas segun la edad (cachorros, adultos y mayores)',
   'convivencia entre mascotas y otros animales o ninos',
@@ -157,14 +157,13 @@ function timingSafeEqualStrings(a, b) {
 
 // Devuelve 'missing_secret' (CRON_SECRET no configurado: rechazar siempre),
 // 'unauthorized' (configurado pero el header no matchea) u 'ok'.
-export function getCronAuthStatus(req) {
-  const secret = (process.env.CRON_SECRET || '').trim();
-  if (!secret) {
+export function getCronAuthStatus(req, allowBlogSecret = false) {
+  const secrets = [process.env.CRON_SECRET, allowBlogSecret ? process.env.BLOG_GENERATION_SECRET : undefined].map((secret) => (secret || '').trim()).filter(Boolean);
+  if (secrets.length === 0) {
     return 'missing_secret';
   }
   const authHeader = req.headers.authorization || req.headers.Authorization || '';
-  const expected = `Bearer ${secret}`;
-  return timingSafeEqualStrings(authHeader, expected) ? 'ok' : 'unauthorized';
+  return secrets.some((secret) => timingSafeEqualStrings(authHeader, `Bearer ${secret}`)) ? 'ok' : 'unauthorized';
 }
 
 function pickRandom(list) {
@@ -453,12 +452,12 @@ export async function generateArticleFromNews(topic, newsItems, petFocus, relate
 
   const buildPrompt = (lengthReminder) =>
     [
-      'Sos una veterinaria influencer que escribe para el blog de AiPetFriendly, una app de cuidado de mascotas.',
+      'Sos el equipo editorial de AiPetFriendly, una app de organizacion del cuidado de mascotas con un asistente IA. No sos un profesional veterinario ni afirmes tener pacientes o experiencia clinica propia.',
       `Tema del dia: ${topic}.`,
       'A continuacion hay 10 noticias recientes sobre el tema. Elegi la que te parezca mas util o interesante para duenios de perros y gatos. Usala SOLO como disparador/contexto inicial: el articulo tiene que aportar tu propia explicacion, recomendaciones y valor practico, nunca limitarse a parafrasear la noticia como si fuera el contenido completo.',
       newsBlock,
       '',
-      'Escribi un articulo original en espanol rioplatense (voseo), en primera persona, con tono calido, cercano y profesional (como una veterinaria que realmente quiere ayudar, no un articulo generico de blog). Objetivo orientativo de extension: entre 650 y 850 palabras, SOLO si el tema realmente da para desarrollarlo asi. NUNCA agregues relleno, repeticiones ni frases genericas solo para alcanzar ese numero: preferi un articulo mas corto pero solido antes que uno largo y vacio.',
+      'Escribi un articulo original en espanol rioplatense (voseo), con tono claro y cercano, sin atribuirte credenciales profesionales, pacientes ni testimonios. Objetivo orientativo de extension: entre 650 y 850 palabras, SOLO si el tema realmente da para desarrollarlo asi. NUNCA agregues relleno, repeticiones ni frases genericas solo para alcanzar ese numero: preferi un articulo mas corto pero solido antes que uno largo y vacio.',
       lengthReminder,
       `Si encaja de forma natural con el tema, usa como ejemplo o protagonista de algun caso a un(a) ${petFocus} (sin forzarlo: si el tema no lo permite, mantene el articulo general para perros y gatos).`,
       '',
@@ -963,7 +962,7 @@ async function alreadyHasPostToday(admin) {
   return Boolean(data);
 }
 
-export default async function handler(req, res) {
+export async function legacyHandler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed' });
   }
@@ -1078,5 +1077,24 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error generando el post diario del blog:', error);
     return sendJson(res, 500, { error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET' && req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+  const authStatus = getCronAuthStatus(req, true);
+  if (authStatus !== 'ok') return sendJson(res, authStatus === 'missing_secret' ? 503 : 401, { error: 'Cron no autorizado o no configurado' });
+  try {
+    const admin = getSupabaseAdminClient();
+    if (req.query?.action === 'status') {
+      const { data, error } = await admin.rpc('blog_generation_schedule_status');
+      if (error) throw new Error('No se pudo leer el estado del planificador');
+      return sendJson(res, 200, data);
+    }
+    const result = await runEditorialGeneration(admin, { origin: req.body?.origin === 'pg_cron' ? 'pg_cron' : 'authenticated_request', generateCover: generatePipelineCover });
+    return sendJson(res, 200, result);
+  } catch (error) {
+    console.error('blog_pipeline_request_failed', { message: error.message });
+    return sendJson(res, 500, { error: error.message });
   }
 }

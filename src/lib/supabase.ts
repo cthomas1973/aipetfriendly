@@ -11,6 +11,7 @@ import type {
   PetTagCodeStatus,
   BillingPricingSettings,
   BlogPost,
+  BlogGenerationRun,
   Cotutor,
   CotutorFormData,
   DiscountCode,
@@ -2893,6 +2894,7 @@ function mapBlogPostRow(row: any): BlogPost {
     relatedBlogSlug: row.related_blog_slug || undefined,
     relatedProductId: row.related_product_id || undefined,
     metaDescription: row.meta_description || undefined,
+    editorialMetadata: row.editorial_metadata || undefined,
   };
 }
 
@@ -2943,6 +2945,12 @@ export async function fetchAdminBlogPosts(): Promise<BlogPost[]> {
   }
 
   return (data || []).map(mapBlogPostRow);
+}
+
+export async function fetchAdminBlogGenerationRuns(): Promise<BlogGenerationRun[]> {
+  const { data, error } = await supabase.rpc('admin_list_blog_generation_runs');
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ id: row.id, stage: row.stage, createdAt: row.created_at, error: row.error || undefined, payload: row.payload || {} }));
 }
 
 export async function updateAdminBlogPost(input: {

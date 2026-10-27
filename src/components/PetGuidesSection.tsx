@@ -186,7 +186,7 @@ function GuideDetail({ slug }: { slug: string }) {
   const guide = useMemo(() => getPetGuideBySlug(slug, isAdmin), [slug, isAdmin]);
 
   useEffect(() => {
-    if (guide) {
+    if (guide && isGuidePublished(guide.slug)) {
       setPageMeta(`${guide.title} | AiPetFriendly`, guide.summary, `/guias/${slug}`);
     } else {
       // No inventamos un canonical de contenido para un slug inexistente:
@@ -220,8 +220,9 @@ function GuideDetail({ slug }: { slug: string }) {
 
       {isAdmin && !isPublished && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          Vista previa de administrador: esta guía todavía está en espera y se publicará
-          automáticamente para el resto de los usuarios el {getEffectiveReleaseDateLabel(guide.slug)}.
+          {guide.publicationStatus === 'pending_veterinary_review'
+            ? 'Vista previa de administrador: revisión veterinaria documentada pendiente. Esta guía no se publicará automáticamente.'
+            : `Vista previa de administrador: esta guía se publicará el ${getEffectiveReleaseDateLabel(guide.slug)}.`}
         </div>
       )}
 

@@ -3,6 +3,7 @@ import { Calendar, ChevronLeft, Clock, Newspaper } from 'lucide-react';
 import { AdBanner } from './AdBanner';
 import { PublicFooter } from './PublicLegalPages';
 import { RelatedLinksBlock } from './RelatedLinksBlock';
+import { BlogEditorialAssets } from './BlogEditorialAssets';
 import { useAppState } from '../context/AppStateContext';
 import { fetchBlogPostBySlug, fetchBlogPosts } from '../lib/supabase';
 import { setNotFoundPageMeta, setPageMeta } from '../lib/pageMeta';
@@ -306,7 +307,7 @@ function BlogDetail({ slug }: { slug: string }) {
       {post.imageUrl && (
         <img
           src={post.imageUrl}
-          alt={post.title}
+          alt={post.editorialMetadata?.cover_alt || post.title}
           loading="lazy"
           className="mx-auto max-h-80 w-auto max-w-full rounded-2xl bg-slate-100 object-contain"
         />
@@ -317,6 +318,8 @@ function BlogDetail({ slug }: { slug: string }) {
       <article className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
         {renderContentParagraphs(post.content)}
       </article>
+
+      <BlogEditorialAssets metadata={post.editorialMetadata} />
 
       <RelatedLinksBlock
         relatedGuideSlug={post.relatedGuideSlug}

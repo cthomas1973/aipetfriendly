@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, Pencil, RefreshCw, Trash2, Undo2, X } from 'lucide-react';
-import { deleteAdminBlogPost, fetchAdminBlogPosts, fetchAllBeneficiosProductos, updateAdminBlogPost } from '../lib/supabase';
+import { deleteAdminBlogPost, fetchAdminBlogGenerationRuns, fetchAdminBlogPosts, fetchAllBeneficiosProductos, updateAdminBlogPost } from '../lib/supabase';
+import { BlogEditorialAssets } from './BlogEditorialAssets';
 import { getGuidesSortedByDate } from '../data/petGuides';
-import type { BeneficioProducto, BlogPost } from '../types';
+import type { BeneficioProducto, BlogGenerationRun, BlogPost } from '../types';
 import { META_DESCRIPTION_MAX_LENGTH, META_DESCRIPTION_MIN_LENGTH } from '../../shared/seoMeta.mjs';
 
 function formatDate(iso: string) {
@@ -11,6 +12,7 @@ function formatDate(iso: string) {
 
 export function AdminBlogSection() {
   const [rows, setRows] = useState<BlogPost[]>([]);
+  const [runs, setRuns] = useState<BlogGenerationRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export function AdminBlogSection() {
       setError(null);
       const data = await fetchAdminBlogPosts();
       setRows(data);
+      setRuns(await fetchAdminBlogGenerationRuns());
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo cargar el listado de posts del blog.');
     } finally {
@@ -277,6 +280,18 @@ export function AdminBlogSection() {
             )}
           </div>
         )}
+        {row.editorialMetadata && (
+          <details className="mt-4 border-t border-slate-200 pt-3">
+            <summary className="cursor-pointer text-sm font-semibold text-emerald-700">Revisión editorial y recursos</summary>
+            <p className="my-3 text-sm text-slate-600">
+              {row.editorialMetadata.quality?.ready ? 'Controles automáticos completos. Pendiente de revisión humana.' : 'Contenido incompleto o retenido.'}
+              {row.editorialMetadata.quality?.veterinaryReviewRequired && ' Requiere revisión veterinaria documentada.'}
+            </p>
+            {row.imageUrl && <img src={row.imageUrl} alt={row.editorialMetadata.cover_alt || row.title} className="mx-auto mb-4 max-h-80 max-w-full object-contain" />}
+            <div className="mb-4 whitespace-pre-line text-sm text-slate-700">{row.content}</div>
+            <BlogEditorialAssets metadata={row.editorialMetadata} />
+          </details>
+        )}
       </div>
     );
   };
@@ -301,6 +316,22 @@ export function AdminBlogSection() {
 
       {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
       {msg && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-600">{msg}</p>}
+
+      {runs.some((run) => run.stage !== 'complete') && (
+        <details className="border-b border-slate-200 pb-4">
+          <summary className="cursor-pointer font-semibold text-slate-700">Corridas pendientes o retenidas</summary>
+          {runs.filter((run) => run.stage !== 'complete').map((run) => (
+            <div key={run.id} className="mt-3 border-t border-slate-100 pt-3">
+              <p className="text-sm font-bold">{run.payload.title || 'Generación en preparación'} · {run.stage}</p>
+              <p className="text-xs text-slate-500">{formatDate(run.createdAt)} · {run.id}</p>
+              {run.error && <p className="text-sm text-red-700">{run.error}</p>}
+              {run.payload.quality?.failed?.length ? <p className="text-sm text-amber-800">Controles pendientes: {run.payload.quality.failed.join(', ')}</p> : null}
+              {run.payload.content && <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{run.payload.content}</p>}
+              <BlogEditorialAssets metadata={run.payload} />
+            </div>
+          ))}
+        </details>
+      )}
 
       <div>
         <p className="mb-2 text-sm font-bold text-slate-700">Pendientes de revision ({drafts.length})</p>

@@ -251,11 +251,11 @@ describe('rutas privadas (middleware.js)', () => {
 describe('guias pendientes de revisión veterinaria', () => {
   const slug = 'que-hacer-si-tu-mascota-se-atraganta';
 
-  it('no aparecen en listados, detalle ni vista admin', () => {
+  it('no aparecen publicamente y conservan la consulta administrativa', () => {
     expect(getVisiblePetGuides(false).some((guide) => guide.slug === slug)).toBe(false);
-    expect(getVisiblePetGuides(true).some((guide) => guide.slug === slug)).toBe(false);
+    expect(getVisiblePetGuides(true).some((guide) => guide.slug === slug)).toBe(true);
     expect(getPetGuideBySlug(slug)).toBeUndefined();
-    expect(getPetGuideBySlug(slug, true)).toBeUndefined();
+    expect(getPetGuideBySlug(slug, true)?.publicationStatus).toBe('pending_veterinary_review');
     expect(isGuidePublished(slug)).toBe(false);
   });
 });
@@ -332,17 +332,18 @@ describe('generateArticleFromNews (exportado directo, sin handler)', () => {
   });
 });
 
-describe('handler() (integracion con Supabase/fetch mockeados)', () => {
+describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
   it('responde 503 si falta CRON_SECRET (nunca hay modo sin autenticacion)', async () => {
     delete process.env.CRON_SECRET;
-    const { default: handler } = await import('./generate-blog-post.js');
+    delete process.env.BLOG_GENERATION_SECRET;
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
     const res = makeRes();
     await handler(makeReq(), res);
     expect(res.statusCode).toBe(503);
   });
 
   it('responde 401 si el token no coincide', async () => {
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
     const res = makeRes();
     await handler(makeReq('Bearer incorrecto'), res);
     expect(res.statusCode).toBe(401);
@@ -352,7 +353,7 @@ describe('handler() (integracion con Supabase/fetch mockeados)', () => {
     currentAdmin = makeFakeAdmin({ alreadyToday: true });
     const fetchMock = makeFetchMock();
     vi.stubGlobal('fetch', fetchMock);
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -365,7 +366,7 @@ describe('handler() (integracion con Supabase/fetch mockeados)', () => {
   it('responde 500 si SerpApi no devuelve noticias para el tema', async () => {
     currentAdmin = makeFakeAdmin({ alreadyToday: false });
     vi.stubGlobal('fetch', makeFetchMock({ news: [] }));
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -380,7 +381,7 @@ describe('handler() (integracion con Supabase/fetch mockeados)', () => {
       insertResult: { data: null, error: { message: 'duplicate key value violates unique constraint' } },
     });
     vi.stubGlobal('fetch', makeFetchMock({ aiResponses: [aiArticleJson({ content: 'Palabra '.repeat(700) })] }));
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -410,7 +411,7 @@ describe('handler() (integracion con Supabase/fetch mockeados)', () => {
       'fetch',
       makeFetchMock({ aiResponses: [aiArticleJson({ content: 'Palabra '.repeat(700), meta_description: validMeta })] })
     );
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -439,12 +440,45 @@ describe('handler() (integracion con Supabase/fetch mockeados)', () => {
       return q;
     };
     vi.stubGlobal('fetch', makeFetchMock({ aiResponses: [aiArticleJson({ content: 'Palabra '.repeat(700) })] }));
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('./generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
 
     expect(res.statusCode).toBe(200);
     expect(insertedPayload.slug).toBe(`${baseSlug}-2`);
+  });
+});
+
+describe('handler persistente de produccion', () => {
+  it('no habilita la credencial dedicada en otros consumidores del helper', async () => {
+    delete process.env.CRON_SECRET;
+    process.env.BLOG_GENERATION_SECRET = 'dedicated-test-secret';
+    const { getCronAuthStatus } = await import('./generate-blog-post.js');
+    expect(getCronAuthStatus(makeReq('Bearer dedicated-test-secret'))).toBe('missing_secret');
+    expect(getCronAuthStatus(makeReq('Bearer dedicated-test-secret'), true)).toBe('ok');
+  });
+  it('rechaza sin ninguna credencial configurada', async () => {
+    delete process.env.CRON_SECRET;
+    delete process.env.BLOG_GENERATION_SECRET;
+    const { default: handler } = await import('./generate-blog-post.js');
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.statusCode).toBe(503);
+  });
+
+  it('acepta credencial dedicada y no genera si la reserva indica no elegible', async () => {
+    delete process.env.CRON_SECRET;
+    process.env.BLOG_GENERATION_SECRET = 'dedicated-test-secret';
+    currentAdmin = { rpc: vi.fn(async () => ({ data: null, error: null })) };
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { default: handler } = await import('./generate-blog-post.js');
+    const res = makeRes();
+    await handler(makeReq('Bearer dedicated-test-secret'), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.skipped).toBe(true);
+    expect(currentAdmin.rpc).toHaveBeenCalledWith('claim_blog_generation', { p_origin: 'authenticated_request' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

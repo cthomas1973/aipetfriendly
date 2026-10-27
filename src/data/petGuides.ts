@@ -1241,14 +1241,14 @@ export function isGuidePublished(slug: string, now: number = Date.now()): boolea
 // poder previsualizarlas; el resto de los usuarios y visitantes solo ven las que ya
 // llegaron a su fecha efectiva de publicacion (minimo 7 dias desde la ultima guia).
 export function getVisiblePetGuides(isAdmin: boolean): PetGuide[] {
+  if (isAdmin) return PET_GUIDES;
   const reviewClearedGuides = PET_GUIDES.filter((guide) => guide.publicationStatus !== 'pending_veterinary_review');
-  if (isAdmin) return reviewClearedGuides;
   return reviewClearedGuides.filter((guide) => isGuidePublished(guide.slug));
 }
 
 export function getPetGuideBySlug(slug: string, isAdmin = false): PetGuide | undefined {
   const guide = PET_GUIDES.find((item) => item.slug === slug);
-  if (!guide || guide.publicationStatus === 'pending_veterinary_review') return undefined;
+  if (!guide) return undefined;
   if (!isAdmin && !isGuidePublished(guide.slug)) return undefined;
   return guide;
 }

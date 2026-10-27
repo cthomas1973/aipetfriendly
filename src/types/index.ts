@@ -215,6 +215,27 @@ export interface BlogPost {
   relatedBlogSlug?: string;
   relatedProductId?: string;
   metaDescription?: string;
+  editorialMetadata?: BlogEditorialMetadata;
+}
+
+export interface BlogEditorialMetadata {
+  cover_alt?: string;
+  infographic_url?: string;
+  infographic_alt?: string;
+  infographic_caption?: string;
+  category?: string;
+  tags?: string[];
+  generated_at?: string;
+  sources?: Array<{ id: string; title: string; url: string; organization: string; consulted_at: string }>;
+  quality?: { ready: boolean; failed: string[]; veterinaryReviewRequired: boolean; humanEditorialReviewRequired: boolean };
+}
+
+export interface BlogGenerationRun {
+  id: string;
+  stage: string;
+  createdAt: string;
+  error?: string;
+  payload: BlogEditorialMetadata & { title?: string; content?: string; cover_url?: string };
 }
 
 

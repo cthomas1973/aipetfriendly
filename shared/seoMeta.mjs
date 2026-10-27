@@ -25,6 +25,8 @@ export const SITE_ORIGIN = 'https://www.aipetfriendly.ar';
 
 export const VETERINARY_REVIEW_REQUIRED_BLOG_SLUGS = new Set([
   'primeros-auxilios-para-perros-y-gatos-que-hacer-si-se-atragantan',
+  'salud-preventiva-en-mascotas-vacunacion-y-desparasitacion',
+  'cuidado-de-mascotas-segun-la-edad-claves-para-cada-etapa-de-su-vida',
 ]);
 
 export function isBlogPostPubliclyAvailable(slug) {
