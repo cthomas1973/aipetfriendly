@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
-import { articleSlug, contentFingerprint, ensureGenerationAsset, isDuplicateArticle, isGenerationDue, renderInfographic, runEditorialGeneration, validateEditorialArticle, verifySource } from './_blog-editorial-pipeline.js';
+import { articleSlug, contentFingerprint, ensureGenerationAsset, isDuplicateArticle, isGenerationDue, renderInfographic, runEditorialGeneration, validateEditorialArticle, verifySource } from '../api/cron/_blog-editorial-pipeline.js';
 
 const source = { id: 'cats-protection', url: 'https://www.cats.org.uk/example', title: 'Source', consulted_at: '2026-10-27', text_sha256: 'hash', text: 'Leave written daily care instructions for your trusted cat sitter. Keep the usual bowls and familiar toys accessible.' };
 function articleFixture() {
