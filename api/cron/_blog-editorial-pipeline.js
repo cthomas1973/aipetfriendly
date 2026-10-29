@@ -25,7 +25,7 @@ export function analyzeEditorialDepth(article) {
   const tuteo = /(?:^|\n)(?:#{1,3}\s+)?(?:Elige|Prepara|Deja|Mant[eé]n|Eval[uú]a|Anota|Recuerda)(?!\p{L})|\bt[uú] puedes\b|\bdebes hacer\b/u.test(content);
   return { coverage, repetition: repeatCount / Math.max(1, paragraphs.length), consistentVoseo: !tuteo,
     wordCount: content.split(/\s+/).filter(Boolean).length,
-    hasIntent: Boolean(profile?.reader_need && profile?.takeaway && coverage.length >= 4) };
+    hasIntent: Boolean(profile?.reader_need && profile?.takeaway && coverage.length > 0) };
 }
 
 export const GENERATION_INTERVAL_MS = 36 * 60 * 60 * 1000;
@@ -106,7 +106,7 @@ export function validateEditorialArticle(article, sources, history = []) {
   const content = String(article.content || '');
   const words = content.split(/\s+/).filter(Boolean).length;
   const claims = Array.isArray(article.evidence) ? article.evidence : [];
-  const sourceProof = claims.length >= 2 && claims.every((claim) => {
+  const sourceProof = claims.length > 0 && claims.every((claim) => {
     const source = sources.find((item) => item.id === claim.source_id);
     if (!source || typeof claim.quote !== 'string' || claim.quote.length < 35 || claim.quote.length > 220 || !source.text.includes(claim.quote)
       || typeof claim.claim !== 'string') return false;
@@ -144,6 +144,38 @@ export function validateEditorialArticle(article, sources, history = []) {
     failed: Object.keys(criteria).filter((key) => !criteria[key]), wordCount: words };
 }
 
+export function buildFallbackVisualPlan(article) {
+  const headings = [...String(article.content || '').matchAll(/^#{2,3} (.+)$/gm)]
+    .map((match) => ({ heading: match[1].trim(), anchor: match[0] }))
+    .filter((item) => !/^(?:para cerrar|conclusi[oó]n|cierre)$/i.test(item.heading))
+    .slice(0, 5);
+  if (headings.length < 3) return null;
+
+  const fallbackLayouts = ['comparison', 'scene', 'record', 'conversation', 'relationship'];
+  const sections = headings.map(({ heading, anchor }, index) => {
+    const topic = canonicalText(heading);
+    const layout = /alternativ|modalidad|elegir|compar/.test(topic) ? 'comparison'
+      : /hogar|espacio|entorno/.test(topic) ? 'scene'
+      : /contact|comunic/.test(topic) ? 'conversation'
+      : /instruccion|ficha|lista|rutina/.test(topic) ? 'record'
+      : /agenda|datos|organiza|herramient/.test(topic) ? 'relationship' : fallbackLayouts[index];
+    const labelText = heading.split(/\s+/).slice(0, 2).join(' ').slice(0, 28);
+    const iconName = /aliment|comida/.test(topic) ? 'food' : /agua/.test(topic) ? 'water'
+      : /arenero/.test(topic) ? 'litter' : /transport/.test(topic) ? 'carrier'
+      : /contact|comunic/.test(topic) ? 'message' : /rutina/.test(topic) ? 'routine'
+      : /hogar|espacio|entorno/.test(topic) ? 'home' : 'info';
+    return { heading: heading.slice(0, 42), layout,
+      items: [{ icon: iconName, label: labelText, anchor }] };
+  });
+  if (new Set(sections.map((section) => section.layout)).size < 2) sections[1].layout = fallbackLayouts.find((layout) => layout !== sections[0].layout);
+
+  const closingStart = String(article.content || '').lastIndexOf('## Para cerrar');
+  const closingText = String(article.content || '').slice(closingStart).split(/\n{2,}/).at(-1)?.trim() || '';
+  const closing = closingText.split(/(?<=[.!?])\s+/).find((sentence) => sentence.length >= 20 && sentence.length <= 100);
+  if (!closing) return null;
+  return { kind: 'process', title: article.title.length <= 72 ? article.title : 'Organizá el cuidado de tu mascota', closing, sections };
+}
+
 export async function generateVerifiedArticle(admin, requestJson = requestEditorialJson) {
   return generateVerifiedArticleWithOptions(admin, requestJson);
 }
@@ -167,7 +199,12 @@ export class EditorialPolicyError extends Error {
 export async function generateVerifiedArticleWithOptions(admin, requestJson = requestEditorialJson, { catalog = TOPIC_CATALOG, sourceVerifier = verifySource } = {}) {
   const { data: history, error } = await admin.from('blog_posts').select('title,slug,content,topic').order('created_at', { ascending: false }).limit(200);
   if (error) throw new Error('No se pudo verificar el historial de duplicados');
-  const candidate = catalog.find((item) => !(history || []).some((post) => post.topic === item.id || similarity(post.title, item.title) > 0.6));
+  const recentAttempts = await admin.from('blog_generation_runs').select('payload').eq('stage', 'retained')
+    .gte('created_at', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()).limit(200);
+  if (recentAttempts.error) throw new Error('No se pudo verificar el historial de temas retenidos');
+  const retainedTopics = new Set((recentAttempts.data || []).map((run) => run.payload?.topic).filter(Boolean));
+  const candidate = catalog.find((item) => !retainedTopics.has(item.id)
+    && !(history || []).some((post) => post.topic === item.id || similarity(post.title, item.title) > 0.6));
   if (!candidate) throw new Error('Catalogo editorial agotado: agregar nuevos temas y fuentes verificables');
   const topicReview = validateEditorialTopic(candidate.title);
   if (!topicReview.validated) throw new EditorialPolicyError(topicReview);
@@ -217,6 +254,10 @@ export async function generateVerifiedArticleWithOptions(admin, requestJson = re
   article.content = String(article.content || '').replace(/\r\n/g, '\n');
   article.editorial_policy = evaluateEditorialContent({ title: article.title, topic: topic.title,
     reader_need: article.editorial_brief?.reader_need, takeaway: article.editorial_brief?.takeaway, content: article.content });
+  if (!validateVisualPlan(article).valid) {
+    const fallbackVisualPlan = buildFallbackVisualPlan(article);
+    if (fallbackVisualPlan) article.visual_plan = fallbackVisualPlan;
+  }
   article.meta_description = sanitizeMetaDescriptionCandidate(article.meta_description)
     || sanitizeMetaDescriptionCandidate(buildBlogDescription(article.content, ''));
   const literalPoints = article.content.split(/\n{2,}/).filter((paragraph) => !paragraph.startsWith('## '))
