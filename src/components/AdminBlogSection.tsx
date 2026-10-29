@@ -74,6 +74,8 @@ export function AdminBlogSection() {
   };
 
   const persistChange = async (row: BlogPost, status: 'draft' | 'published', useEditedText: boolean) => {
+    const invalidatedGeneratedPost = useEditedText && status === 'published' && row.editorialMetadata?.editorial_version === 'editorial-v2';
+    const nextStatus = invalidatedGeneratedPost ? 'draft' : status;
     try {
       setSaving(true);
       setError(null);
@@ -82,14 +84,15 @@ export function AdminBlogSection() {
         id: row.id,
         title: useEditedText ? editTitle : row.title,
         content: useEditedText ? editContent : row.content,
-        status,
+        status: nextStatus,
         relatedGuideSlug: useEditedText ? editRelatedGuideSlug : row.relatedGuideSlug,
         relatedBlogSlug: useEditedText ? editRelatedBlogSlug : row.relatedBlogSlug,
         relatedProductId: useEditedText ? editRelatedProductId : row.relatedProductId,
         metaDescription: useEditedText ? editMetaDescription : row.metaDescription,
       });
       setRows((current) => current.map((r) => (r.id === row.id ? updated : r)));
-      setMsg(status === 'published' ? 'Post publicado correctamente.' : 'Post pasado a borrador.');
+      setMsg(invalidatedGeneratedPost ? 'Los cambios requieren nueva revisión. El artículo volvió a borrador.'
+        : nextStatus === 'published' ? 'Post publicado correctamente.' : 'Post pasado a borrador.');
       closeEdit();
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'No se pudo guardar el post.');
@@ -291,6 +294,7 @@ export function AdminBlogSection() {
               {row.editorialMetadata.quality?.ready ? 'Controles automáticos completos. Pendiente de revisión humana.' : 'Contenido incompleto o retenido.'}
               {row.editorialMetadata.quality?.veterinaryReviewRequired && ' Requiere revisión veterinaria documentada.'}
             </p>
+            {row.editorialMetadata.policy_rejection_reason && <p className="mb-3 text-sm font-semibold text-amber-800">Tema retenido: {row.editorialMetadata.policy_rejection_reason}</p>}
             <dl className="mb-4 grid grid-cols-1 gap-2 text-sm text-slate-600 md:grid-cols-2">
               <div><dt className="font-semibold">Slug</dt><dd className="break-all">{row.slug}</dd></div>
               <div><dt className="font-semibold">Meta descripción</dt><dd>{row.metaDescription || 'Automática'}</dd></div>
@@ -337,6 +341,7 @@ export function AdminBlogSection() {
               <p className="text-sm font-bold">{run.payload.title || 'Generación en preparación'} · {run.stage}</p>
               <p className="text-xs text-slate-500">{formatDate(run.createdAt)} · {run.id}</p>
               {run.error && <p className="text-sm text-red-700">{run.error}</p>}
+              {run.payload.policy_rejection_reason && <p className="text-sm font-semibold text-amber-800">Tema retenido: {run.payload.policy_rejection_reason}</p>}
               {run.payload.quality?.failed?.length ? <p className="text-sm text-amber-800">Controles pendientes: {run.payload.quality.failed.join(', ')}</p> : null}
               {run.payload.content && <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{run.payload.content}</p>}
               <BlogEditorialAssets metadata={run.payload} />

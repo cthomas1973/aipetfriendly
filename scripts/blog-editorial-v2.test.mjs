@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
-import { analyzeEditorialDepth, classifyEditorialSafety, runEditorialGeneration, saveExistingDraftRevision, verifyInternalLinks } from '../api/cron/_blog-editorial-pipeline.js';
+import { analyzeEditorialDepth, classifyEditorialSafety, runEditorialGeneration, saveExistingDraftRevision, validateEditorialArticle, verifyInternalLinks } from '../api/cron/_blog-editorial-pipeline.js';
 import { INFOGRAPHIC_VERSION, OFFICIAL_LOGO_SHA256, infographicContentHash, loadOfficialLogo, renderVisualInfographic, validateVisualPlan } from '../api/cron/_blog-infographic.js';
 import { HOLIDAY_BRIEF, HOLIDAY_CONTENT, HOLIDAY_VISUAL_PLAN } from './editorial/cat-holiday-revision.mjs';
 
@@ -18,7 +18,8 @@ describe('cobertura y rigor editorial v2', () => {
   });
   it('detecta texto insuficiente, repetido y tuteo en encabezados', () => {
     const result = analyzeEditorialDepth({ ...article(), content: '## Elige al cuidador\n\nUna idea.\n\nUna idea.' });
-    expect(result.wordCount).toBeLessThan(result.minWords);
+    expect(result.wordCount).toBe(8);
+    expect(result).not.toHaveProperty('minWords');
     expect(result.repetition).toBeGreaterThan(0);
     expect(result.consistentVoseo).toBe(false);
     expect(result.coverage.some((item) => !item.covered)).toBe(true);
@@ -26,10 +27,16 @@ describe('cobertura y rigor editorial v2', () => {
   it('no confunde Mantené y Prepará con formas de tuteo', () => {
     expect(analyzeEditorialDepth({ content: '## Mantené el contacto\n\n## Prepará su espacio' }).consistentVoseo).toBe(true);
   });
-  it('permite planificar contactos e indicaciones vigentes sin aprobar tratamientos', () => {
-    expect(classifyEditorialSafety(HOLIDAY_CONTENT)).toMatchObject({ dangerous: false, veterinaryReviewRequired: false, planningOnly: true });
+  it('permite organización cotidiana sin confundirla con contenido clínico', () => {
+    expect(classifyEditorialSafety(HOLIDAY_CONTENT)).toMatchObject({ dangerous: false, veterinaryReviewRequired: false });
     expect(classifyEditorialSafety('Aplicá compresiones abdominales ante un atragantamiento.').veterinaryReviewRequired).toBe(true);
     expect(classifyEditorialSafety('Administrá 5 mg/kg de un fármaco.').dangerous).toBe(true);
+  });
+  it('rechaza afirmaciones clínicas introducidas solo en el título o plan de la infografía', () => {
+    const article = { title: 'Organizar las rutinas de cuidado de una mascota', content: '## Para cerrar\n\nDejá una ficha con las rutinas habituales.',
+      topic: 'organizacion-cotidiana', meta_description: 'Organiza las rutinas cotidianas de cuidado de tu mascota con una ficha clara para quien la cuide.',
+      visual_plan: { title: 'Qué hacer ante convulsiones', closing: 'Planificá con tiempo.', sections: [{ heading: 'Rutina', layout: 'scene', items: [{ label: 'Alimento', icon: 'food', anchor: 'ficha de rutinas' }] }] } };
+    expect(validateEditorialArticle(article, []).criteria.editorial_policy).toBe(false);
   });
   it('rechaza enlaces 404 y privados/noindex, sin hacer de un HTTP200 una prueba de indexacion', async () => {
     const response = await verifyInternalLinks('[A](/contacto) [B](/login) [C](/inexistente)', async (url) => new Response(url.endsWith('/login') ? '<meta name="robots" content="noindex, follow" />' : '<title>Pagina</title>', { status: url.endsWith('/inexistente') ? 404 : 200 }));

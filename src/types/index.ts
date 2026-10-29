@@ -220,6 +220,8 @@ export interface BlogPost {
 
 export interface BlogEditorialMetadata {
   editorial_version?: string;
+  editorial_policy?: { status: 'allowed' | 'reformulate' | 'excluded'; code: string; reason: string; clinicalClaims: string[] };
+  policy_rejection_reason?: string;
   cover_alt?: string;
   infographic_url?: string;
   infographic_alt?: string;
@@ -227,10 +229,15 @@ export interface BlogEditorialMetadata {
   category?: string;
   tags?: string[];
   generated_at?: string;
-  sources?: Array<{ id: string; title: string; url: string; organization: string; consulted_at: string; supports?: string }>;
+  sources?: Array<{ id: string; title: string; url: string; organization: string; author?: string | null; consulted_at: string; text_sha256?: string; supports?: string }>;
+  evidence?: Array<{ source_id: string; claim: string; quote: string }>;
+  visual_plan?: { kind: string; title: string; closing: string; sections: Array<{ heading: string; layout: string; items: Array<{ icon: string; label: string; anchor: string }> }> };
+  brand?: { logo_sha256: string; renderer: string };
   infographic_validation?: { valid: boolean; content_hash?: string; logo_sha256?: string; renderer?: string };
+  validation_snapshot?: { content?: string; title?: string; cover_url?: string; source_name?: string; infographic_url?: string };
   quality?: { ready: boolean; failed: string[]; veterinaryReviewRequired: boolean; humanEditorialReviewRequired: boolean;
-    criteria?: Record<string, boolean>; wordCount?: number; reviewScope?: string };
+    criteria?: Record<string, boolean>; wordCount?: number; reviewScope?: string;
+    semanticReview?: { approved: boolean; issues: string[] }; depth?: { wordCount: number; repetition: number; consistentVoseo: boolean } };
 }
 
 export interface BlogGenerationRun {

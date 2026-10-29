@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
-import { articleSlug, contentFingerprint, ensureGenerationAsset, isDuplicateArticle, isGenerationDue, renderInfographic, runEditorialGeneration, validateEditorialArticle, verifySource } from '../api/cron/_blog-editorial-pipeline.js';
+import { articleSlug, contentFingerprint, EditorialPolicyError, ensureGenerationAsset, generateVerifiedArticleWithOptions, isDuplicateArticle, isGenerationDue, renderInfographic, reviewVerifiedArticle, runEditorialGeneration, validateEditorialArticle, verifySource } from '../api/cron/_blog-editorial-pipeline.js';
 
 const source = { id: 'cats-protection', url: 'https://www.cats.org.uk/example', title: 'Source', consulted_at: '2026-10-27', text_sha256: 'hash', text: 'Leave written daily care instructions for your trusted cat sitter. Keep the usual bowls and familiar toys accessible.' };
 function articleFixture() {
   const points = ['Deja instrucciones escritas para quien cuide a tu gato.', 'Anota donde estan sus platos y el alimento habitual.', 'Presenta al cuidador antes de salir de vacaciones.', 'Acorda como compartir las novedades de cada visita.'];
-  const content = `Organizar el cuidado evita olvidos y permite compartir la rutina.\n\n## Rutina\n${points.join('\n\n')}\n\n## Contactos\n${'La organizacion permite dejar por escrito las costumbres y las tareas habituales del hogar. '.repeat(35)}\n\n## Encuentro previo\nUn encuentro ayuda a compartir las instrucciones.\n\n## Para cerrar\nEsta informacion no reemplaza la consulta veterinaria.`;
+  const content = `Organizar el cuidado evita olvidos y permite compartir la rutina.\n\n## Rutina\n${points.map((point, index) => `${point}${index < 2 ? ' ([Cats Protection](https://www.cats.org.uk/example))' : ''}`).join('\n\n')}\n\n## Contactos\n${'La organizacion permite dejar por escrito las costumbres y las tareas habituales del hogar. '.repeat(35)}\n\n## Encuentro previo\nUn encuentro ayuda a compartir las instrucciones.\n\n## Para cerrar\nUna organizacion clara ayuda a compartir las tareas cotidianas.`;
   const title = 'Como organizar el cuidado de tu gato durante tus vacaciones';
   return { title, content, slug: articleSlug(title), topic: 'cuidador-gato-vacaciones', category: 'organizacion', tags: ['gatos', 'cuidados'],
     cover_alt: 'Un gato en su casa junto a una cuidadora que lee las instrucciones.',
@@ -42,6 +42,11 @@ describe('validacion editorial por criterio', () => {
     const article = articleFixture(); article.evidence[0].quote = 'Una afirmacion inventada que no aparece en ninguna fuente real.';
     expect(validateEditorialArticle(article, [source]).criteria.sources).toBe(false);
   });
+  it('exige que cada afirmacion respaldada incluya el enlace de su fuente en el mismo parrafo', () => {
+    const article = articleFixture();
+    article.content = article.content.replace(' ([Cats Protection](https://www.cats.org.uk/example))', '');
+    expect(validateEditorialArticle(article, [source]).criteria.sources).toBe(false);
+  });
   it('retiene recomendaciones clinicas y falsa identidad veterinaria', () => {
     const article = articleFixture(); article.content += ' Como veterinaria recomiendo dosis de medicacion.';
     const result = validateEditorialArticle(article, [source]);
@@ -65,6 +70,24 @@ describe('fuentes verificadas', () => {
     await expect(verifySource({ url: 'http://127.0.0.1' }, fetcher)).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('conserva evidencia y agrega enlace inline para cada parrafo factual, no solo dos', async () => {
+    const sourceText = 'A trusted cat sitter reads the daily care instructions for cats. '.repeat(24);
+    const verifiedSource = { ...source, organization: 'Cats Protection', text: sourceText, url: 'https://www.cats.org.uk/example' };
+    const admin = { from: () => ({ select: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) };
+    const requestJson = vi.fn(async () => ({
+      title: 'Como organizar el cuidado cotidiano de un gato durante vacaciones',
+      sections: [{ heading: '', paragraphs: [0, 1, 2].map((source_quote_index) => ({ text: `La fuente describe una tarea cotidiana numero ${source_quote_index}.`, source_quote_index })) }],
+      meta_description: 'Organiza el cuidado cotidiano de tu gato durante vacaciones con una persona confiable, rutinas claras y recursos listos para quien lo acompañe.',
+      editorial_brief: { reader_need: 'Organizar cuidado cotidiano', takeaway: 'Compartir rutinas', essential_sections: [{ key: 'rutina', terms: ['cotidiana'] }] },
+      visual_plan: {}, category: 'organizacion', tags: ['gatos', 'vacaciones'], cover_alt: 'Un gato descansa en su casa durante unas vacaciones.',
+    }));
+    const result = await generateVerifiedArticleWithOptions(admin, requestJson, { catalog: [
+      { id: 'routine', title: 'Organizar el cuidado cotidiano de un gato durante vacaciones', url: verifiedSource.url },
+    ], sourceVerifier: async () => verifiedSource });
+    expect(result.evidence).toHaveLength(3);
+    expect(result.quality.criteria.sources).toBe(true);
+    expect(result.evidence.every((item) => result.content.includes(`([Cats Protection](${verifiedSource.url}))`))).toBe(true);
+  });
   it('extrae contenido principal y guarda evidencia y fecha', async () => {
     const fetcher = vi.fn(async () => new Response(`<main><h1>Cuidados</h1><p>${'Contenido de fuente verificable. '.repeat(50)}</p></main>`));
     const result = await verifySource({ url: 'https://www.cats.org.uk/example' }, fetcher);
@@ -79,7 +102,7 @@ describe('fuentes verificadas', () => {
 describe('imagenes completas e idempotentes', () => {
   it('renderiza PNG vertical 4:5 de 1080x1350', async () => {
     const article = { ...articleFixture(), quality: { ready: true }, visual_plan: {
-      kind: 'process', title: 'Organizá el cuidado de tu gato', closing: 'Esta informacion no reemplaza la consulta veterinaria.',
+      kind: 'process', title: 'Organizá el cuidado de tu gato', closing: 'Una organizacion clara ayuda a compartir las tareas cotidianas.',
       sections: [
         { heading: 'Prepará', layout: 'timeline', items: [{ icon: 'record', label: 'Instrucciones', anchor: 'Deja instrucciones escritas para quien cuide a tu gato.' }] },
         { heading: 'Acordá', layout: 'conversation', items: [{ icon: 'message', label: 'Novedades', anchor: 'Acorda como compartir las novedades de cada visita.' }] },
@@ -101,6 +124,22 @@ describe('imagenes completas e idempotentes', () => {
 });
 
 describe('etapas persistidas y borrador', () => {
+  it('rechaza un tema clinico antes de descargar fuentes o redactar', async () => {
+    const admin = { from: () => ({ select: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) };
+    const sourceVerifier = vi.fn(); const requestJson = vi.fn();
+    await expect(generateVerifiedArticleWithOptions(admin, requestJson, { catalog: [
+      { id: 'emergency', title: 'Que hacer si una mascota se atraganta', url: 'https://www.cats.org.uk/example' },
+    ], sourceVerifier })).rejects.toMatchObject({ name: 'EditorialPolicyError', code: 'EDITORIAL_POLICY_REJECTED' });
+    expect(sourceVerifier).not.toHaveBeenCalled(); expect(requestJson).not.toHaveBeenCalled();
+  });
+  it('no invoca al revisor semantico si el texto viola la politica aunque tenga descargo', async () => {
+    const requestJson = vi.fn();
+    const candidate = { title: 'Que hacer si una mascota se atraganta', content: 'Esta informacion no reemplaza la consulta veterinaria.',
+      sources: [{ id: 'source', text: 'Una fuente consultada.' }], quality: { ready: true, failed: [] } };
+    await reviewVerifiedArticle(candidate, requestJson);
+    expect(requestJson).not.toHaveBeenCalled();
+    expect(candidate.quality).toMatchObject({ ready: false, failed: ['editorial_policy'] });
+  });
   it('guarda el texto validado antes de ejecutar la revision semantica en otra solicitud', async () => {
     const rpc = vi.fn(async (name) => name === 'claim_blog_generation' ? { data: { id: 'run', lease_token: 'token', stage: 'text', payload: {}, attempts: 1 }, error: null } : { data: true, error: null });
     const reviewText = vi.fn();
@@ -113,6 +152,16 @@ describe('etapas persistidas y borrador', () => {
     const generateText = vi.fn();
     expect(await runEditorialGeneration({ rpc }, { generateText, reviewText: async (article) => ({ ...article, quality: { ready: false } }) })).toMatchObject({ stage: 'retained' });
     expect(generateText).not.toHaveBeenCalled();
+  });
+  it('revalida y retiene contenido clinico con descargo antes de revision o imagenes', async () => {
+    const rpc = vi.fn(async (name) => name === 'claim_blog_generation' ? { data: { id: 'run', lease_token: 'token', stage: 'text', payload: {}, attempts: 1 }, error: null } : { data: true, error: null });
+    const reviewText = vi.fn(); const generateCover = vi.fn(); const infographic = vi.fn();
+    const result = await runEditorialGeneration({ rpc }, { reviewText, generateCover, infographic,
+      generateText: async () => ({ title: 'Que hacer si una mascota se atraganta', content: 'Esta informacion no reemplaza la consulta veterinaria.', quality: { ready: true, failed: [] } }) });
+    expect(result).toMatchObject({ stage: 'retained', policy: { status: 'excluded', code: 'urgent_care' } });
+    expect(reviewText).not.toHaveBeenCalled(); expect(generateCover).not.toHaveBeenCalled(); expect(infographic).not.toHaveBeenCalled();
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_stage: 'retained', p_payload: { quality: { ready: false }, policy_rejection_reason: expect.any(String) } });
+    expect(rpc.mock.calls.some(([name]) => name === 'finish_blog_generation')).toBe(false);
   });
   it('no hace trabajo si otro proceso tiene la reserva o aun no pasaron 36 horas', async () => {
     const admin = { rpc: vi.fn(async () => ({ data: null, error: null })) };

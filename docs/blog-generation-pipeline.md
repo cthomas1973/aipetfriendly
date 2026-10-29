@@ -10,14 +10,16 @@ La credencial exclusiva `BLOG_GENERATION_SECRET` vive en Vercel y en Vault, no e
 
 ## Etapas y recuperacion
 
-1. `text`: obtiene una fuente primaria real del catalogo, valida HTTP y texto, genera articulo con evidencia literal, comprueba criterios obligatorios y solicita una segunda revision semantica automatica.
+1. `text`: clasifica el tema con la politica editorial antes de consultar fuentes. Rechaza temas clinicos y de urgencia; un tema reformulable debe convertirse en una propuesta cotidiana que se vuelve a validar. Solo entonces consulta una fuente primaria, genera afirmaciones con citas y enlaces inline, comprueba QA independiente y solicita una revision semantica factual.
 2. `cover`: genera portada con el proveedor existente. El objeto Storage usa `generation/{runId}/cover.png`.
 3. `infographic`: compone PNG 1080x1350 mediante un plan visual adaptado al tema: comparacion, escena, ficha, conversacion, linea temporal o relaciones. Usa iconos Lucide, la paleta del sitio y el archivo original del logo oficial con SHA-256 verificado. Las etiquetas cortas tienen un fragmento literal de respaldo en el articulo; no se usa una plantilla universal de tarjetas numeradas. Usa `generation/{runId}/infographic-{contentHash}.png`, preservando las versiones anteriores y reutilizando recursos validos.
 4. `finalize`: revalida duplicados e inserta el post como `draft` y actualiza el intervalo en una sola transaccion. No existe publicacion automatica.
 
 Los recursos existentes se reutilizan. Cada etapa tiene hasta tres intentos con cinco minutos entre fallos. El progreso y los errores se conservan; una corrida agotada o con un criterio obligatorio fallido queda `retained`. Admin muestra corridas pendientes/retenciones. No se crea un post incompleto cuando falla una imagen.
 
-El catalogo es deliberadamente finito y evita repetir temas. Si se agota, se retiene la corrida; ampliar temas exige agregar fuentes reales, no generar contenido artificial para llenar una cuota. La verificacion automatica de afirmaciones no sustituye revision editorial humana. Los temas clinicos requieren revision profesional y quedan retenidos.
+El catalogo es deliberadamente finito y evita repetir temas. Si se agota, se retiene la corrida; ampliar temas exige agregar fuentes reales, no generar contenido artificial para llenar una cuota. `api/cron/_editorial-policy.js` es la politica compartida de seleccion y validacion final. Prioriza cuidado cotidiano, organizacion, convivencia, enriquecimiento, viajes, adopcion, tenencia responsable y uso real de herramientas del producto. Excluye diagnosticos, triage de sintomas, tratamientos, medicamentos, urgencias, primeros auxilios, interpretacion de estudios, dietas terapeuticas y procedimientos potencialmente daninos. Un descargo no convierte un tema excluido en permitido.
+
+Los temas cercanos a salud solo pueden reformularse si la nueva propuesta aporta valor por si misma como organizacion cotidiana y vuelve a superar la politica antes de redactar. El texto se revalida antes de guardar cada etapa y al finalizar, incluso si una corrida se reanuda con un payload anterior. Una retencion conserva un motivo legible para Admin y no genera portada, infografia ni post. La revision automatica no sustituye curaduria humana del borrador.
 
 ## Metadatos y editor
 
@@ -27,9 +29,9 @@ Un trigger impide publicar nuevos posts generados si faltan recursos, fallo QA, 
 
 ## Estandar editorial y visual v2
 
-La intencion de busqueda, necesidad del lector y cobertura esencial quedan en `editorial_brief`. El QA comprueba profundidad segun el tema (minimo configurable con piso de 700 palabras, sin forzar relleno), secciones, repeticion de parrafos, voseo, fuentes, enlaces publicos reales y plan visual. Esos controles no demuestran por si solos originalidad absoluta, exactitud medica ni aprobacion humana. La revision semantica automatica conserva ese limite.
+La intencion de busqueda, necesidad del lector y cobertura esencial quedan en `editorial_brief`. El QA comprueba utilidad, cobertura, estructura, repeticion de parrafos, voseo, fuentes, enlaces publicos reales, politica de seguridad y plan visual. No exige una cantidad minima artificial de palabras. Cada afirmacion atribuida debe tener evidencia literal en la fuente y el enlace debe aparecer en el mismo parrafo; el revisor semantico recibe ese mapeo para señalar problemas concretos, no para volver a auditar criterios independientes.
 
-Organizar contactos veterinarios o registrar medicacion segun indicaciones vigentes no equivale a prescribir: el clasificador distingue planificacion de instrucciones clinicas. Dosis, maniobras, diagnosticos o situaciones ambiguas requieren revision profesional y siguen retenidos.
+Se permite mencionar de forma acotada que un cuidador comparta las instrucciones veterinarias vigentes de una medicacion ya prescrita; no se permiten dosis, administracion, cambios, diagnosticos ni recomendaciones clinicas. La consulta profesional no se usa como descargo para incluir esas instrucciones.
 
 El plan grafico contiene 3-5 bloques y al menos dos composiciones; las etiquetas no superan28 caracteres y deben tener respaldo en `content`. La firma usa `public/logo-aipetfriendly.png` sin redibujarlo ni deformarlo. La marca real incluye verde#2E7D32, fondo#f7fbf7, azul#0284c7 y acento#fbbf24. Si el logo no esta disponible o no coincide, se detiene el grafico.
 

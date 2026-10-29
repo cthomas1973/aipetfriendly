@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ArrowRight, Bath, Bed, Briefcase, Building2, Calendar, Cat, ChevronDown, ClipboardList, Droplet, FileText, Heart, Home, Info, MessageCircle, NotebookPen, Phone, Pill, Shield, Smartphone, Soup, Users } from 'lucide-react';
 import sharp from 'sharp';
 
-export const INFOGRAPHIC_VERSION = 'visual-editorial-v2.1';
+export const INFOGRAPHIC_VERSION = 'visual-editorial-v2.3';
 export const OFFICIAL_LOGO_SHA256 = '887a0dd685f76128b1e990dd044bc6b03e3c05c8f5eacf8fc079f05e6ceaec61';
 export const BRAND = { green: '#2E7D32', mint: '#10b981', blue: '#0284c7', light: '#f7fbf7', sky: '#f0f9ff', warm: '#fbbf24', ink: '#1f2937' };
 const ICONS = { home: Home, caregiver: Users, residence: Building2, food: Soup, water: Droplet, rest: Bed, carrier: Briefcase,
@@ -77,8 +77,8 @@ function label(text, x, y, { size = 32, width = 25, color = BRAND.ink, centered 
 function icon(name, x, y, size = 66, color = BRAND.green) {
   return `<g transform="translate(${x} ${y})">${renderToStaticMarkup(React.createElement(ICONS[name] || Info, { width: size, height: size, color, strokeWidth: 1.8 }))}</g>`;
 }
-function arrow(x, y, down = false) {
-  return `<g transform="translate(${x} ${y})">${renderToStaticMarkup(React.createElement(down ? ChevronDown : ArrowRight, { width: 35, height: 35, color: BRAND.blue, strokeWidth: 2 }))}</g>`;
+function arrow(x, y, down = false, size = 22) {
+  return `<g transform="translate(${x} ${y})">${renderToStaticMarkup(React.createElement(down ? ChevronDown : ArrowRight, { width: size, height: size, color: BRAND.blue, strokeWidth: 2 }))}</g>`;
 }
 function drawSection(section, top, height, index) {
   const background = index % 2 ? BRAND.sky : BRAND.light;
@@ -86,27 +86,39 @@ function drawSection(section, top, height, index) {
   const items = section.items;
   if (section.layout === 'conversation') {
     return `<rect x="40" y="${top}" width="1000" height="${height - 10}" rx="8" fill="${background}"/>${heading}
-      ${icon('phone', 100, top + 59, 90, BRAND.blue)}<path d="M225 ${top + 92} H970" stroke="#bae6fd" stroke-width="4"/>
-      ${items.map((item, itemIndex) => { const x = 280 + itemIndex * (670 / items.length); return `${icon(item.icon, x, top + 55, 48)}${label(item.label, x, top + 132, { size: 28, width: 18 })}`; }).join('')}`;
+      <rect x="112" y="${top + 58}" width="104" height="116" rx="15" fill="white" stroke="${BRAND.blue}" stroke-width="4"/>
+      <rect x="122" y="${top + 70}" width="84" height="88" rx="7" fill="${BRAND.sky}"/>
+      <path d="M133 ${top + 91} h58 M133 ${top + 105} h45 M133 ${top + 119} h52" stroke="#a7d7b5" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="164" cy="${top + 166}" r="4" fill="${BRAND.blue}"/>
+      <path d="M234 ${top + 116} C270 ${top + 116} 282 ${top + 116} 310 ${top + 116}" stroke="#a7d7b5" stroke-width="3" stroke-dasharray="5 7" fill="none"/>
+      ${items.map((item, itemIndex) => { const left = 330 + itemIndex * (330 / Math.max(1, items.length - 1)); return `<rect x="${left}" y="${top + 86}" width="250" height="62" rx="13" fill="white" stroke="${itemIndex % 2 ? '#bfdbfe' : '#a7d7b5'}" stroke-width="3"/><path d="M${left + 36} ${top + 147} l-13 13 v-14" fill="white" stroke="${itemIndex % 2 ? '#bfdbfe' : '#a7d7b5'}" stroke-width="3"/>${icon(item.icon, left + 18, top + 99, 34, itemIndex % 2 ? BRAND.blue : BRAND.green)}${label(item.label, left + 66, top + 126, { size: 24, width: 16 })}`; }).join('')}`;
   }
   const column = 900 / items.length;
   const objects = items.map((item, itemIndex) => {
     const center = 90 + column * (itemIndex + 0.5);
     const size = 48;
     const maxWord = Math.max(...item.label.split(/\s+/).map((word) => word.length));
-    const font = Math.min(29, Math.floor((column - 12) / (maxWord * 0.62)));
-    if (font < 25) throw new Error('Etiqueta demasiado larga para el espacio visual');
+    const font = Math.min(24, Math.floor((column - 12) / (maxWord * 0.62)));
+    if (font < 18) throw new Error('Etiqueta demasiado larga para el espacio visual');
     const labelWidth = Math.floor((column - 12) / (font * 0.6));
     const lineCount = lines(item.label, labelWidth).length;
-    if (132 + (lineCount - 1) * (font + 6) + Math.ceil(font * 0.22) > height - 10) throw new Error('La etiqueta se sale del bloque visual');
+    if (130 + (lineCount - 1) * (font + 5) + Math.ceil(font * 0.22) > height - 10) throw new Error('La etiqueta se sale del bloque visual');
     const body = `${icon(item.icon, center - size / 2, top + 55, size, itemIndex % 2 ? BRAND.blue : BRAND.green)}
-      ${label(item.label, center, top + 132, { size: font, width: labelWidth, centered: true })}`;
+      ${label(item.label, center, top + 130, { size: font, width: labelWidth, centered: true })}`;
     return body + (section.layout === 'timeline' && itemIndex < items.length - 1 ? arrow(center + column / 2 - 18, top + 74) : '');
   }).join('');
   let context = '';
-  if (section.layout === 'scene') context = `<path d="M76 ${top + 130} V${top + 55} L104 ${top + 33} M1004 ${top + 55} V${top + 130}" stroke="#a7d7b5" stroke-width="3" fill="none"/>${icon('cat', 925, top + 8, 39, BRAND.blue)}`;
-  if (section.layout === 'record') context = `<path d="M60 ${top + 60} V${top + height - 22} H1020" stroke="#cbd5e1" stroke-width="3" fill="none"/>`;
-  if (section.layout === 'relationship') context = `<path d="M150 ${top + 113} H930" stroke="#a7d7b5" stroke-width="4" stroke-dasharray="5 8"/>`;
+  if (section.layout === 'comparison') context = items.map((_, itemIndex) => {
+    const center = 90 + column * (itemIndex + 0.5);
+    return `<circle cx="${center}" cy="${top + 80}" r="37" fill="white" stroke="${itemIndex % 2 ? '#bfdbfe' : '#a7d7b5'}" stroke-width="3"/>`;
+  }).join('');
+  if (section.layout === 'record') context = `<rect x="76" y="${top + 51}" width="928" height="${height - 57}" rx="12" fill="white" stroke="#bfd6c5" stroke-width="3"/><path d="M102 ${top + 79} H976" stroke="#e2e8f0" stroke-width="2"/>`;
+  if (section.layout === 'scene') context = `<path d="M78 ${top + 75} V${top + 160} H1002 V${top + 75}" stroke="#a7d7b5" stroke-width="3" fill="none"/>`;
+  if (section.layout === 'relationship') context = items.slice(0, -1).map((_, itemIndex) => {
+    const currentCenter = 90 + column * (itemIndex + 0.5);
+    const nextCenter = 90 + column * (itemIndex + 1.5);
+    return `<path d="M${currentCenter + 27} ${top + 79} H${nextCenter - 27}" stroke="#a7d7b5" stroke-width="3" stroke-dasharray="4 6"/>`;
+  }).join('');
   return `<rect x="40" y="${top}" width="1000" height="${height - 10}" rx="8" fill="${background}"/>${context}${heading}${objects}`;
 }
 
@@ -118,15 +130,16 @@ export async function renderVisualInfographic(article, { logoLoader = loadOffici
   const titleLines = lines(article.visual_plan.title, 33);
   if (titleLines.length > 3) throw new Error('Titulo visual demasiado extenso');
   const titleSize = titleLines.length > 2 ? 42 : 48;
-  const sectionHeight = Math.floor(920 / article.visual_plan.sections.length);
-  const sections = article.visual_plan.sections.map((section, index) => drawSection(section, 190 + index * sectionHeight, sectionHeight, index)
-    + (article.visual_plan.kind === 'process' && index < article.visual_plan.sections.length - 1 ? arrow(8, 190 + (index + 1) * sectionHeight - 22, true) : '')).join('');
+  const sectionHeight = Math.floor((915 - (article.visual_plan.sections.length - 1) * 8) / article.visual_plan.sections.length);
+  const sectionStep = sectionHeight + 8;
+  const sections = article.visual_plan.sections.map((section, index) => drawSection(section, 185 + index * sectionStep, sectionHeight, index)
+    + (article.visual_plan.kind === 'process' && index < article.visual_plan.sections.length - 1 ? arrow(531, 185 + index * sectionStep + sectionHeight - 10, true, 18) : '')).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="white"/>
     <path d="M0 176 H1080" stroke="${BRAND.warm}" stroke-width="7"/>
     <g font-family="Segoe UI, DejaVu Sans, sans-serif" font-weight="bold">${label(article.visual_plan.title, 52, 60, { size: titleSize, width: 33, color: BRAND.green })}
-    ${sections}<rect x="0" y="1125" width="1080" height="225" fill="#F1E5D0"/>
+    ${sections}<rect x="0" y="1125" width="1080" height="225" fill="${BRAND.light}"/>
     ${label(article.visual_plan.closing, 280, 1185, { size: 29, width: 43, color: BRAND.green })}
-    ${label('Contenido informativo. Ante dudas de salud, consultá a tu veterinario.', 280, 1285, { size: 23, width: 58 })}
+    ${label('AiPetFriendly · Organización cotidiana', 280, 1295, { size: 23, width: 58 })}
     </g></svg>`;
   const logoImage = await sharp(logo).resize({ width: 190, height: 174, fit: 'inside', withoutEnlargement: true }).png().toBuffer();
   return sharp(Buffer.from(svg)).composite([{ input: logoImage, left: 52, top: 1152 }]).png({ compressionLevel: 9, palette: false }).toBuffer();
