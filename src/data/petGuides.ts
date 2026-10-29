@@ -284,6 +284,7 @@ export const PET_GUIDES: PetGuide[] = [
     category: 'salud',
     petTypes: ['perro', 'gato'],
     publishedAt: '2026-07-28',
+    publicationStatus: 'pending_veterinary_review',
     summary:
       'Ante una urgencia, los primeros minutos importan. Estas son pautas generales de primeros auxilios, que nunca reemplazan la atención veterinaria.',
     readingTime: '5 min',
@@ -326,6 +327,7 @@ export const PET_GUIDES: PetGuide[] = [
     category: 'salud',
     petTypes: ['perro', 'gato'],
     publishedAt: '2026-08-04',
+    publicationStatus: 'pending_veterinary_review',
     summary:
       'Cumplir el calendario de vacunas y desparasitaciones es una de las formas más simples y efectivas de prevenir enfermedades graves. Cómo organizarlo sin olvidos.',
     readingTime: '4 min',
@@ -1164,7 +1166,6 @@ export const PET_GUIDES: PetGuide[] = [
         ],
       },
     ],
-    relatedGuideSlug: 'vacunas-y-desparasitacion-guia-para-no-perderse',
   },
 ];
 

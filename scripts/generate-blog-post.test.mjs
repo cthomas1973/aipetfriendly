@@ -249,14 +249,20 @@ describe('rutas privadas (middleware.js)', () => {
 });
 
 describe('guias pendientes de revisión veterinaria', () => {
-  const slug = 'que-hacer-si-tu-mascota-se-atraganta';
+  const slugs = [
+    'que-hacer-si-tu-mascota-se-atraganta',
+    'primeros-auxilios-basicos-para-mascotas',
+    'vacunas-y-desparasitacion-guia-para-no-perderse',
+  ];
 
-  it('no aparecen publicamente y conservan la consulta administrativa', () => {
-    expect(getVisiblePetGuides(false).some((guide) => guide.slug === slug)).toBe(false);
-    expect(getVisiblePetGuides(true).some((guide) => guide.slug === slug)).toBe(true);
-    expect(getPetGuideBySlug(slug)).toBeUndefined();
-    expect(getPetGuideBySlug(slug, true)?.publicationStatus).toBe('pending_veterinary_review');
-    expect(isGuidePublished(slug)).toBe(false);
+  it('retira guias sensibles publicamente y conserva la previsualizacion administrativa', () => {
+    for (const slug of slugs) {
+      expect(getVisiblePetGuides(false).some((guide) => guide.slug === slug)).toBe(false);
+      expect(getVisiblePetGuides(true).some((guide) => guide.slug === slug)).toBe(true);
+      expect(getPetGuideBySlug(slug)).toBeUndefined();
+      expect(getPetGuideBySlug(slug, true)?.publicationStatus).toBe('pending_veterinary_review');
+      expect(isGuidePublished(slug)).toBe(false);
+    }
   });
 });
 
