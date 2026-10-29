@@ -1,4 +1,4 @@
-// api/cron/generate-blog-post.test.mjs
+// scripts/generate-blog-post.test.mjs
 //
 // PASO 19.4 (validacion del generador automatico del blog): pruebas locales
 // con fixtures/mocks, SIN llamadas reales a SerpApi/IA/Supabase. Cubre:
@@ -16,9 +16,9 @@
 // dispatcher que responde segun la URL (guides-feed.json / SerpApi / IA de
 // texto / IA de imagen), nunca golpea una API real.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { injectPageMeta, isBlogPostPubliclyAvailable, resolveBlogDescription, sanitizeMetaDescriptionCandidate } from '../../shared/seoMeta.mjs';
-import middleware, { config as middlewareConfig } from '../../middleware.js';
-import { getPetGuideBySlug, getVisiblePetGuides, isGuidePublished } from '../../src/data/petGuides.ts';
+import { injectPageMeta, isBlogPostPubliclyAvailable, resolveBlogDescription, sanitizeMetaDescriptionCandidate } from '../shared/seoMeta.mjs';
+import middleware, { config as middlewareConfig } from '../middleware.js';
+import { getPetGuideBySlug, getVisiblePetGuides, isGuidePublished } from '../src/data/petGuides.ts';
 
 let currentAdmin = null;
 
@@ -269,7 +269,8 @@ describe('posts pendientes de revisión veterinaria', () => {
 
 describe('generateArticleFromNews (exportado directo, sin handler)', () => {
   it('reintenta una vez si el primer articulo queda corto y hay presupuesto de tiempo', async () => {
-    const { generateArticleFromNews } = await import('./generate-blog-post.js');
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const { generateArticleFromNews } = await import('../api/cron/generate-blog-post.js');
     // parseArticleJson hace .trim() del content: los fixtures no deben
     // terminar en espacio para poder comparar con toBe() mas abajo.
     const shortContent = 'Palabra '.repeat(50).trim(); // 50 palabras, debajo del minimo (550)
@@ -279,20 +280,21 @@ describe('generateArticleFromNews (exportado directo, sin handler)', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const deadlineAt = Date.now() + 60000; // presupuesto de sobra
+    const deadlineAt = 60000; // presupuesto de sobra estable, sin depender del reloj real
     const article = await generateArticleFromNews('tema', [{ title: 't', snippet: 's', source: 'f' }], 'perro mestizo', null, deadlineAt);
 
     expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('/chat/completions'))).toHaveLength(2);
     expect(article.content).toBe(longContent);
-  });
+  }, 15000);
 
   it('NO reintenta si no queda presupuesto de tiempo suficiente (evita arriesgar el timeout del cron)', async () => {
-    const { generateArticleFromNews } = await import('./generate-blog-post.js');
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const { generateArticleFromNews } = await import('../api/cron/generate-blog-post.js');
     const shortContent = 'Palabra '.repeat(50).trim();
     const fetchMock = makeFetchMock({ aiResponses: [aiArticleJson({ content: shortContent })] });
     vi.stubGlobal('fetch', fetchMock);
 
-    const deadlineAt = Date.now() + 1000; // mucho menos que RETRY_TEXT_BUDGET_MS (15000)
+    const deadlineAt = 2000; // menos que RETRY_TEXT_BUDGET_MS con reloj fijo
     const article = await generateArticleFromNews('tema', [{ title: 't', snippet: 's', source: 'f' }], 'perro mestizo', null, deadlineAt);
 
     expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('/chat/completions'))).toHaveLength(1);
@@ -300,17 +302,17 @@ describe('generateArticleFromNews (exportado directo, sin handler)', () => {
   });
 
   it('propaga un error claro si la IA responde JSON invalido', async () => {
-    const { generateArticleFromNews } = await import('./generate-blog-post.js');
+    const { generateArticleFromNews } = await import('../api/cron/generate-blog-post.js');
     const fetchMock = makeFetchMock({ aiResponses: ['esto no es json'] });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      generateArticleFromNews('tema', [{ title: 't', snippet: 's', source: 'f' }], 'perro mestizo', null, Date.now() + 60000)
+      generateArticleFromNews('tema', [{ title: 't', snippet: 's', source: 'f' }], 'perro mestizo', null, 60000)
     ).rejects.toThrow(/JSON valido/);
   });
 
   it('propaga un error claro si falta title/content en el JSON de la IA', async () => {
-    const { generateArticleFromNews } = await import('./generate-blog-post.js');
+    const { generateArticleFromNews } = await import('../api/cron/generate-blog-post.js');
     const fetchMock = makeFetchMock({ aiResponses: [JSON.stringify({ content: 'solo contenido, sin titulo' })] });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -320,7 +322,7 @@ describe('generateArticleFromNews (exportado directo, sin handler)', () => {
   });
 
   it('sanitiza meta_description invalida (HTML) a null sin romper la generacion', async () => {
-    const { generateArticleFromNews } = await import('./generate-blog-post.js');
+    const { generateArticleFromNews } = await import('../api/cron/generate-blog-post.js');
     const longContent = 'Palabra '.repeat(700);
     const fetchMock = makeFetchMock({
       aiResponses: [aiArticleJson({ content: longContent, meta_description: '<b>no valido</b>' })],
@@ -336,14 +338,14 @@ describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
   it('responde 503 si falta CRON_SECRET (nunca hay modo sin autenticacion)', async () => {
     delete process.env.CRON_SECRET;
     delete process.env.BLOG_GENERATION_SECRET;
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
     const res = makeRes();
     await handler(makeReq(), res);
     expect(res.statusCode).toBe(503);
   });
 
   it('responde 401 si el token no coincide', async () => {
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
     const res = makeRes();
     await handler(makeReq('Bearer incorrecto'), res);
     expect(res.statusCode).toBe(401);
@@ -353,7 +355,7 @@ describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
     currentAdmin = makeFakeAdmin({ alreadyToday: true });
     const fetchMock = makeFetchMock();
     vi.stubGlobal('fetch', fetchMock);
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -366,7 +368,7 @@ describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
   it('responde 500 si SerpApi no devuelve noticias para el tema', async () => {
     currentAdmin = makeFakeAdmin({ alreadyToday: false });
     vi.stubGlobal('fetch', makeFetchMock({ news: [] }));
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -381,7 +383,7 @@ describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
       insertResult: { data: null, error: { message: 'duplicate key value violates unique constraint' } },
     });
     vi.stubGlobal('fetch', makeFetchMock({ aiResponses: [aiArticleJson({ content: 'Palabra '.repeat(700) })] }));
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -411,7 +413,7 @@ describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
       'fetch',
       makeFetchMock({ aiResponses: [aiArticleJson({ content: 'Palabra '.repeat(700), meta_description: validMeta })] })
     );
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -440,7 +442,7 @@ describe('legacyHandler() (regresion del flujo anterior con mocks)', () => {
       return q;
     };
     vi.stubGlobal('fetch', makeFetchMock({ aiResponses: [aiArticleJson({ content: 'Palabra '.repeat(700) })] }));
-    const { legacyHandler: handler } = await import('./generate-blog-post.js');
+    const { legacyHandler: handler } = await import('../api/cron/generate-blog-post.js');
 
     const res = makeRes();
     await handler(makeReq(), res);
@@ -454,14 +456,14 @@ describe('handler persistente de produccion', () => {
   it('no habilita la credencial dedicada en otros consumidores del helper', async () => {
     delete process.env.CRON_SECRET;
     process.env.BLOG_GENERATION_SECRET = 'dedicated-test-secret';
-    const { getCronAuthStatus } = await import('./generate-blog-post.js');
+    const { getCronAuthStatus } = await import('../api/cron/generate-blog-post.js');
     expect(getCronAuthStatus(makeReq('Bearer dedicated-test-secret'))).toBe('missing_secret');
     expect(getCronAuthStatus(makeReq('Bearer dedicated-test-secret'), true)).toBe('ok');
   });
   it('rechaza sin ninguna credencial configurada', async () => {
     delete process.env.CRON_SECRET;
     delete process.env.BLOG_GENERATION_SECRET;
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { default: handler } = await import('../api/cron/generate-blog-post.js');
     const res = makeRes();
     await handler(makeReq(), res);
     expect(res.statusCode).toBe(503);
@@ -473,7 +475,7 @@ describe('handler persistente de produccion', () => {
     currentAdmin = { rpc: vi.fn(async () => ({ data: null, error: null })) };
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const { default: handler } = await import('./generate-blog-post.js');
+    const { default: handler } = await import('../api/cron/generate-blog-post.js');
     const res = makeRes();
     await handler(makeReq('Bearer dedicated-test-secret'), res);
     expect(res.statusCode).toBe(200);
