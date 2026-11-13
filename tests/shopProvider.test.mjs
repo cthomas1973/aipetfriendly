@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchOfficialItemPrice, getMercadoLibreToken, normalizeItemId, normalizeOfficialPrice, ShopProviderError } from '../api/_lib/mercadoLibre.mjs';
+import { fetchOfficialItemPrice, fetchShopJson, getMercadoLibreToken, normalizeItemId, normalizeOfficialPrice, ShopProviderError } from '../api/_lib/mercadoLibre.mjs';
 import { loadShopCatalog, mapShopProduct, shopCategory } from '../api/_lib/shopCatalog.mjs';
 import { updateShopPrices } from '../scripts/update-shop-prices.mjs';
 import { buildShoppingPrompt } from '../supabase/functions/_shared/shoppingPrompt.mjs';
@@ -18,6 +18,11 @@ describe('Precios y catalogo oficiales',()=>{
   it('no confunde fichas /p/ con publicaciones',()=>{
     expect(normalizeItemId('MLA1234567890','https://www.mercadolibre.com.ar/p/MLA1234567890')).toBeNull();
     expect(normalizeItemId('MLA-1234567890','https://articulo.mercadolibre.com.ar/MLA-1234567890')).toBe('MLA1234567890');
+  });
+  it('acepta respuestas vacias de RPC void (204) sin marcar invalid_json',async()=>{
+    expect(await fetchShopJson('https://local.test/rpc',{},vi.fn().mockResolvedValue(new Response(null,{status:204})))).toBeNull();
+    expect(await fetchShopJson('https://local.test/rpc',{},vi.fn().mockResolvedValue(new Response('',{status:200})))).toBeNull();
+    await expect(fetchShopJson('https://local.test/rpc',{},vi.fn().mockResolvedValue(new Response('<html></html>',{status:200})))).rejects.toThrow('invalid_json');
   });
   it('consulta endpoint oficial de precio con contexto de marketplace, no scraping',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(response(item)).mockResolvedValueOnce(response({amount:100,regular_amount:null,currency_id:'ARS'}));

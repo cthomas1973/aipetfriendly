@@ -14,8 +14,17 @@ export async function fetchShopJson(url, options = {}, fetcher = fetch) {
     throw new ShopProviderError('network_or_timeout');
   }
   if (!response.ok) throw new ShopProviderError(`http_${response.status}`);
+  // Los RPC que devuelven void responden 204/cuerpo vacio: no es un error.
+  if (response.status === 204) return null;
+  let text;
   try {
-    return await response.json();
+    text = await response.text();
+  } catch {
+    throw new ShopProviderError('invalid_json');
+  }
+  if (!text || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
   } catch {
     throw new ShopProviderError('invalid_json');
   }
