@@ -94,6 +94,8 @@ export function ShopSection() {
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
+  const [answerProducts, setAnswerProducts] = useState<ShopProduct[]>([]);
+  const [openPanel, setOpenPanel] = useState<'advisor' | 'filters' | null>(null);
   const [view, setView] = useState<ShopView>('reference');
   const referenceId = selectedPetId || subscription?.activePetId || null;
   const identity = useRef(user?.id);
@@ -115,6 +117,7 @@ export function ShopSection() {
     const controller = new AbortController();
     setLoading(true); setError(null); setCatalog([]); setCompared([]); setAnswer(null); setDetail(null);
     setQuestion(''); setWarning(null);
+    setAnswerProducts([]); setOpenPanel(null);
     setView('reference');
     setFilters({ category: 'all', species: '', stage: '', size: '', need: '', query: '', freeShipping: false, fastDelivery: false, sort: 'relevance' });
     void fetchShopCatalog(controller.signal).then(result => {
@@ -124,7 +127,7 @@ export function ShopSection() {
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [user?.id]);
-  useEffect(() => { setAnswer(null); setCompared([]); setDetail(null); setAsking(false); }, [scope]);
+  useEffect(() => { setAnswer(null); setAnswerProducts([]); setCompared([]); setDetail(null); setAsking(false); }, [scope]);
   const products = useMemo(() => filterShopProducts(catalog, profile, filters, view, profiles), [catalog, profile, filters, view, profiles]);
   const comparison = compared.flatMap(id => { const p = catalog.find(p => p.id === id); return p ? [p] : []; });
   const comparisonKey = comparison.filter(p => p.source !== 'static').map(p => p.id).join(',');
@@ -160,18 +163,23 @@ export function ShopSection() {
     const owner = user?.id;
     const requestScope = scope;
     const requestRevision = scopeRevision.current;
-    setAsking(true); setError(null); setAnswer(null);
+    setAsking(true); setError(null); setAnswer(null); setAnswerProducts([]);
     try {
       const ids = (comparison.length ? comparison : products.slice(0,8)).filter(p => p.source !== 'static').map(p => p.id);
       const result = await chat.sendMessage(question.trim(), pet.id, null, ids);
       if (identity.current === owner && scopeRef.current === requestScope && scopeRevision.current === requestRevision) {
         if (!result || result.isError) throw new Error(result?.content || 'No se pudo consultar el asesor.');
         setAnswer(result.content);
+        // Tarjetas solo de productos que el servidor verifico como compatibles.
+        setAnswerProducts((result.shoppingProducts || []).flatMap(verified => {
+          const product = catalog.find(item => item.id === verified.id);
+          return product ? [product] : [];
+        }));
       }
     } catch (e) {
       if (identity.current === owner && scopeRef.current === requestScope && scopeRevision.current === requestRevision) setError(e instanceof Error ? e.message : 'No se pudo consultar el asesor.');
     } finally { if (identity.current === owner && scopeRef.current === requestScope && scopeRevision.current === requestRevision) setAsking(false); }
-  }, [chat, comparison, pet, products, question, scope, user?.id]);
+  }, [catalog, chat, comparison, pet, products, question, scope, user?.id]);
   const setFilter = <K extends keyof ShopFilters>(key: K, value: ShopFilters[K]) => setFilters(current => ({ ...current, [key]: value }));
   return <div className="space-y-4 pb-24">
     <header className="rounded-3xl bg-emerald-600 p-5 text-white">
@@ -198,10 +206,39 @@ export function ShopSection() {
     </section>
     {warning && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{warning}</p>}
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-    {!!recommendations.length && <section className={box}><h3 className="font-bold">Recomendaciones principales</h3>
-      {recommendations.map(p => <p key={p.id} className="mt-2 text-sm">{p.title}: {assessment(p).reason}</p>)}
-    </section>}
-    <section className={`${box} space-y-3`} aria-label="Filtros de tienda">
+    <section className={box} aria-label="Asesor de compras contextual">
+      <button type="button" className="flex w-full items-center justify-between text-left font-bold"
+        aria-expanded={openPanel === 'advisor'}
+        onClick={() => setOpenPanel(current => current === 'advisor' ? null : 'advisor')}>
+        Asesor de compras contextual<span aria-hidden="true">{openPanel === 'advisor' ? '▴' : '▾'}</span>
+      </button>
+      {openPanel === 'advisor' && <div className="mt-3 space-y-3">
+        <p className="text-xs text-slate-600">Usa el asistente existente y sus limites de acceso. Solo consulta datos del catalogo incorporado; no diagnostica, no inventa precios y no reemplaza al veterinario. Las fichas generales sin publicacion no permiten comparar precios con IA.</p>
+        <label className="block">Pregunta al asesor<textarea className={`${input} mt-1 w-full`} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Que diferencias hay entre los productos comparados?" maxLength={2000} /></label>
+        <button className={action} disabled={asking || !pet || !question.trim()} onClick={() => void ask()}>{asking ? 'Consultando...' : 'Consultar asesor'}</button>
+        {answer && <div role="status" className="space-y-3">
+          <p className="whitespace-pre-wrap text-sm">{answer}</p>
+          {!!answerProducts.length && <div className="grid gap-3 sm:grid-cols-2">{answerProducts.map(p => {
+            const a = assessment(p);
+            return <article key={p.id} className="rounded-2xl border border-slate-200 p-3">
+              {p.thumbnail && <img src={p.thumbnail} alt={p.title} className="mb-2 h-20 w-20 rounded-xl object-cover" loading="lazy" />}
+              <h4 className="text-sm font-bold">{p.title}</h4>
+              <p className="text-xs">{SHOP_CATEGORIES.find(c => c.id===p.category)?.label} · Vendedor: {p.seller || 'No informado'}</p>
+              <p className={`my-1 text-xs ${a.status==='not_recommended' ? 'text-rose-700' : 'text-slate-600'}`}><strong>{labels[a.status]}</strong>: {a.reason}</p>
+              <ProductPrice product={p} />
+              <div className="mt-2"><PurchaseLink product={p} /></div>
+            </article>;
+          })}</div>}
+        </div>}
+      </div>}
+    </section>
+    <section className={box} aria-label="Filtros de tienda">
+      <button type="button" className="flex w-full items-center justify-between text-left font-bold"
+        aria-expanded={openPanel === 'filters'}
+        onClick={() => setOpenPanel(current => current === 'filters' ? null : 'filters')}>
+        Filtros y busqueda<span aria-hidden="true">{openPanel === 'filters' ? '▴' : '▾'}</span>
+      </button>
+      {openPanel === 'filters' && <div className="mt-3 space-y-3">
       <div className="flex flex-wrap gap-2"><button className={action} onClick={() => setFilter('category','all')} aria-pressed={filters.category==='all'}>Todas</button>
         {SHOP_CATEGORIES.map(c => <button key={c.id} className={action} aria-pressed={filters.category===c.id} onClick={() => setFilter('category',c.id)}>{c.label}</button>)}
       </div>
@@ -215,7 +252,11 @@ export function ShopSection() {
         <label>Orden<select className={`${input} w-full`} value={filters.sort} onChange={e => setFilter('sort',e.target.value as ShopFilters['sort'])}><option value="relevance">Relevancia</option><option value="price_asc">Menor precio</option><option value="price_desc">Mayor precio</option></select></label>
       </div>
       <div className="flex flex-wrap gap-3 text-sm"><label><input type="checkbox" checked={filters.freeShipping} onChange={e => setFilter('freeShipping',e.target.checked)} /> Envio gratis informado</label><label><input type="checkbox" checked={filters.fastDelivery} onChange={e => setFilter('fastDelivery',e.target.checked)} /> Envio rapido informado</label></div>
+      </div>}
     </section>
+    {!!recommendations.length && <section className={box}><h3 className="font-bold">Recomendaciones principales</h3>
+      {recommendations.map(p => <p key={p.id} className="mt-2 text-sm">{p.title}: {assessment(p).reason}</p>)}
+    </section>}
     {loading ? <p role="status">Cargando tienda...</p> : !products.length ? <p className={box}>No hay productos para este filtro por ahora. Prueba otra categoria o busqueda.</p> :
       <div className="grid gap-3 sm:grid-cols-2">{products.map(p => {
         const a = assessment(p);
@@ -254,12 +295,5 @@ export function ShopSection() {
       </tbody></table></div>
       <p className="whitespace-pre-wrap text-sm">{shopComparisonConclusion(comparison,profile)}</p>
     </section>}
-    <section className={`${box} space-y-3`}>
-      <h3 className="font-bold">Asesor de compras contextual</h3>
-      <p className="text-xs text-slate-600">Usa el asistente existente y sus limites de acceso. Solo consulta datos del catalogo incorporado; no diagnostica, no inventa precios y no reemplaza al veterinario. Las fichas generales sin publicacion no permiten comparar precios con IA.</p>
-      <label className="block">Pregunta al asesor<textarea className={`${input} mt-1 w-full`} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Que diferencias hay entre los productos comparados?" maxLength={2000} /></label>
-      <button className={action} disabled={asking || !pet || !question.trim()} onClick={() => void ask()}>{asking ? 'Consultando...' : 'Consultar asesor'}</button>
-      {answer && <p role="status" className="whitespace-pre-wrap text-sm">{answer}</p>}
-    </section>
   </div>;
 }

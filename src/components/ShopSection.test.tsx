@@ -32,6 +32,7 @@ describe('Tienda integrada',()=>{
   });
   it('busqueda explicita muestra producto incompatible con advertencia',async()=>{
     render(<ShopSection />);await screen.findByRole('heading',{name:food.title});
+    fireEvent.click(screen.getByRole('button',{name:/Filtros y busqueda/}));
     fireEvent.change(screen.getByLabelText('Buscar productos'),{target:{value:'gato'}});
     await screen.findByRole('heading',{name:'Alimento gato adulto'});
     expect(screen.getByText('No recomendado')).toBeTruthy();
@@ -52,15 +53,21 @@ describe('Tienda integrada',()=>{
     expect(screen.getByRole('table')).toBeTruthy();
   });
   it('asesor usa IDs del catalogo, sin especificaciones ni precios del cliente',async()=>{
+    mocks.ask.mockResolvedValue({content:'Orientacion con datos reales',isError:false,shoppingProducts:[{id:food.id,title:food.title}]});
     render(<ShopSection />);await screen.findByRole('heading',{name:food.title});
+    fireEvent.click(screen.getByRole('button',{name:/Asesor de compras contextual/}));
     fireEvent.change(screen.getByLabelText('Pregunta al asesor'),{target:{value:'Que alimento conviene?'}});
     fireEvent.click(screen.getByRole('button',{name:'Consultar asesor'}));
     await screen.findByText('Orientacion con datos reales');
     expect(mocks.ask).toHaveBeenCalledWith('Que alimento conviene?','dog',null,[food.id]);
+    const advisorAnswer=screen.getByText('Orientacion con datos reales').parentElement as HTMLElement;
+    expect(within(advisorAnswer).getByRole('heading',{name:food.title})).toBeTruthy();
+    expect(within(advisorAnswer).getByText('Enlace de compra temporalmente no disponible')).toBeTruthy();
   });
   it('error IA no se presenta como respuesta exitosa',async()=>{
     mocks.ask.mockResolvedValue({content:'Servicio IA no disponible',isError:true});
     render(<ShopSection />);await screen.findByRole('heading',{name:food.title});
+    fireEvent.click(screen.getByRole('button',{name:/Asesor de compras contextual/}));
     fireEvent.change(screen.getByLabelText('Pregunta al asesor'),{target:{value:'Ayuda'}});
     fireEvent.click(screen.getByRole('button',{name:'Consultar asesor'}));
     expect((await screen.findByRole('alert')).textContent).toContain('Servicio IA no disponible');
@@ -69,13 +76,17 @@ describe('Tienda integrada',()=>{
     const view=render(<ShopSection />);await screen.findByRole('heading',{name:food.title});
     fireEvent.click(screen.getByRole('button',{name:/^Comparar$/}));
     expect(screen.getByRole('region',{name:'Comparador'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:/Asesor de compras contextual/}));
     fireEvent.change(screen.getByLabelText('Pregunta al asesor'),{target:{value:'Pregunta privada de la primera cuenta'}});
+    fireEvent.click(screen.getByRole('button',{name:/Filtros y busqueda/}));
     fireEvent.change(screen.getByLabelText('Buscar productos'),{target:{value:'busqueda anterior'}});
     mocks.state.user={id:'other'};mocks.state.pets=[];mocks.state.selectedPetId=null;
     view.rerender(<ShopSection />);
     expect(screen.queryByRole('region',{name:'Comparador'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:/Asesor de compras contextual/}));
     expect(screen.getByRole('button',{name:'Consultar asesor'}).hasAttribute('disabled')).toBe(true);
     expect((screen.getByLabelText('Pregunta al asesor') as HTMLTextAreaElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button',{name:/Filtros y busqueda/}));
     expect((screen.getByLabelText('Buscar productos') as HTMLInputElement).value).toBe('');
   });
   it('historial vacio termina la carga con mensaje explicito',async()=>{
@@ -90,6 +101,7 @@ describe('Tienda integrada',()=>{
     let resolve!: (value: {content:string,isError:boolean})=>void;
     mocks.ask.mockImplementation(()=>new Promise(r=>{resolve=r;}));
     const view=render(<ShopSection />);await screen.findByRole('heading',{name:food.title});
+    fireEvent.click(screen.getByRole('button',{name:/Asesor de compras contextual/}));
     fireEvent.change(screen.getByLabelText('Pregunta al asesor'),{target:{value:'Comparar'}});
     fireEvent.click(screen.getByRole('button',{name:'Consultar asesor'}));
     mocks.state.selectedPetId='cat';view.rerender(<ShopSection />);

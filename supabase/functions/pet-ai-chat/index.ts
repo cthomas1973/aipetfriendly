@@ -1028,7 +1028,7 @@ serve(async (req) => {
     // (La mascota ya fue cargada y autorizada antes de cualquier procesamiento.)
 
     let prompt: string;
-    let authorizedProducts: Array<{ title: string }> = [];
+    let authorizedProducts: Array<{ id: string; title: string }> = [];
     if (payload.mode === "shopping") {
       const ids = payload.shoppingProductIds;
       if (!Array.isArray(ids) || ids.length > 8 || ids.some(id => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
@@ -1045,7 +1045,7 @@ serve(async (req) => {
       const productIds = (products || []).map(product => product.id);
       const eligible = await filterEligibleShopProducts(pet, products || [],
         ids => admin.rpc("get_shop_compatibility", { p_products: ids }));
-      authorizedProducts = eligible.map(({ product }) => ({ title: product.title }));
+      authorizedProducts = eligible.map(({ product }) => ({ id: product.id, title: product.title }));
       const { data: prices, error: priceError } = productIds.length
         ? await admin.rpc("get_shop_price_history", { p_products: productIds })
         : { data: [], error: null };
@@ -1157,6 +1157,9 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       ...ai,
       suggestedProduct,
+      // Solo productos ya verificados por el filtro del servidor: el cliente
+      // los usa para mostrar tarjetas sin decidir compatibilidad por su cuenta.
+      shoppingProducts: payload.mode === "shopping" ? authorizedProducts : null,
       imageUrl,
       recommendVetVisit,
       usage: {

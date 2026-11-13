@@ -106,6 +106,8 @@ interface PetAssistantResponse {
     price: number | null;
     link: string | null;
   } | null;
+  /** Productos verificados por el filtro del servidor en modo shopping (solo id y titulo). */
+  shoppingProducts?: Array<{ id: string; title: string }> | null;
   usage?: {
     tier: 'guest' | 'free' | 'premium';
     limit: number;

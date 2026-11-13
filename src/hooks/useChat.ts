@@ -240,6 +240,7 @@ export function useChat() {
     ) => {
       let text = '';
       let suggestedProduct: SuggestedProduct | null = null;
+      let shoppingProducts: Array<{ id: string; title: string }> | null = null;
       let persistedImageUrl: string | null = null;
       let recommendVetVisit = false;
       let isError = false;
@@ -291,7 +292,7 @@ export function useChat() {
           ...(shoppingProductIds !== undefined ? { mode: 'shopping' as const, shoppingProductIds } : {}),
         });
         if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) {
-          return { text: '', suggestedProduct: null, persistedImageUrl: null, recommendVetVisit: false, isError: true };
+          return { text: '', suggestedProduct: null, shoppingProducts: null, persistedImageUrl: null, recommendVetVisit: false, isError: true };
         }
 
         if (response.answer) {
@@ -300,6 +301,10 @@ export function useChat() {
 
         if (response.suggestedProduct) {
           suggestedProduct = response.suggestedProduct;
+        }
+
+        if (response.shoppingProducts) {
+          shoppingProducts = response.shoppingProducts;
         }
 
         if (response.imageUrl) {
@@ -337,7 +342,7 @@ export function useChat() {
         text = AI_ERROR_MESSAGE;
       }
 
-      return { text, suggestedProduct, persistedImageUrl, recommendVetVisit, isError };
+      return { text, suggestedProduct, shoppingProducts, persistedImageUrl, recommendVetVisit, isError };
     },
     [clinicalEntries, pets, preventiveTasks, user, sessionRevision],
   );
@@ -424,7 +429,9 @@ export function useChat() {
         ]);
       }
 
-      return assistantMessage;
+      // Los productos verificados del modo shopping viajan solo en el valor de
+      // retorno (no se persisten): la tienda los usa para mostrar tarjetas.
+      return { ...assistantMessage, shoppingProducts: result.shoppingProducts };
     },
     [
       canUseAI,
