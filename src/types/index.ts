@@ -5,6 +5,125 @@ export type PetType = 'perro' | 'gato' | 'otro';
 export type PetLifeStage = 'cachorro' | 'adulto' | 'senior' | 'todas';
 export type PetSizeCategory = 'pequeño' | 'mediano' | 'grande' | 'todos';
 
+export type ShopCategory = 'alimentos' | 'juguetes' | 'paseo' | 'higiene' | 'salud' | 'entrenamiento' | 'descanso' | 'tecnologia';
+export type ShopCompatibility = 'recommended' | 'compatible' | 'not_recommended' | 'unknown';
+export interface ShopVerifiedDimensions {
+  species: PetType[];
+  stage: PetLifeStage[];
+  size: PetSizeCategory[];
+}
+export type ShopDimension = keyof ShopVerifiedDimensions;
+export interface ShopDimensionRecord {
+  product_id: string;
+  dimension: ShopDimension;
+  values_text: string[];
+  verification: 'unknown' | 'partial' | 'conflict' | 'confirmed';
+  source: string;
+  verified_at: string;
+  sku: string;
+  enabled: boolean;
+}
+export interface ShopAttributeSource {
+  source: string;
+  researchedAt: string;
+  method?: string;
+}
+export interface ShopResearchRecord {
+  title: string;
+  permalink: string;
+  description: string | null;
+  brand: string | null;
+  images: string[];
+  category: ShopCategory;
+  categoryId?: string;
+  petTypes: PetType[];
+  lifeStages: PetLifeStage[];
+  sizes: PetSizeCategory[];
+  attributes: Array<{ id?: string; name: string; value: string; source: string; researchedAt: string }>;
+  provenance: Record<string, ShopAttributeSource>;
+  limitations: string[];
+}
+export interface ShopRadarCandidate {
+  id: string;
+  mla_id: string | null;
+  catalog_product_id: string | null;
+  category_name: string;
+  category_id: string;
+  detected_at: string;
+  detection_source: string;
+  ranking_position: number | null;
+  duplicate_product_id: string | null;
+  research_status: 'queued' | 'researching' | 'ready' | 'error' | 'unsupported';
+  research_record: ShopResearchRecord | Record<string, never>;
+  research_error: string | null;
+  researched_at: string | null;
+  review_status: 'pending' | 'approved' | 'rejected' | 'postponed';
+  decision_reason: string | null;
+  postponed_until: string | null;
+  listing_active: boolean;
+  events: Array<{ id: number; action: string; reason: string | null; event_at: string; snapshot: unknown }>;
+}
+export interface ShopRadarDashboard {
+  candidates: ShopRadarCandidate[];
+  total?: number;
+  runs: Array<{ id: string; run_day: string; detected_count: number; limitations: string[]; finished_at: string | null }>;
+}
+
+export interface ShopPriceChange {
+  detectedAt: string;
+  previousPrice: number;
+  price: number;
+  difference: number;
+  percent: number;
+  direction: 'up' | 'down';
+}
+
+export interface ShopPriceHistory {
+  productId: string;
+  price: number | null;
+  regularPrice: number | null;
+  promotionalPrice: number | null;
+  currency: string | null;
+  lastSuccessAt: string | null;
+  lastAttemptAt: string | null;
+  status: 'untracked' | 'ok' | 'error';
+  error: string | null;
+  minimum: number | null;
+  maximum: number | null;
+  changes: ShopPriceChange[];
+}
+
+export interface ShopProduct {
+  id: string;
+  externalId: string | null;
+  title: string;
+  thumbnail: string | null;
+  category: ShopCategory;
+  price: number | null;
+  originalPrice: number | null;
+  currency: string | null;
+  checkedAt: string | null;
+  priceStatus: 'unverified' | 'ok' | 'error';
+  source: 'supabase' | 'api' | 'static';
+  seller: string | null;
+  brand: string | null;
+  presentation: string | null;
+  attributes: Array<{ name: string; value: string }>;
+  petTypes: PetType[];
+  lifeStages: PetLifeStage[];
+  sizes: PetSizeCategory[];
+  needs: string[];
+  freeShipping: boolean;
+  fastDelivery: boolean;
+  link: string | null;
+  catalogProductId?: string | null;
+  research?: ShopResearchRecord | null;
+  researchedAt?: string | null;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  compatibilityEvidence?: { species: boolean; stage: boolean; size: boolean };
+  verifiedDimensions?: ShopVerifiedDimensions | null;
+}
+
 export interface BeneficioProducto {
   id: string;
   url_ml: string;
@@ -22,7 +141,32 @@ export interface BeneficioProducto {
   active: boolean;
   created_at: string;
   updated_at: string;
+  catalog_product_id?: string | null;
+  research_record?: ShopResearchRecord | Record<string, never>;
+  researched_at?: string | null;
+  approval_status?: 'pending' | 'approved' | 'rejected';
 }
+
+export type PublicBeneficioProducto = Pick<
+  BeneficioProducto,
+  | 'id'
+  | 'title'
+  | 'thumbnail'
+  | 'price'
+  | 'grupo'
+  | 'pet_types'
+  | 'life_stages'
+  | 'size_categories'
+  | 'free_shipping'
+  | 'fast_delivery'
+  | 'active'
+  | 'created_at'
+  | 'updated_at'
+  | 'catalog_product_id'
+  | 'research_record'
+  | 'researched_at'
+  | 'approval_status'
+>;
 
 export type ClinicalEntryCategory =
   | 'medication'
@@ -32,7 +176,36 @@ export type ClinicalEntryCategory =
   | 'clinical_note';
 
 export type SubscriptionPlan = 'free' | 'premium';
+export interface ClinicalPdfQuota {
+  plan: SubscriptionPlan;
+  limit: number;
+  used: number;
+  remaining: number;
+  window: 'day' | 'month';
+  resetAt: string;
+  timezone: string;
+}
+
+export interface ClinicalPdfEmailRequest {
+  requestId: string;
+  pet_id: string;
+  email: string;
+  fileName: string;
+  pdfBytes: number[];
+  petName: string;
+  reportTitle: string;
+}
+
+export interface ClinicalPdfSendStatus {
+  requestId: string;
+  status: 'not_found' | 'reserved' | 'sending' | 'uncertain' | 'sent' | 'failed';
+}
+
 export type UserAccessLevel = 'guest' | 'free' | 'premium';
+
+// Estado de acceso efectivo (Fase 7). 'grace' y 'canceled_pending' conservan
+// acceso completo temporal; 'free' limita la escritura a la mascota activa.
+export type AccessState = 'guest' | 'premium' | 'grace' | 'canceled_pending' | 'free';
 
 export type AppTab = 'blog' | 'pets' | 'clinical' | 'agenda' | 'map' | 'places' | 'offers' | 'subscription' | 'admin';
 
@@ -412,6 +585,7 @@ export interface ChatMessage {
   imageUrl?: string | null;
   /** true cuando este mensaje de asistente es un aviso de error (no se pudo obtener respuesta real de la IA), para distinguirlo de una respuesta valida y habilitar reintento manual. */
   isError?: boolean;
+  shoppingProductIds?: string[];
 }
 
 export interface AiUsageSettings {
@@ -599,6 +773,10 @@ export interface UserSubscription {
   plan: SubscriptionPlan;
   isActive: boolean;
   expiresAt?: string | null;
+  // Columnas de la migracion 067 (pueden no existir aun en el servidor):
+  // se mapean de forma tolerante (undefined/null => sin gracia/cancelacion).
+  graceUntil?: string | null;
+  cancelRequestedAt?: string | null;
 }
 
 export interface AppUser {
@@ -616,6 +794,15 @@ export interface AppUser {
   subscription: UserSubscription;
   isGuest?: boolean;
   isAdmin?: boolean;
+  // Estado de acceso calculado en fetchUserProfile con la fila cruda de
+  // suscripcion (regla compartida de premiumAccess.mjs).
+  accessState?: AccessState;
+  // Mascota activa del plan Free (users.active_pet_id, migracion 067).
+  activePetId?: string | null;
+  activePetChangedAt?: string | null;
+  // true solo cuando el servidor expone la columna active_pet_id (067
+  // aplicada). Si es false, la proteccion de mascotas queda desactivada.
+  activePetSupport?: boolean;
 }
 
 export interface AdminUserRow {
@@ -669,9 +856,17 @@ export interface NewsCampaign {
 
 export interface SubscriptionState {
   isPremiumUser: boolean;
+  accessState: AccessState;
   isSubscribed: boolean;
   canAddPet: boolean;
   canUseAI: boolean;
   freePetLimit: number;
   freeAiDailyLimit: number;
+  // Seleccion de mascota activa (plan Free, Fase 7 / migracion 067).
+  activePetId: string | null;
+  activePetChangedAt: string | null;
+  activePetSupport: boolean;
+  needsActivePetSelection: boolean;
+  activePetCooldownUntil: string | null;
+  isPetEditable: (petId: string) => boolean;
 }

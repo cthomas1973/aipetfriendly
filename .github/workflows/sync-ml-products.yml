@@ -1,39 +1,30 @@
-name: Sync ML Products to Supabase
+name: Radar de productos
 
-# DESHABILITADO: Mercado Libre bloquea con 403 Forbidden todas las IPs de
-# datacenter/cloud (confirmado tanto en Vercel como en GitHub Actions runners).
-# No hay combinacion de token/sort/categoria que lo evite. Este cron nunca
-# va a poder traer productos automaticamente.
-#
-# La forma confiable de cargar productos es el panel Admin manual
-# (pestaña Admin > Beneficios ML), donde se pega la URL del producto de
-# Mercado Libre y el sistema arma el link de afiliado automaticamente.
-#
-# El trigger automatico (schedule) esta deshabilitado. Se deja workflow_dispatch
-# por si en el futuro ML cambia su politica de bloqueo y se quiere reintentar.
 on:
+  schedule:
+    - cron: '0 10 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  sync:
+  radar:
+    if: vars.SHOP_RADAR_ENABLED == 'true' || vars.SHOP_RADAR_RESEARCH_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
-      - name: Checkout codigo
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      - name: Sync productos ML → Supabase
+      - name: Descubrir e investigar candidatos
         run: node scripts/sync-ml-products.mjs
         env:
-          ML_REFRESH_TOKEN:      ${{ secrets.ML_REFRESH_TOKEN }}
-          ML_APP_ID:             ${{ secrets.ML_APP_ID }}
-          ML_APP_SECRET:         ${{ secrets.ML_APP_SECRET }}
-          SUPABASE_URL:          ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
-          ML_AFFILIATE_TEMPLATE: ${{ secrets.ML_AFFILIATE_TEMPLATE }}
+          SHOP_RADAR_ENABLED: ${{ vars.SHOP_RADAR_ENABLED }}
+          SHOP_RADAR_RESEARCH_ENABLED: ${{ vars.SHOP_RADAR_RESEARCH_ENABLED }}
+          ML_REFRESH_TOKEN: ${{ secrets.ML_REFRESH_TOKEN }}
+          ML_APP_ID: ${{ secrets.ML_APP_ID }}
+          ML_APP_SECRET: ${{ secrets.ML_APP_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

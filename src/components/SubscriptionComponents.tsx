@@ -1,7 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Crown, ExternalLink, LocateFixed, Tags, Truck, X } from 'lucide-react';
+import { Check, Crown, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { AdBanner } from './AdBanner';
 import { signUpWithEmail } from '../hooks/useSupabaseSync';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import { updateUserNotificationProfile, updateUserNewsOptIn } from '../lib/supabase';
@@ -12,13 +11,13 @@ import {
   deleteCotutor,
   fetchAiUsageSettings,
   fetchBillingPricingSettings,
-  fetchBeneficiosProductos,
   fetchCotutors,
   sendFeedbackMessage,
   updateCotutorActive,
   validateDiscountCode,
 } from '../lib/supabase';
-import type { AiUsageSettings, BillingPricingSettings, Cotutor, DiscountCodeValidation, Species } from '../types';
+import type { AiUsageSettings, BillingPricingSettings, Cotutor, DiscountCodeValidation } from '../types';
+export { ShopSection as OffersSection } from './ShopSection';
 
 function detectUserCountryCode(): string {
   const timezoneToCountry: Record<string, string> = {
@@ -127,7 +126,7 @@ const FEATURES = [
   { label: 'Consultas de IA ampliadas', free: false },
   { label: 'Historial clinico completo', free: true },
   { label: 'Preventivos y agenda',  free: true },
-  { label: 'Exportar PDF del historial', free: false },
+  { label: 'Descargar PDF del historial gratis', free: true },
 ];
 
 export function PaywallCard() {
@@ -697,7 +696,7 @@ export function PaywallCard() {
                       ? `Hasta ${aiUsageLimits.freeLimitPerPet} consultas de IA por mes por mascota`
                       : 'IA limitada (consultas de IA por mes por mascota)'}
                   </li>
-                  <li className="flex items-center gap-2"><X size={14} className="text-rose-500" /> Sin exportacion PDF avanzada</li>
+                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Descarga PDF gratuita y 2 envios por mes calendario</li>
                 </ul>
               </div>
 
@@ -712,7 +711,7 @@ export function PaywallCard() {
                       ? `Hasta ${aiUsageLimits.premiumLimitPerPet} consultas de IA por mes por mascota`
                       : 'Consultas de IA ampliadas'}
                   </li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Exportar historial clinico en PDF</li>
+                  <li className="flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Descarga PDF gratuita y 5 envios por dia calendario</li>
                 </ul>
               </div>
             </div>
@@ -1260,357 +1259,6 @@ export function PaywallCard() {
           </p>
         )}
       </div>
-    </section>
-  );
-}
-
-/* ── OffersSection (Tienda y Beneficios) ────────────── */
-type OfferGroup = 'alimentos' | 'accesorios' | 'higiene' | 'descanso' | 'salud' | 'tecnologia';
-type OfferSort = 'relevance' | 'price_asc' | 'price_desc';
-
-interface AffiliateProduct {
-  id: string;
-  title: string;
-  price: number | null;
-  original_price: number | null;
-  discount: number;
-  thumbnail: string;
-  link: string;
-  free_shipping: boolean;
-  fast_delivery: boolean;
-  state: string;
-  link_source?: string;
-  destination_url?: string;
-  affiliate_url?: string;
-}
-
-const OFFER_GROUPS: Array<{ id: OfferGroup; label: string; emoji: string }> = [
-  { id: 'alimentos', label: 'Alimentos y Nutricion', emoji: '🍗' },
-  { id: 'accesorios', label: 'Ropa y Accesorios', emoji: '👕' },
-  { id: 'higiene', label: 'Estetica e Higiene', emoji: '🧴' },
-  { id: 'descanso', label: 'Descanso y Juguetes', emoji: '🧸' },
-  { id: 'salud', label: 'Salud y Cuidado', emoji: '🩺' },
-  { id: 'tecnologia', label: 'Tecnologia y Hogar', emoji: '🏠' },
-];
-
-interface ServerBenefitsResponse {
-  mattTool?: string;
-  debug?: boolean;
-  products?: AffiliateProduct[];
-}
-
-async function safeFetchServerBenefitsConfig(group: OfferGroup): Promise<ServerBenefitsResponse | null> {
-  try {
-    const response = await fetch(`/api/beneficios?grupo=${group}`);
-    if (!response.ok) {
-      return null;
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().includes('application/json')) {
-      return null;
-    }
-
-    return (await response.json()) as ServerBenefitsResponse;
-  } catch {
-    return null;
-  }
-}
-
-const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-  maximumFractionDigits: 0,
-});
-
-export function OffersSection() {
-  const { pets } = useAppState();
-  const [group, setGroup] = useState<OfferGroup>('alimentos');
-  const [sort, setSort] = useState<OfferSort>('relevance');
-  const [freeShipping, setFreeShipping] = useState(false);
-  const [fastDelivery, setFastDelivery] = useState(false);
-  const [products, setProducts] = useState<AffiliateProduct[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [errorProducts, setErrorProducts] = useState<string | null>(null);
-  const [benefitsDebug, setBenefitsDebug] = useState(false);
-
-  // Derivar pet_types del usuario para filtrar productos relevantes
-  const userPetTypes = useMemo(() => {
-    const speciesMap: Record<Species, string> = { dog: 'perro', cat: 'gato', other: 'otro' };
-    const types = [...new Set(pets.map(p => speciesMap[p.species] ?? 'otro'))];
-    return types.length > 0 ? types : ['perro', 'gato'];
-  }, [pets]);
-
-  // Derivar etapa de vida (cachorro/adulto/senior) desde edad de cada mascota.
-  // 'todas' siempre se incluye para que los productos genericos tambien aparezcan.
-  const userLifeStages = useMemo(() => {
-    const stages = new Set<string>(['todas']);
-    for (const pet of pets) {
-      const totalMonths = (pet.ageYears || 0) * 12 + (pet.ageMonths || 0);
-      if (totalMonths < 12) stages.add('cachorro');
-      else if (pet.species === 'cat' ? (pet.ageYears || 0) >= 10 : (pet.ageYears || 0) >= 7) stages.add('senior');
-      else stages.add('adulto');
-    }
-    return [...stages];
-  }, [pets]);
-
-  // Derivar tamaño (pequeño/mediano/grande) desde el peso de cada perro.
-  // 'todos' siempre se incluye; los gatos no tienen categoria de tamaño especifica.
-  const userSizeCategories = useMemo(() => {
-    const sizes = new Set<string>(['todos']);
-    for (const pet of pets) {
-      if (pet.species !== 'dog') continue;
-      const w = pet.weightKg || 0;
-      if (w <= 10) sizes.add('pequeño');
-      else if (w <= 25) sizes.add('mediano');
-      else sizes.add('grande');
-    }
-    return [...sizes];
-  }, [pets]);
-
-  const loadProducts = useCallback(async () => {
-    setLoadingProducts(true);
-    setErrorProducts(null);
-
-    try {
-      // 1. Obtener mattTool del servidor (config de afiliado). En Android puede
-      // devolver HTML si /api no esta disponible; en ese caso seguimos con Supabase.
-      const serverData = (await safeFetchServerBenefitsConfig(group)) || {};
-      const mattTool: string = String(serverData?.mattTool ?? '');
-      setBenefitsDebug(Boolean(serverData?.debug));
-
-      // 2. Obtener productos reales de Supabase (filtro por grupo, mascota, edad y tamaño)
-      let supabaseProducts: AffiliateProduct[] = [];
-      try {
-        const dbItems = await fetchBeneficiosProductos(group, userPetTypes, userLifeStages, userSizeCategories);
-        supabaseProducts = dbItems
-          .map(p => {
-            const link = mattTool
-              ? p.permalink + (p.permalink.includes('?') ? '&' : '?') + `matt_tool=${mattTool}`
-              : p.permalink;
-            return {
-              id: p.id,
-              title: p.title,
-              price: p.price ?? null,
-              original_price: null,
-              discount: 0,
-              thumbnail: p.thumbnail ?? '',
-              link,
-              free_shipping: p.free_shipping,
-              fast_delivery: p.fast_delivery,
-              state: '',
-            } satisfies AffiliateProduct;
-          })
-          .filter(p => !freeShipping || p.free_shipping)
-          .filter(p => !fastDelivery || p.fast_delivery);
-      } catch {
-        // Supabase fallo, seguir con catalogo del servidor
-      }
-
-      if (supabaseProducts.length > 0) {
-        if (sort === 'price_asc') {
-          supabaseProducts.sort((a, b) => (a.price || 0) - (b.price || 0));
-        } else if (sort === 'price_desc') {
-          supabaseProducts.sort((a, b) => (b.price || 0) - (a.price || 0));
-        }
-        setProducts(supabaseProducts);
-        return;
-      }
-
-      // 3. Fallback: catalogo estatico del servidor
-      const serverProducts: AffiliateProduct[] = Array.isArray(serverData?.products) ? serverData.products : [];
-      setProducts(serverProducts);
-    } catch (error) {
-      setProducts([]);
-      setBenefitsDebug(false);
-      setErrorProducts(error instanceof Error ? error.message : 'No se pudieron cargar productos en este momento.');
-    } finally {
-      setLoadingProducts(false);
-    }
-  }, [fastDelivery, freeShipping, group, location, sort, userPetTypes, userLifeStages, userSizeCategories]);
-
-  useEffect(() => {
-    void loadProducts();
-  }, [loadProducts]);
-
-  const requestLocation = () => {
-    if (!navigator.geolocation) {
-      setErrorProducts('Tu navegador no soporta geolocalizacion para filtrar por zona.');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-        });
-      },
-      () => {
-        setErrorProducts('No se pudo acceder a tu ubicacion. Puedes seguir usando filtros sin GPS.');
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-      },
-    );
-  };
-
-  return (
-    <section className="space-y-4 pb-2">
-      <div className="pt-2">
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">🛒 Lo mejor de Mercado Libre, acá</h2>
-        <p className="mt-1 text-slate-500">Descuentos exclusivos para tu mascota</p>
-      </div>
-
-      <div className="rounded-3xl bg-emerald-500 p-4 text-white shadow-md">
-        <div className="flex items-center gap-2 mb-1">
-          <Tags size={18} className="text-yellow-300" />
-          <p className="font-bold">Beneficios activos</p>
-        </div>
-        <p className="text-sm text-white/80">Seleccionamos para vos los productos más vendidos, con los mejores precios y de vendedores de confianza. Ya filtramos las mejores ofertas ¡ahorrá tiempo y comprá directo!</p>
-      </div>
-
-      <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-bold text-slate-800">Grupo de productos</p>
-          <button
-            type="button"
-            onClick={requestLocation}
-            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-          >
-            <LocateFixed size={13} />
-            {location ? 'GPS activo' : 'Usar GPS'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          {OFFER_GROUPS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setGroup(item.id)}
-              className={`rounded-2xl px-3 py-2 text-left text-sm font-semibold ${
-                group === item.id
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-slate-100 text-slate-700'
-              }`}
-            >
-              <span className="mr-2">{item.emoji}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as OfferSort)}
-            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
-          >
-            <option value="relevance">Relevancia</option>
-            <option value="price_asc">Menor precio</option>
-            <option value="price_desc">Mayor precio</option>
-          </select>
-
-          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-            <input type="checkbox" checked={freeShipping} onChange={(e) => setFreeShipping(e.target.checked)} className="h-4 w-4" />
-            Envio gratis
-          </label>
-
-          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-            <input type="checkbox" checked={fastDelivery} onChange={(e) => setFastDelivery(e.target.checked)} className="h-4 w-4" />
-            <Truck size={15} />
-            Envio rapido
-          </label>
-        </div>
-      </div>
-
-      <div>
-        <p className="mb-3 font-bold text-slate-800">Productos recomendados</p>
-        {errorProducts && (
-          <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorProducts}</p>
-        )}
-
-        {loadingProducts ? (
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-28 animate-pulse rounded-3xl bg-slate-100" />
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="rounded-3xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-slate-600">No hay productos para este filtro por ahora. Prueba con otro grupo o desactiva filtros.</p>
-          </div>
-        ) : (
-        <div className="space-y-3">
-          {products.map((item) => (
-            <a
-              key={item.id}
-              href={item.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block rounded-3xl bg-white p-4 shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-              aria-label={`Ver ${item.title} en Mercado Libre`}
-            >
-              <div className="flex items-start gap-3">
-                <div className="shrink-0">
-                  <img
-                    src={item.thumbnail}
-                    alt={item.title}
-                    className="h-16 w-16 rounded-2xl object-cover bg-slate-100"
-                    loading="lazy"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-bold text-slate-900 line-clamp-2 hover:text-emerald-600">
-                        {item.title}
-                      </p>
-                      <p className="text-xs text-slate-400">{item.state || 'Mercado Libre Argentina'}</p>
-                    </div>
-                    {item.discount > 0 && (
-                      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">-{item.discount}%</span>
-                    )}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                    {item.price != null && item.price > 0 ? (
-                      <span className="font-extrabold text-slate-900">{PRICE_FORMATTER.format(item.price)}</span>
-                    ) : (
-                      <span className="text-sm italic text-slate-400">Ver precio en ML</span>
-                    )}
-                    {item.original_price && item.original_price > 0 && item.price != null && item.price > 0 ? (
-                      <span className="text-xs text-slate-400 line-through">{PRICE_FORMATTER.format(item.original_price)}</span>
-                    ) : null}
-                    {item.free_shipping ? (
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">Envio gratis</span>
-                    ) : null}
-                    {item.fast_delivery ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Rapido</span>
-                    ) : null}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Afiliado AiPetFriendly</span>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                      Ver producto
-                      <ExternalLink size={13} />
-                    </span>
-                  </div>
-                  {benefitsDebug && item.link_source ? (
-                    <p className="mt-1 text-[11px] font-medium text-slate-400">Debug link: {item.link_source}</p>
-                  ) : null}
-                </div>
-              </div>
-            </a>
-          ))}
-        </div>
-        )}
-      </div>
-
-      {/* forcePublic: Ofertas tambien es visible para invitados y son la mayoria del trafico curioso */}
-      <AdBanner adSenseSlotId="9835684451" forcePublic />
     </section>
   );
 }

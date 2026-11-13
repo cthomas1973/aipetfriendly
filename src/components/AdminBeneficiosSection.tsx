@@ -7,6 +7,9 @@ import {
   deleteBeneficioProducto,
 } from '../lib/supabase';
 import type { BeneficioProducto, OfferGrupo, PetType, PetLifeStage, PetSizeCategory } from '../types';
+import { isShopResearchRecord } from '../../supabase/functions/_shared/shopResearchRecord.mjs';
+import { SHOP_CATEGORIES } from '../lib/shop';
+import { ShopCompatibilityEditor } from './ShopCompatibilityEditor';
 
 const GRUPOS: { id: OfferGrupo; label: string }[] = [
   { id: 'alimentos',  label: '🍗 Alimentos y Nutricion' },
@@ -37,7 +40,7 @@ function suggestLifeStages(title: string): PetLifeStage[] {
   if (/cachorro|puppy|kitten|junior/.test(t)) stages.push('cachorro');
   if (/senior|mayores|older|7\+|maduro/.test(t)) stages.push('senior');
   if (/adulto|adult/.test(t)) stages.push('adulto');
-  return stages.length > 0 ? stages : ['todas'];
+  return stages;
 }
 
 function suggestSizeCategories(title: string): PetSizeCategory[] {
@@ -46,7 +49,7 @@ function suggestSizeCategories(title: string): PetSizeCategory[] {
   if (/mini|toy|pequeñ|small|raza pequena/.test(t)) sizes.push('pequeño');
   if (/mediana?\b|medium/.test(t)) sizes.push('mediano');
   if (/grande|maxi|large|gigante|raza grande/.test(t)) sizes.push('grande');
-  return sizes.length > 0 ? sizes : ['todos'];
+  return sizes;
 }
 
 function extractMlaInfo(url: string): { mlaId: string; permalink: string } | null {
@@ -79,9 +82,9 @@ const EMPTY_FORM = {
   thumbnail: '',
   price: '',
   grupo: 'alimentos' as OfferGrupo,
-  pet_types: ['perro', 'gato'] as PetType[],
-  life_stages: ['todas'] as PetLifeStage[],
-  size_categories: ['todos'] as PetSizeCategory[],
+  pet_types: [] as PetType[],
+  life_stages: [] as PetLifeStage[],
+  size_categories: [] as PetSizeCategory[],
   free_shipping: false,
   fast_delivery: false,
 };
@@ -96,6 +99,8 @@ export function AdminBeneficiosSection() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [researchJson, setResearchJson] = useState('');
+  const [catalogId, setCatalogId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,21 +143,27 @@ export function AdminBeneficiosSection() {
     const info = extractMlaInfo(form.url_ml);
     if (!info) { setUrlError('URL inválida. Copiá la URL directamente desde Mercado Libre.'); return; }
     if (!form.title.trim()) { setError('El título es obligatorio.'); return; }
-    if (form.pet_types.length === 0) { setError('Seleccioná al menos un tipo de mascota.'); return; }
 
     setSaving(true);
     try {
+      const parsed: unknown = researchJson.trim() ? JSON.parse(researchJson) : null;
+      if (parsed && !isShopResearchRecord(parsed)) throw new Error('Ficha global invalida: los atributos conocidos requieren fuente y fecha.');
+      const research = isShopResearchRecord(parsed) ? parsed : null;
+      if (research && research.permalink !== info.permalink) throw new Error('La ficha investigada debe corresponder a la URL de la publicacion editada.');
+      if (catalogId && !/^MLA\d{6,}$/.test(catalogId)) throw new Error('ID de catalogo MLA invalido.');
       const payload = {
         url_ml: form.url_ml.trim(),
         mla_id: info.mlaId,
         permalink: info.permalink,
-        title: form.title.trim(),
-        thumbnail: form.thumbnail.trim() || null,
+        title: research?.title || form.title.trim(),
+        thumbnail: research?.images[0] || form.thumbnail.trim() || null,
         price: form.price ? Number(form.price) : null,
-        grupo: form.grupo,
-        pet_types: form.pet_types,
-        life_stages: form.life_stages,
-        size_categories: form.size_categories,
+        grupo: research ? SHOP_CATEGORIES.find(c => c.id===research.category)!.group : form.grupo,
+        pet_types: research?.petTypes || form.pet_types,
+        life_stages: research?.lifeStages || form.life_stages,
+        size_categories: research?.sizes || form.size_categories,
+        research_record:research || {}, researched_at:research ? new Date().toISOString() : null,
+        catalog_product_id:catalogId || null, approval_status:'approved' as const,
         free_shipping: form.free_shipping,
         fast_delivery: form.fast_delivery,
       };
@@ -167,6 +178,7 @@ export function AdminBeneficiosSection() {
 
       setForm(EMPTY_FORM);
       setEditingId(null);
+      setResearchJson(''); setCatalogId('');
       setShowForm(false);
       await load();
     } catch (e) {
@@ -210,6 +222,8 @@ export function AdminBeneficiosSection() {
       fast_delivery: p.fast_delivery,
     });
     setEditingId(p.id);
+    setResearchJson(p.research_record && Object.keys(p.research_record).length ? JSON.stringify(p.research_record,null,2) : '');
+    setCatalogId(p.catalog_product_id || '');
     setUrlError(null);
     setError(null);
     setMsg(null);
@@ -219,6 +233,7 @@ export function AdminBeneficiosSection() {
   const cancelForm = () => {
     setShowForm(false);
     setEditingId(null);
+    setResearchJson(''); setCatalogId('');
     setForm(EMPTY_FORM);
     setUrlError(null);
   };
@@ -286,6 +301,13 @@ export function AdminBeneficiosSection() {
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-xs font-semibold text-emerald-800">{editingId ? 'Editar producto' : 'Nuevo producto'}</p>
+          <p className="text-xs">Registro global compartido. Guardar implica aprobacion administrativa; sin ficha con fuentes no se afirma compatibilidad. Datos desconocidos deben quedar vacios.</p>
+          <label className="block text-xs">ID de catalogo Mercado Libre (opcional)
+            <input className="mt-1 w-full rounded-xl border p-2" value={catalogId} onChange={e=>setCatalogId(e.target.value.trim())} />
+          </label>
+          <label className="block text-xs">Ficha global investigada (JSON opcional con descripcion, marca, imagenes, atributos, fuentes y fechas)
+            <textarea className="mt-1 h-40 w-full rounded-xl border p-2 font-mono" value={researchJson} onChange={e=>setResearchJson(e.target.value)} />
+          </label>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-700">URL del producto en Mercado Libre *</label>
@@ -439,6 +461,7 @@ export function AdminBeneficiosSection() {
                 <p className="truncate text-sm font-semibold text-slate-900">{p.title}</p>
                 <p className="text-xs text-slate-400">{GRUPOS.find(g => g.id === p.grupo)?.label} · {p.pet_types.join(', ')}</p>
                 <p className="mt-0.5 truncate text-xs text-slate-400">{p.mla_id} · {p.price != null ? `$${p.price.toLocaleString('es-AR')}` : 'Sin precio'}</p>
+                <ShopCompatibilityEditor product={p} />
                 <div className="mt-1 flex gap-2">
                   {p.free_shipping && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Envio gratis</span>}
                   {p.fast_delivery && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Rapido</span>}

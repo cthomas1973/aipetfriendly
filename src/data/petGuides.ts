@@ -6,6 +6,11 @@ export interface PetGuideImage {
   alt: string;
 }
 
+export interface PetGuideReference {
+  label: string;
+  url: string;
+}
+
 export interface PetGuideSection {
   heading: string;
   paragraphs: string[];
@@ -33,6 +38,7 @@ export interface PetGuide {
   relatedGuideSlug?: string;
   relatedBlogSlug?: string;
   relatedProductId?: string;
+  references?: PetGuideReference[];
 }
 
 export const PET_GUIDE_CATEGORY_LABELS: Record<PetGuideCategory, string> = {
@@ -329,30 +335,52 @@ export const PET_GUIDES: PetGuide[] = [
     publishedAt: '2026-08-04',
     publicationStatus: 'pending_veterinary_review',
     summary:
-      'Cumplir el calendario de vacunas y desparasitaciones es una de las formas más simples y efectivas de prevenir enfermedades graves. Cómo organizarlo sin olvidos.',
-    readingTime: '4 min',
+      'Las vacunas y la prevención de parásitos se organizan con el veterinario según cada mascota y su contexto. Una guía práctica para preparar la consulta y llevar un registro confiable, sin asumir un calendario único.',
+    readingTime: '3 min',
     sections: [
       {
-        heading: 'Por qué respetar el calendario',
+        heading: 'El plan de vacunas depende de cada mascota',
         paragraphs: [
-          'Las vacunas protegen contra enfermedades graves y en muchos casos mortales (parvovirus, moquillo, panleucopenia felina, entre otras), y su efectividad depende de aplicarse en el esquema y los intervalos que indique el veterinario, especialmente durante los primeros meses de vida.',
-          'La desparasitación interna y externa regular no solo cuida a la mascota: algunos parásitos pueden transmitirse a las personas, por lo que sostener el esquema es también una medida de salud familiar.',
+          'Las guías de vacunación de WSAVA distinguen vacunas de base y vacunas que se consideran según el riesgo, y publican recomendaciones regionales para América Latina. El esquema y los intervalos concretos deben definirlos con un veterinario: no son iguales para todos los perros y gatos.',
+          'La edad, el historial de vacunas, la salud, el entorno y las actividades de cada animal son datos útiles para esa decisión. Si no sabés qué dosis recibió o cuándo, no reinicies ni dupliques el calendario por tu cuenta: llevá los comprobantes disponibles y pedí que el equipo veterinario indique cómo continuar.',
         ],
       },
       {
-        heading: 'Errores comunes',
+        heading: 'Prevención de parásitos: no hay un único calendario',
         paragraphs: [
-          'Espaciar demasiado las dosis de refuerzo pensando que "ya está protegido", dejar de desparasitar en invierno creyendo que solo hace falta en verano, o suspender el esquema en mascotas que no salen a la calle (los parásitos también pueden ingresar por otras vías, como alimentos crudos o contacto con otros animales).',
+          'La prevención y los controles se ajustan al animal y a su exposición local. El Companion Animal Parasite Council (CAPC) recomienda que las decisiones sobre pruebas y prevención consideren la salud, el estilo de vida y el entorno; sus recomendaciones no sustituyen la evaluación de un veterinario que conozca la zona y los productos disponibles en Argentina.',
+          'No suspendas ni cambies un antiparasitario solo por la estación del año, ni combines productos sin consultar. Preguntá qué parásitos se busca prevenir, cada cuánto corresponde revisar el plan y qué hacer si olvidaste una aplicación.',
         ],
       },
       {
-        heading: 'Cómo organizarse para no perder ninguna dosis',
+        heading: 'Qué llevar y qué registrar',
         paragraphs: [
-          'Llevar un registro por escrito (o digital) de cada aplicación con la fecha de la próxima dosis es la forma más simple de no depender de la memoria. Configurar recordatorios con unos días de anticipación permite reservar turno con el veterinario a tiempo.',
+          'Llevá la libreta sanitaria o los comprobantes que tengas, junto con una lista de medicamentos, reacciones previas, viajes recientes y actividades habituales. Si falta el historial, decilo: el veterinario puede decidir qué información necesita antes de recomendar una dosis.',
+          'Después de cada visita, anotá la fecha, el nombre de la vacuna o producto y la fecha de control o próxima aplicación indicada por el profesional. Un recordatorio ayuda a organizar el turno, pero no determina por sí solo qué vacuna o tratamiento corresponde.',
+        ],
+      },
+      {
+        heading: 'Cuándo pedir orientación veterinaria',
+        paragraphs: [
+          'Consultá antes de aplicar una dosis si el animal está enfermo, tuvo una reacción previa, recibe otros tratamientos, tiene una condición de salud o no se conoce su historial. Para una recomendación de viaje o exposición particular, compartí el destino y las fechas con el veterinario.',
+          'Estas pautas sirven para preparar la consulta y ordenar la libreta; no indican vacunas, medicamentos ni dosis para un animal concreto.',
         ],
       },
     ],
-    relatedGuideSlug: 'grooming-e-higiene-para-perros-y-gatos',
+    references: [
+      {
+        label: 'WSAVA, guías de vacunación de perros y gatos 2024 (versión en español)',
+        url: 'https://wsava.org/wp-content/uploads/2024/05/ESP.-J-of-Small-Animal-Practice-2024-Squires-2024-guidelines-for-the-vaccination-of-dogs-and-cats-compiled-by-the.pdf',
+      },
+      {
+        label: 'WSAVA, recomendaciones regionales de vacunación para América Latina (versión en español)',
+        url: 'https://wsava.org/wp-content/uploads/2020/10/Recommendations-on-vaccination-for-Latin-American-small-animal-practitioners-Spanish.pdf',
+      },
+      {
+        label: 'CAPC, lineamientos generales para perros y gatos',
+        url: 'https://capcvet.org/guidelines/general-guidelines/',
+      },
+    ],
   },
   {
     slug: 'como-ensenar-a-tu-perro-a-sentarse',
@@ -783,8 +811,8 @@ export const PET_GUIDES: PetGuide[] = [
     publishedAt: '2026-09-28',
     publicationStatus: 'pending_veterinary_review',
     summary:
-      'El atragantamiento con objetos como juguetes, huesos o piedras es una emergencia hogareña que exige actuar rápido. Guía paso a paso para identificarlo, actuar con seguridad y saber qué nunca hay que hacer.',
-    readingTime: '5 min',
+      'Cómo reconocer señales de atragantamiento, buscar atención veterinaria urgente y evitar maniobras improvisadas. Las instrucciones de primeros auxilios no reemplazan la evaluación profesional.',
+    readingTime: '2 min',
     coverImage: {
       src: '/guides/que-hacer-si-tu-mascota-se-atraganta/portada.jpg',
       alt: 'Perro llevándose la pata a la boca, una señal típica de atragantamiento',
@@ -793,80 +821,32 @@ export const PET_GUIDES: PetGuide[] = [
       {
         heading: 'Señales de alerta: cómo identificar un atragantamiento',
         paragraphs: [
-          'El atragantamiento por objetos extraños (juguetes pequeños, huesos, piedras o trozos de madera) es una de las emergencias hogareñas más estresantes para cualquier tutor. Saber identificar el problema y actuar rápido, sin perder la calma, puede marcar la diferencia mientras buscás asistencia profesional.',
-          'Las mascotas entran en pánico rápidamente cuando su vía aérea se obstruye. Estas son las señales más frecuentes a las que hay que prestar atención:',
-          'Gestos desesperados: la mascota se lleva las patas a la boca o al cuello de forma repetitiva.',
-          'Tos o arcadas violentas: intenta vomitar o expulsar algo sin éxito.',
-          'Dificultad respiratoria: hace ruidos extraños, silbidos al inhalar o muestra asfixia evidente.',
-          'Cambio de color: las encías y la lengua comienzan a tornarse de un color azulado, grisáceo o morado (cianosis) por la falta de oxígeno.',
-          'Pérdida de conciencia: en casos graves, el animal se desploma o se desmaya debido a la hipoxia.',
+          'El atragantamiento puede dificultar la respiración y es una urgencia. La American Veterinary Medical Association (AVMA) enumera como señales posibles la dificultad para respirar, llevarse las patas a la boca, sonidos al respirar o toser y labios o lengua azulados.',
+          'Si tu mascota no puede respirar con normalidad, se desploma o presenta encías o lengua azuladas, contactá de inmediato una guardia veterinaria y organizá el traslado. Si podés, llamá mientras alguien más prepara el viaje; no esperes a que los síntomas desaparezcan.',
         ],
       },
       {
-        heading: 'Paso 1: mantené la calma y revisá la boca',
+        heading: 'Qué hacer de inmediato',
         paragraphs: [
-          'Sujetá firmemente a la mascota para evitar que se mueva bruscamente. Cuidado: un animal asustado puede morder por puro instinto de supervivencia.',
-          'Abrí el hocico con cuidado y mirá el interior, ayudándote con una linterna si es necesario.',
-          'Solo si el objeto es visible y fácil de agarrar, intentá retirarlo con los dedos en forma de gancho (desde atrás hacia adelante) o con unas pinzas. Si no se ve claramente, es mejor no introducir nada en la garganta.',
-        ],
-        image: {
-          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-1-revisar-la-boca.jpg',
-          alt: 'Persona revisando con una linterna el interior de la boca de un perro',
-        },
-      },
-      {
-        heading: 'Paso 2: la gravedad a tu favor (en perros)',
-        paragraphs: [
-          'Si revisar la boca no resolvió el problema, en perros podés usar la gravedad para ayudar a que el objeto se suelte, según su tamaño.',
-          'Perros pequeños: levantalos suavemente por las patas traseras o los muslos (con la cabeza hacia abajo) y hacé pequeños movimientos o sacudidas suaves para que la gravedad ayude a soltar el objeto.',
-          'Perros grandes: elevá sus patas traseras manteniendo las delanteras apoyadas en el suelo (posición tipo "carretilla") para inclinar el cuerpo hacia adelante. Se pueden dar hasta 5 palmadas firmes entre los omóplatos.',
-          'En gatos no existe una técnica de este tipo con el mismo respaldo veterinario que en perros: no los sostengas boca abajo ni los sacudas. Si tu gato se atraganta, priorizá el traslado inmediato a la veterinaria (ver más abajo).',
-        ],
-        image: {
-          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-2-gravedad-a-favor.jpg',
-          alt: 'Persona elevando las patas traseras de un perro grande en posición de carretilla',
-        },
-      },
-      {
-        heading: 'Paso 3: la maniobra de Heimlich en perros',
-        paragraphs: [
-          'Si lo anterior no da resultado y tu perro sigue sin poder respirar, el siguiente paso son las compresiones abdominales, adaptadas según su tamaño.',
-          'Perros medianos y grandes: parate detrás de tu perro, rodeá su abdomen con ambas manos justo debajo de las últimas costillas y aplicá compresiones firmes y rápidas hacia arriba y adelante, como dibujando un signo de interrogación. Repetí hasta 5 veces.',
-          'Perros pequeños: sostenelo con la espalda apoyada contra tu pecho o abdomen, y con dos dedos o la palma de la mano aplicá compresiones suaves pero firmes justo detrás de las últimas costillas, hacia adentro y arriba. Repetí hasta 5 veces.',
-          'Revisá la boca después de cada ciclo de compresiones para comprobar si el objeto salió.',
-          'En gatos, por su tamaño y fragilidad, no existe una maniobra validada con el mismo respaldo veterinario que en perros: no la intentes a ciegas. Ante cualquier sospecha de atragantamiento en un gato, mantené la calma, no le fuerces la boca si está consciente, y trasladalo de inmediato a la veterinaria.',
-        ],
-        image: {
-          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/paso-3-maniobra-heimlich.jpg',
-          alt: 'Persona rodeando con ambas manos el abdomen de un perro para aplicar compresiones',
-        },
-      },
-      {
-        heading: 'Qué NO hacer bajo ninguna circunstancia',
-        paragraphs: [
-          'No hagas barridos a ciegas: meter los dedos en la garganta sin ver qué hay adentro suele empujar el objeto más profundo, empeorando la obstrucción.',
-          'No metas pinzas a ciegas: podés causar desgarros severos en el tejido de la tráquea o el esófago.',
-          'No intentes sacar objetos con puntas: si identificás que es un hueso astillado, una aguja o un anzuelo, las maniobras de arrastre pueden perforar los órganos internos. En estos casos, se sugiere el traslado veterinario inmediato.',
+          'La AVMA aconseja mantener la calma y buscar atención veterinaria de inmediato. Si podés hacerlo sin riesgo de mordedura, mirá dentro de la boca; solo intentá retirar un objeto que esté claramente visible y se pueda tomar sin empujarlo más adentro. Si no lo ves, está trabado, es punzante o no podés alcanzarlo con facilidad, no sigas intentando: trasladá al animal.',
         ],
       },
       {
-        heading: 'Seguimiento veterinario después del episodio',
+        heading: 'No improvises maniobras',
         paragraphs: [
-          'Incluso si lográs extraer el objeto con éxito y tu mascota vuelve a respirar con normalidad, se sugiere una visita inmediata al veterinario, por estas razones:',
-          'Lesiones internas: el objeto o la propia fuerza de la maniobra de Heimlich pueden causar hematomas, fisuras o inflamación en las vías respiratorias.',
-          'Hipoxia residual: el profesional debe evaluar los niveles de oxígeno y asegurarse de que no haya fluido atrapado en los pulmones por el esfuerzo (edema pulmonar no cardiogénico).',
+          'No introduzcas los dedos a ciegas ni empujes un objeto hacia la garganta. No apliques sacudidas, palmadas ni compresiones abdominales siguiendo una receta general: la AVMA describe instrucciones distintas según se trate de un gato, un perro pequeño o uno grande. Si una maniobra pudiera ser necesaria, pedí indicaciones en tiempo real a la guardia veterinaria mientras organizás el traslado.',
         ],
-        image: {
-          src: '/guides/que-hacer-si-tu-mascota-se-atraganta/seguimiento-veterinario.jpg',
-          alt: 'Veterinaria revisando el cuello de un perro junto a su dueña en el consultorio',
-        },
+      },
+      {
+        heading: 'La evaluación veterinaria sigue siendo necesaria',
+        paragraphs: [
+          'Aunque el objeto parezca haber salido y la respiración mejore, buscá atención veterinaria inmediata. La AVMA indica que los primeros auxilios deben ir seguidos de atención veterinaria: solo el equipo clínico puede evaluar si hace falta tratamiento adicional.',
+        ],
       },
       {
         heading: 'Sugerencias preventivas para evitar accidentes',
         paragraphs: [
-          'Juguetes adecuados: asegurate de que las pelotas y mordillos correspondan al tamaño de tu mascota; un juguete para un chihuahua puede ser mortal para un ovejero alemán.',
-          'Evitá los huesos cocidos: los huesos de pollo, asado o cerdo se astillan fácilmente al morderse.',
-          'Monitoreo en los paseos: entrená el comando de "soltar" para evitar que tu mascota trague piedras, carozos de frutas o basura de la calle.',
+          'Elegí juguetes y premios adecuados al tamaño de tu mascota y supervisá el juego con objetos que pueda tragar. Si suele levantar cosas del suelo, consultá con un profesional sobre entrenamiento preventivo, como el comando "Soltar".',
         ],
         image: {
           src: '/guides/que-hacer-si-tu-mascota-se-atraganta/prevencion.jpg',
@@ -875,6 +855,12 @@ export const PET_GUIDES: PetGuide[] = [
       },
     ],
     relatedGuideSlug: 'como-ensenar-a-tu-mascota-el-comando-soltar',
+    references: [
+      {
+        label: 'AVMA, First aid tips for pet owners (apartado If your pet is choking)',
+        url: 'https://www.avma.org/resources-tools/pet-owners/emergencycare/first-aid-tips-pet-owners',
+      },
+    ],
   },
   {
     slug: 'como-ensenar-a-tu-mascota-el-comando-soltar',

@@ -13,7 +13,12 @@ const model = vi.hoisted(() => ({
 }));
 vi.mock('../context/AppStateContext', () => ({ useAppState: () => ({
   pets: model.pets, selectedPetId: model.pets[0]?.id ?? null, user: model.user,
-  subscription: { isPremiumUser: false }, setActiveTab: vi.fn(), setSelectedPetId: vi.fn(),
+  subscription: {
+    isPremiumUser: false, accessState: 'guest', activePetSupport: false, activePetId: null,
+    activePetChangedAt: null, needsActivePetSelection: false, activePetCooldownUntil: null,
+    isPetEditable: () => true,
+  },
+  setActiveTab: vi.fn(), setSelectedPetId: vi.fn(),
 }) }));
 vi.mock('../hooks/useChat', () => ({ useChat: () => ({
   messages: [], historyMessages: [], persistenceError: null,
@@ -40,6 +45,7 @@ vi.mock('../hooks/usePetIdentification', () => ({ usePetIdentification: () => ({
 vi.mock('../lib/mobileAds', () => ({ isNativeAndroidApp: () => false }));
 vi.mock('./PetFoodSection', () => ({ PetFoodSection: () => null }));
 vi.mock('./BlogTeaser', () => ({ BlogTeaser: () => null }));
+vi.mock('./ClinicalPdfQuota', () => ({ ClinicalPdfQuota: () => null }));
 
 import { ChatSection } from './ChatSection';
 import { PetsSection } from './PetsSection';

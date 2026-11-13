@@ -1,14 +1,9 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
-import { ExternalLink, ImagePlus, Lock, MapPinned, Send, Stethoscope, X } from 'lucide-react';
+import { ImagePlus, Lock, MapPinned, Send, Stethoscope, X } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
+import { SuggestedProductCard } from './SuggestedProductCard';
 import { useAppState } from '../context/AppStateContext';
 import { isNativeAndroidApp, showInterstitialForNonPremium } from '../lib/mobileAds';
-
-const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-  maximumFractionDigits: 0,
-});
 
 const SPECIES_EMOJI: Record<string, string> = { dog: '🐕', cat: '🐈', other: '🐾' };
 
@@ -273,29 +268,10 @@ export function ChatSection() {
                       </button>
                     )}
                     {m.role === 'assistant' && suggestedProductByMessageId[m.id] && (
-                      <a
-                        href={suggestedProductByMessageId[m.id].link}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <SuggestedProductCard
+                        product={suggestedProductByMessageId[m.id]}
                         className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-3 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100"
-                      >
-                        {suggestedProductByMessageId[m.id].thumbnail && (
-                          <img
-                            src={suggestedProductByMessageId[m.id].thumbnail ?? ''}
-                            alt={suggestedProductByMessageId[m.id].title}
-                            className="h-12 w-12 shrink-0 rounded-xl object-cover bg-white"
-                            loading="lazy"
-                          />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Producto recomendado</p>
-                          <p className="truncate text-sm font-semibold text-slate-800">{suggestedProductByMessageId[m.id].title}</p>
-                          {suggestedProductByMessageId[m.id].price != null && (
-                            <p className="text-xs font-bold text-slate-600">{PRICE_FORMATTER.format(suggestedProductByMessageId[m.id].price as number)}</p>
-                          )}
-                        </div>
-                        <ExternalLink size={16} className="shrink-0 text-emerald-600" />
-                      </a>
+                      />
                     )}
                     {m.role === 'assistant' && vetVisitRecommendedByMessageId[m.id] && (
                       <button

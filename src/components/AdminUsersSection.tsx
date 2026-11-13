@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { BadgePercent, Clapperboard, Gift, Inbox, Megaphone, Newspaper, Palmtree, Shield, Tag, UserCog } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AdminBeneficiosSection } from './AdminBeneficiosSection';
+import { AdminShopRadarSection } from './AdminShopRadarSection';
 import { AdminBlogSection } from './AdminBlogSection';
 import { AdminInboxSection } from './AdminInboxSection';
 import { AdminNewsCampaignsSection } from './AdminNewsCampaignsSection';
@@ -35,7 +36,7 @@ const ACCESS_OPTIONS: UserAccessLevel[] = ['guest', 'free', 'premium'];
 
 export function AdminUsersSection() {
   const { adminUsers, setAdminUsers, user } = useAppState();
-  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'buzon' | 'novedades' | 'chapitas' | 'codigos' | 'blog' | 'lugares' | 'publicaciones'>('usuarios');
+  const [adminTab, setAdminTab] = useState<'usuarios' | 'beneficios' | 'radar' | 'buzon' | 'novedades' | 'chapitas' | 'codigos' | 'blog' | 'lugares' | 'publicaciones'>('usuarios');
   const [loading, setLoading] = useState(false);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
@@ -196,7 +197,7 @@ export function AdminUsersSection() {
       </div>
 
       {/* Tabs admin */}
-      <div className="flex gap-2 rounded-2xl bg-slate-100 p-1">
+      <div className="flex flex-wrap gap-2 rounded-2xl bg-slate-100 p-1">
         <button type="button" onClick={() => setAdminTab('usuarios')}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
             adminTab === 'usuarios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
@@ -209,6 +210,8 @@ export function AdminUsersSection() {
           }`}>
           <Gift size={15} /> Beneficios ML
         </button>
+        <button type="button" onClick={() => setAdminTab('radar')}
+          className={`rounded-xl px-3 py-2 text-sm font-semibold ${adminTab==='radar' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Radar</button>
         <button type="button" onClick={() => setAdminTab('buzon')}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition ${
             adminTab === 'buzon' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
@@ -257,6 +260,8 @@ export function AdminUsersSection() {
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminBeneficiosSection />
         </div>
+      ) : adminTab === 'radar' ? (
+        <div className="rounded-3xl bg-white p-4 shadow-sm"><AdminShopRadarSection /></div>
       ) : adminTab === 'buzon' ? (
         <div className="rounded-3xl bg-white p-4 shadow-sm">
           <AdminInboxSection />

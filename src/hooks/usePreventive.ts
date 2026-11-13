@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAppState, useSessionGuard } from '../context/AppStateContext';
+import { assertPetWritable } from '../lib/petAccess';
 import {
   createClinicalEntry,
   createPreventiveTask,
@@ -185,6 +186,7 @@ export function usePreventive() {
     setPreventiveTasks,
     clinicalEntries,
     setClinicalEntries,
+    subscription,
     user,
   } = useAppState();
 
@@ -205,6 +207,7 @@ export function usePreventive() {
   const addPreventiveTask = useCallback(
     async (data: PreventiveFormData) => {
       assertCurrentSession();
+      assertPetWritable(subscription, data.petId);
       const fingerprint = `${user?.id}:${buildCreateFingerprint(data)}`;
       const now = Date.now();
 
@@ -402,7 +405,7 @@ export function usePreventive() {
         inFlightCreatesRef.current.delete(fingerprint);
       }
     },
-    [setClinicalEntries, setPreventiveTasks, user, assertCurrentSession],
+    [setClinicalEntries, setPreventiveTasks, subscription, user, assertCurrentSession],
   );
 
   const toggleTask = useCallback(
@@ -411,6 +414,7 @@ export function usePreventive() {
       if (!current) {
         return;
       }
+      assertPetWritable(subscription, current.petId);
 
       const nextCompleted = !current.completed;
       const nextCompletedAt = nextCompleted ? new Date().toISOString() : undefined;
@@ -439,7 +443,7 @@ export function usePreventive() {
         preventiveTasks.map((item) => (item.id === taskId ? task : item)),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
+    [preventiveTasks, setPreventiveTasks, subscription, user, assertCurrentSession],
   );
 
   const postponeTask = useCallback(
@@ -448,6 +452,7 @@ export function usePreventive() {
       if (!current) {
         return;
       }
+      assertPetWritable(subscription, current.petId);
 
       const nextDateTime = parseTaskDateTime(current);
       nextDateTime.setMinutes(nextDateTime.getMinutes() + minutes);
@@ -479,7 +484,7 @@ export function usePreventive() {
         )),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
+    [preventiveTasks, setPreventiveTasks, subscription, user, assertCurrentSession],
   );
 
   // A diferencia de postponeTask (desplaza N minutos desde el horario actual),
@@ -490,6 +495,7 @@ export function usePreventive() {
       if (!current) {
         return;
       }
+      assertPetWritable(subscription, current.petId);
 
       if (!user || user.isGuest) {
         setPreventiveTasks(
@@ -516,7 +522,7 @@ export function usePreventive() {
         )),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
+    [preventiveTasks, setPreventiveTasks, subscription, user, assertCurrentSession],
   );
 
   const discardTaskReminder = useCallback(
@@ -525,6 +531,7 @@ export function usePreventive() {
       if (!current) {
         return;
       }
+      assertPetWritable(subscription, current.petId);
 
       if (!user || user.isGuest) {
         setPreventiveTasks(
@@ -543,7 +550,7 @@ export function usePreventive() {
         preventiveTasks.filter((task) => task.id !== taskId),
       );
     },
-    [preventiveTasks, setPreventiveTasks, user, assertCurrentSession],
+    [preventiveTasks, setPreventiveTasks, subscription, user, assertCurrentSession],
   );
 
   const pendingTasks = useMemo(

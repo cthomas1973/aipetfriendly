@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { BookOpen, Newspaper, ShoppingBag } from 'lucide-react';
 import { getPetGuideBySlug } from '../data/petGuides';
 import { fetchBeneficioProductoById, fetchBlogPostBySlug } from '../lib/supabase';
-import { buildProductAffiliateLink, getMattTool } from '../lib/affiliateLink';
-import type { BeneficioProducto, BlogPost } from '../types';
+import { fetchProductAffiliateLink, validateAffiliateLink } from '../lib/affiliateLink';
+import type { BlogPost, PublicBeneficioProducto } from '../types';
 
 interface RelatedLinksBlockProps {
   relatedGuideSlug?: string;
@@ -26,8 +26,13 @@ export function RelatedLinksBlock({
   const relatedGuide = relatedGuideSlug ? getPetGuideBySlug(relatedGuideSlug, isAdmin) : undefined;
 
   const [relatedBlogPost, setRelatedBlogPost] = useState<BlogPost | null>(null);
-  const [relatedProduct, setRelatedProduct] = useState<BeneficioProducto | null>(null);
-  const [productLink, setProductLink] = useState('');
+  const [productResult, setProductResult] = useState<{
+    productId: string;
+    product: PublicBeneficioProducto | null;
+    link: string | null;
+  } | null>(null);
+  const relatedProduct = productResult?.productId === relatedProductId ? productResult?.product : null;
+  const productLink = relatedProduct ? validateAffiliateLink(productResult?.link) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -50,20 +55,17 @@ export function RelatedLinksBlock({
   useEffect(() => {
     let cancelled = false;
     if (!relatedProductId) {
-      setRelatedProduct(null);
-      setProductLink('');
+      setProductResult(null);
       return;
     }
-    Promise.all([fetchBeneficioProductoById(relatedProductId), getMattTool()])
-      .then(([product, mattTool]) => {
+    Promise.all([fetchBeneficioProductoById(relatedProductId), fetchProductAffiliateLink(relatedProductId)])
+      .then(([product, link]) => {
         if (cancelled) return;
-        setRelatedProduct(product);
-        setProductLink(product ? buildProductAffiliateLink(product.permalink, mattTool) : '');
+        setProductResult({ productId: relatedProductId, product, link });
       })
       .catch(() => {
         if (!cancelled) {
-          setRelatedProduct(null);
-          setProductLink('');
+          setProductResult(null);
         }
       });
     return () => {
@@ -71,9 +73,34 @@ export function RelatedLinksBlock({
     };
   }, [relatedProductId]);
 
-  if (!relatedGuide && !relatedBlogPost && !(relatedProduct && productLink)) {
+  if (!relatedGuide && !relatedBlogPost && !relatedProduct) {
     return null;
   }
+
+  const productCardContent = relatedProduct && (
+    <div className="flex items-center gap-3">
+      {relatedProduct.thumbnail ? (
+        <img
+          src={relatedProduct.thumbnail}
+          alt={relatedProduct.title}
+          className="h-10 w-10 flex-shrink-0 rounded-full bg-white object-contain"
+        />
+      ) : (
+        <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-600 text-white">
+          <ShoppingBag size={18} />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-semibold uppercase tracking-wide text-amber-700">
+          Artículo sugerido en promoción
+        </span>
+        <span className="block font-bold text-slate-900">{relatedProduct.title}</span>
+        {!productLink && (
+          <span className="mt-1 block text-xs text-slate-600">Enlace de compra temporalmente no disponible</span>
+        )}
+      </span>
+    </div>
+  );
 
   return (
     <div className="space-y-3">
@@ -111,32 +138,20 @@ export function RelatedLinksBlock({
         </a>
       )}
 
-      {relatedProduct && productLink && (
+      {relatedProduct && productCardContent && (productLink ? (
         <a
           href={productLink}
           target="_blank"
-          rel="noopener noreferrer sponsored"
-          className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 transition hover:bg-amber-100"
+          rel="sponsored nofollow noopener noreferrer"
+          className="block rounded-2xl border border-amber-200 bg-amber-50 p-4 transition hover:bg-amber-100"
         >
-          {relatedProduct.thumbnail ? (
-            <img
-              src={relatedProduct.thumbnail}
-              alt={relatedProduct.title}
-              className="h-10 w-10 flex-shrink-0 rounded-full bg-white object-contain"
-            />
-          ) : (
-            <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-600 text-white">
-              <ShoppingBag size={18} />
-            </span>
-          )}
-          <span>
-            <span className="block text-xs font-semibold uppercase tracking-wide text-amber-700">
-              Artículo sugerido en promoción
-            </span>
-            <span className="block font-bold text-slate-900">{relatedProduct.title}</span>
-          </span>
+          {productCardContent}
         </a>
-      )}
+      ) : (
+        <article aria-disabled="true" className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          {productCardContent}
+        </article>
+      ))}
     </div>
   );
 }

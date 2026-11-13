@@ -3,6 +3,15 @@
 // authorization_code para obtener access_token y consultar productos reales.
 // Sin refresh_token, sirve el catalogo curado con links de listado ML.
 
+import {
+  buildAffiliateSearchUrl,
+  buildAffiliateUrl,
+  resolveAffiliateTracking,
+} from '../supabase/functions/_shared/affiliateLink.mjs';
+import { loadShopCatalog } from './_lib/shopCatalog.mjs';
+import { getMercadoLibreToken, ShopProviderError } from './_lib/mercadoLibre.mjs';
+import { publicShopResearch } from '../supabase/functions/_shared/shopResearchRecord.mjs';
+
 const GROUP_KEYS = new Set(['alimentos', 'accesorios', 'higiene', 'descanso', 'salud', 'tecnologia']);
 
 // Catalogo curado: 10 productos por grupo con search terms alineados al titulo.
@@ -72,53 +81,35 @@ function normalizeGroup(raw) {
   return GROUP_KEYS.has(raw) ? raw : 'alimentos';
 }
 
-function getMattToolId() {
-  const template = process.env.ML_AFFILIATE_TEMPLATE || '';
-  if (template) {
-    try {
-      const u = new URL(template);
-      const v = u.searchParams.get('matt_tool');
-      if (v) return v;
-    } catch {}
-    const m = template.match(/[?&]matt_tool=([^&\s]+)/);
-    if (m) return m[1];
-  }
-  return process.env.ML_AFFILIATE_ID || '';
+function getSupabaseAnonKey() {
+  return process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+}
+
+function getAffiliateTracking() {
+  return resolveAffiliateTracking({
+    template: process.env.ML_AFFILIATE_TEMPLATE,
+    id: process.env.ML_AFFILIATE_ID,
+  });
+}
+
+function buildTrackedPermalink(permalink, tracking) {
+  if (!tracking.ok) return null;
+  const result = buildAffiliateUrl(permalink, tracking.value);
+  return result.ok ? result.url : null;
+}
+
+function buildTrackedSearch(search, tracking) {
+  if (!tracking.ok) return null;
+  const result = buildAffiliateSearchUrl(search, tracking.value);
+  return result.ok ? result.url : null;
 }
 
 // ── Token via refresh_token ───────────────────────────────────────────────────
-let _cachedToken = { token: '', expiresAt: 0 };
-
 async function getFreshAccessToken() {
-  const refreshToken = process.env.ML_REFRESH_TOKEN || '';
-  const appId        = process.env.ML_APP_ID        || '';
-  const appSecret    = process.env.ML_APP_SECRET     || '';
-
-  if (!refreshToken || !appId || !appSecret) return '';
-
-  if (_cachedToken.token && Date.now() < _cachedToken.expiresAt - 60_000) {
-    return _cachedToken.token;
-  }
-
   try {
-    const res = await fetch('https://api.mercadolibre.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: new URLSearchParams({
-        grant_type:    'refresh_token',
-        client_id:     appId,
-        client_secret: appSecret,
-        refresh_token: refreshToken,
-      }).toString(),
-    });
-    if (!res.ok) return '';
-    const data = await res.json();
-    _cachedToken = {
-      token: String(data.access_token || ''),
-      expiresAt: Date.now() + Number(data.expires_in || 21600) * 1000,
-    };
-    return _cachedToken.token;
-  } catch {
+    return await getMercadoLibreToken();
+  } catch (error) {
+    console.error('Consulta ML no disponible:', error instanceof ShopProviderError ? error.code : 'internal_error');
     return '';
   }
 }
@@ -152,11 +143,9 @@ async function fetchMlProducts(grupo, sortParam, accessToken) {
   return Array.isArray(data.results) && data.results.length > 0 ? data.results : null;
 }
 
-function mapMlProduct(p, mattTool) {
+function mapMlProduct(p, tracking) {
   const permalink = String(p.permalink || '');
-  const link = permalink
-    ? permalink + (permalink.includes('?') ? '&' : '?') + (mattTool ? `matt_tool=${mattTool}` : '')
-    : '';
+  const link = buildTrackedPermalink(permalink, tracking);
   const shipping = p.shipping || {};
   const logistic = String(shipping.logistic_type || '').toLowerCase();
   const price = Number(p.price || 0) || null;
@@ -175,21 +164,6 @@ function mapMlProduct(p, mattTool) {
   };
 }
 
-function buildAffiliateLink(search) {
-  const mattToolId = getMattToolId();
-  const slug = String(search || '').trim().replace(/\s+/g, '-').toLowerCase();
-  const base = `https://listado.mercadolibre.com.ar/${encodeURIComponent(slug)}`;
-  return mattToolId ? `${base}?matt_tool=${encodeURIComponent(mattToolId)}` : base;
-}
-
-function buildAffiliateLinkFromPermalink(permalink) {
-  const mattToolId = getMattToolId();
-  if (!permalink) return '';
-  return mattToolId
-    ? `${permalink}${permalink.includes('?') ? '&' : '?'}matt_tool=${encodeURIComponent(mattToolId)}`
-    : permalink;
-}
-
 function applyFiltersAndSort(items, shipping, delivery, sort) {
   let filtered = shipping ? items.filter(i => i.free_shipping) : [...items];
   if (delivery) filtered = filtered.filter(i => i.fast_delivery);
@@ -199,20 +173,29 @@ function applyFiltersAndSort(items, shipping, delivery, sort) {
 }
 
 // ── Supabase REST API (lectura de productos guardados por el cron) ─────────────
-async function fetchFromSupabase(grupo, shipping, delivery, sort) {
+const PET_TYPES = new Set(['perro', 'gato', 'otro']);
+const LIFE_STAGES = new Set(['cachorro', 'adulto', 'senior', 'todas']);
+const SIZE_CATEGORIES = new Set(['pequeño', 'mediano', 'grande', 'todos']);
+
+function parseListQuery(value, allowedValues) {
+  const raw = firstQuery(value, '');
+  return [...new Set(raw.split(',').map(item => item.trim()).filter(item => allowedValues.has(item)))];
+}
+
+async function fetchFromSupabase(grupo, shipping, delivery, sort, petTypes, lifeStages, sizeCategories) {
   const supabaseUrl = process.env.SUPABASE_URL || '';
-  const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
+  const supabaseKey = getSupabaseAnonKey();
   if (!supabaseUrl || !supabaseKey) return null;
 
   // Columnas necesarias, ordenadas por updated_at desc (mas recientes primero)
   const params = new URLSearchParams({
-    select: 'mla_id,title,price,thumbnail,permalink,grupo,pet_types,free_shipping,fast_delivery',
+    select: 'id,mla_id,title,price,thumbnail,permalink,grupo,pet_types,life_stages,size_categories,free_shipping,fast_delivery',
     grupo:  `eq.${grupo}`,
     active: 'eq.true',
+    approval_status: 'eq.approved',
     order:  'updated_at.desc',
     limit:  '30',
   });
-
   const res = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?${params.toString()}`, {
     headers: {
       apikey: supabaseKey,
@@ -223,23 +206,97 @@ async function fetchFromSupabase(grupo, shipping, delivery, sort) {
 
   if (!res.ok) return null;
   const rows = await res.json();
-  if (!Array.isArray(rows) || rows.length === 0) return null;
+  if (!Array.isArray(rows)) throw new Error('Catalogo invalido');
+  const filteredByCompatibility = petTypes.length || lifeStages.length || sizeCategories.length;
+  if (!rows.length) return filteredByCompatibility ? { products: [] } : null;
+  let candidates = rows;
+  if (filteredByCompatibility) {
+    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/get_shop_compatibility`, {
+      method:'POST',
+      headers: { apikey:supabaseKey, Authorization:'Bearer ' + supabaseKey, 'Content-Type':'application/json' },
+      body: JSON.stringify({ p_products:rows.map(p=>p.id) }),
+    });
+    if (!response.ok) throw new Error('Compatibilidad no disponible');
+    const data = await response.json();
+    if (!Array.isArray(data) || !data.every(row => typeof row?.product_id === 'string'
+      && publicShopResearch({ compatibility_dimensions:row.dimensions }).verifiedDimensions)) throw new Error('Compatibilidad invalida');
+    const dimensions = new Map(data.map(row => [row.product_id, row.dimensions]));
+    candidates = rows.filter(p => {
+      const d = publicShopResearch({ compatibility_dimensions:dimensions.get(p.id) }).verifiedDimensions;
+      return d && p.grupo !== 'salud'
+        && (!petTypes.length || petTypes.some(v => d.species.includes(v)))
+        && (!lifeStages.length || d.stage.includes('todas') || lifeStages.some(v => d.stage.includes(v)))
+        && (!sizeCategories.length || d.size.includes('todos') || sizeCategories.some(v => d.size.includes(v)));
+    });
+  }
 
-  const mattTool = getMattToolId();
-  const mapped = rows.map(p => ({
+  const tracking = getAffiliateTracking();
+  const mapped = candidates.map(p => ({
     id:             p.mla_id,
     title:          String(p.title || ''),
     price:          p.price ?? null,
     original_price: null,
     discount:       0,
     thumbnail:      String(p.thumbnail || ''),
-    link:           buildAffiliateLinkFromPermalink(p.permalink),
+    link:           buildTrackedPermalink(p.permalink, tracking),
     free_shipping:  Boolean(p.free_shipping),
     fast_delivery:  Boolean(p.fast_delivery),
     state:          '',
   }));
 
-  return { products: applyFiltersAndSort(mapped, shipping, delivery, sort).slice(0, 10), mattTool };
+  return { products: applyFiltersAndSort(mapped, shipping, delivery, sort).slice(0, 10) };
+}
+
+async function fetchActiveProductById(productId) {
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  const supabaseKey = getSupabaseAnonKey();
+  if (!supabaseUrl || !supabaseKey) return null;
+
+  const params = new URLSearchParams({
+    select: 'id,title,thumbnail,permalink',
+    id: `eq.${productId}`,
+    active: 'eq.true',
+    approval_status: 'eq.approved',
+    limit: '1',
+  });
+  const response = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?${params.toString()}`, {
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!response.ok) return null;
+  const rows = await response.json();
+  return Array.isArray(rows) ? rows[0] ?? null : null;
+}
+
+async function fetchAffiliateLinksByProductIds(productIds, tracking) {
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  const supabaseKey = getSupabaseAnonKey();
+  if (!supabaseUrl || !supabaseKey) return null;
+
+  const params = new URLSearchParams({
+    select: 'id,permalink',
+    id: `in.(${productIds.join(',')})`,
+    active: 'eq.true',
+    approval_status: 'eq.approved',
+  });
+  const response = await fetch(`${supabaseUrl}/rest/v1/beneficios_productos?${params.toString()}`, {
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!response.ok) return null;
+
+  const rows = await response.json();
+  if (!Array.isArray(rows)) return null;
+  return rows.map(product => ({
+    productId: product.id,
+    link: buildTrackedPermalink(product.permalink, tracking),
+  }));
 }
 
 export default async function handler(req, res) {
@@ -247,21 +304,101 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  res.setHeader('Cache-Control', 'no-store');
+  if (firstQuery(req.query.shop, '') === 'true') {
+    try {
+      const catalog = await loadShopCatalog(CATALOG);
+      return res.status(200).json({ ...catalog, affiliateAvailable: catalog.products.some(p => p.link) });
+    } catch {
+      console.error('No se pudo preparar el catalogo de tienda.');
+      return res.status(503).json({ error: 'No se pudo cargar la tienda.' });
+    }
+  }
+
   const grupo    = normalizeGroup(firstQuery(req.query.grupo, 'alimentos'));
   const sort     = firstQuery(req.query.sort, '');
   const shipping = toBool(firstQuery(req.query.shipping, 'false'));
   const delivery = toBool(firstQuery(req.query.delivery,  'false'));
-  const mattTool = getMattToolId();
+  const tracking = getAffiliateTracking();
+
+  const productId = firstQuery(req.query.productId, '');
+  if (productId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId)) {
+      return res.status(400).json({ error: 'Invalid product id' });
+    }
+    try {
+      const product = await fetchActiveProductById(productId);
+      if (!product) return res.status(404).json({ affiliateAvailable: false, link: null });
+      const link = buildTrackedPermalink(product.permalink, tracking);
+      return res.status(200).json({
+        productId: product.id,
+        affiliateAvailable: Boolean(link),
+        link,
+      });
+    } catch {
+      return res.status(200).json({ affiliateAvailable: false, link: null });
+    }
+  }
+
+  const productIdsRaw = firstQuery(req.query.productIds, '');
+  if (productIdsRaw) {
+    const productIds = [...new Set(productIdsRaw.split(',').map(id => id.trim()))];
+    if (
+      productIds.length === 0
+      || productIds.length > 30
+      || productIds.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
+    ) {
+      return res.status(400).json({ error: 'Invalid product ids' });
+    }
+    try {
+      const links = await fetchAffiliateLinksByProductIds(productIds, tracking);
+      if (!links) return res.status(200).json({ affiliateAvailable: false, links: [] });
+      return res.status(200).json({
+        affiliateAvailable: links.some(item => Boolean(item.link)),
+        links,
+      });
+    } catch {
+      return res.status(200).json({ affiliateAvailable: false, links: [] });
+    }
+  }
+
+  const petTypes = parseListQuery(req.query.petTypes, PET_TYPES);
+  const lifeStages = parseListQuery(req.query.lifeStages, LIFE_STAGES);
+  const sizeCategories = parseListQuery(req.query.sizeCategories, SIZE_CATEGORIES);
+  const compatibilityFilter = Boolean(petTypes.length || lifeStages.length || sizeCategories.length);
+  if ((req.query.petTypes != null && !petTypes.length) || (req.query.lifeStages != null && !lifeStages.length)
+    || (req.query.sizeCategories != null && !sizeCategories.length)) {
+    return res.status(400).json({ error:'Filtro de compatibilidad invalido.' });
+  }
 
   // ── 1. Supabase (productos reales llenados por el cron diario) ─────────────
   try {
-    const supaResult = await fetchFromSupabase(grupo, shipping, delivery, sort);
-    if (supaResult && supaResult.products.length > 0) {
+    const supaResult = await fetchFromSupabase(
+      grupo,
+      shipping,
+      delivery,
+      sort,
+      petTypes,
+      lifeStages,
+      sizeCategories,
+    );
+    if (supaResult && (supaResult.products.length > 0 || compatibilityFilter)) {
       res.setHeader('Cache-Control', 'no-store');
-      return res.status(200).json({ ...supaResult, source: 'supabase' });
+      return res.status(200).json({
+        ...supaResult,
+        affiliateAvailable: supaResult.products.some(product => Boolean(product.link)),
+        source: 'supabase',
+      });
     }
   } catch {
-    // cae al catalogo estatico
+    if (compatibilityFilter) {
+      console.error('Beneficios: no se pudo verificar compatibilidad.');
+      return res.status(503).json({ error:'No se pudo verificar compatibilidad.' });
+    }
+    console.error('Beneficios: catalogo remoto no disponible.');
+  }
+  if (compatibilityFilter) {
+    return res.status(503).json({ error:'No se pudo verificar compatibilidad.' });
   }
 
   // ── 2. Intentar ML API con refresh_token (si Supabase vacio) ─────────────
@@ -274,14 +411,17 @@ export default async function handler(req, res) {
 
       if (results) {
         const products = results
-          .map(p => mapMlProduct(p, mattTool))
-          .filter(p => p.link)
+          .map(p => mapMlProduct(p, tracking))
           .filter(p => !shipping || p.free_shipping)
           .filter(p => !delivery  || p.fast_delivery)
           .slice(0, 10);
 
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(200).json({ products, mattTool, source: 'api' });
+        return res.status(200).json({
+          products,
+          affiliateAvailable: products.some(product => Boolean(product.link)),
+          source: 'api',
+        });
       }
     } catch {
       // cae al catalogo estatico
@@ -297,7 +437,7 @@ export default async function handler(req, res) {
     original_price: null,
     discount:       0,
     thumbnail:      p.thumbnail,
-    link:           buildAffiliateLink(p.search),
+    link:           buildTrackedSearch(p.search, tracking),
     free_shipping:  p.free_shipping,
     fast_delivery:  p.fast_delivery,
     state:          p.state,
@@ -305,5 +445,9 @@ export default async function handler(req, res) {
 
   const filtered = applyFiltersAndSort(products, shipping, delivery, sort).slice(0, 10);
   res.setHeader('Cache-Control', 'no-store');
-  return res.status(200).json({ products: filtered, mattTool, source: 'static' });
+  return res.status(200).json({
+    products: filtered,
+    affiliateAvailable: filtered.some(product => Boolean(product.link)),
+    source: 'static',
+  });
 }

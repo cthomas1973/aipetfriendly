@@ -48,7 +48,7 @@ const PET_TYPE_FILTERS: Array<{ value: PetGuidePetType | 'todas'; label: string 
 ];
 
 const SITE_DESCRIPTION_DEFAULT =
-  'AiPetFriendly: consultorio veterinario con IA, agenda de vacunas y desparasitaciones, historial clinico y mapa de veterinarias cercanas. Empeza gratis.';
+  'AiPetFriendly: asistente IA y herramientas para organizar vacunas, cuidados, historial clinico y veterinarias cercanas.';
 
 function GuidesList() {
   const { user } = useAppState();
@@ -279,6 +279,21 @@ function GuideDetail({ slug }: { slug: string }) {
           </div>
         ))}
       </article>
+
+      {guide.references && guide.references.length > 0 && (
+        <aside className="space-y-2 border-t border-slate-200 pt-4" aria-labelledby="guide-references-heading">
+          <h2 id="guide-references-heading" className="text-sm font-bold text-slate-800">Fuentes consultadas</h2>
+          <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+            {guide.references.map((reference) => (
+              <li key={reference.url}>
+                <a href={reference.url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline">
+                  {reference.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
 
       <RelatedLinksBlock
         relatedGuideSlug={guide.relatedGuideSlug}

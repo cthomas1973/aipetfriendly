@@ -1,0 +1,7 @@
+project_id = "AiPetFriendly"
+
+[functions.send-clinical-pdf]
+verify_jwt = true
+
+[functions.pet-ai-chat]
+verify_jwt = true

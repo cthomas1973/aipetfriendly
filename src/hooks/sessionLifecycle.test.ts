@@ -137,7 +137,13 @@ beforeEach(() => {
   runtime.state = {
     user: null, loading: false, pets: [], selectedPetId: null, activeTab: 'pets', aiDailyUsage: 0,
     clinicalEntries: [], preventiveTasks: [], chatMessages: [], adminUsers: [],
-    subscription: { isPremiumUser: false, isSubscribed: false, canAddPet: true, canUseAI: true, freePetLimit: 1, freeAiDailyLimit: 5 },
+    subscription: {
+      isPremiumUser: false, accessState: 'free', isSubscribed: false, canAddPet: true, canUseAI: true,
+      freePetLimit: 1, freeAiDailyLimit: 5,
+      activePetId: null, activePetChangedAt: null, activePetSupport: false,
+      needsActivePetSelection: false, activePetCooldownUntil: null,
+      isPetEditable: () => true,
+    },
     setUser: vi.fn(value => { runtime.state.user = value; }),
     setPets: vi.fn(value => { runtime.state.pets = value; }),
     setClinicalEntries: vi.fn(value => { runtime.state.clinicalEntries = value; }),

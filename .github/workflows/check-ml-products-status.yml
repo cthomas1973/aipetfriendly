@@ -21,10 +21,12 @@ on:
   schedule:
     # 07:00 UTC todos los dias (4am Argentina)
     - cron: '0 7 * * *'
+    - cron: '0 1,13,19 * * *'
   workflow_dispatch:
 
 jobs:
   check-status:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -45,3 +47,25 @@ jobs:
           RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM:            ${{ secrets.EMAIL_FROM }}
           ADMIN_NOTIFICATION_EMAIL: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+
+  update-shop-prices:
+    if: vars.SHOP_PRICE_TRACKING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Actualizar precios oficiales de tienda
+        run: node scripts/update-shop-prices.mjs
+        env:
+          SHOP_PRICE_TRACKING_ENABLED: 'true'
+          SHOP_PRICE_MAX_BATCHES: ${{ vars.SHOP_PRICE_MAX_BATCHES }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ML_APP_ID: ${{ secrets.ML_APP_ID }}
+          ML_APP_SECRET: ${{ secrets.ML_APP_SECRET }}
+          ML_REFRESH_TOKEN: ${{ secrets.ML_REFRESH_TOKEN }}

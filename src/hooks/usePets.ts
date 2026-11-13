@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import { useAppState, useSessionGuard } from '../context/AppStateContext';
-import { createPet, deletePet, updatePetRecord } from '../lib/supabase';
+import { createPet, deletePet, fetchUserProfile, updatePetRecord, updateUserActivePet } from '../lib/supabase';
+import {
+  PET_ACCESS_MESSAGES,
+  isRecoveryOnlyPetUpdate,
+} from '../lib/petAccess';
 import type { Pet, PetFormData } from '../types';
 
 export function usePets() {
@@ -11,6 +15,7 @@ export function usePets() {
     user,
     setPets,
     setSelectedPetId,
+    setUser,
   } = useAppState();
   const assertCurrentSession = useSessionGuard(user?.id);
 
@@ -90,8 +95,14 @@ export function usePets() {
       if (selectedPetId === petId) {
         setSelectedPetId(nextPets[0]?.id ?? null);
       }
+      // Si se elimino la mascota activa, el servidor (067) deja active_pet_id
+      // en null y resetea el cooldown: reflejarlo localmente para permitir
+      // elegir otra de inmediato.
+      if (user && !user.isGuest && subscription.activePetId === petId) {
+        setUser({ ...user, activePetId: null, activePetChangedAt: null });
+      }
     },
-    [pets, selectedPetId, setPets, setSelectedPetId, user?.isGuest, assertCurrentSession],
+    [pets, selectedPetId, setPets, setSelectedPetId, setUser, subscription.activePetId, user, assertCurrentSession],
   );
 
   const selectPet = useCallback(
@@ -109,6 +120,13 @@ export function usePets() {
         return;
       }
 
+      // Excepcion de recuperacion: una mascota protegida solo admite cambios
+      // de foto y señas particulares (espejo de la 067; RLS lo impone en el
+      // servidor cuando la migracion este aplicada).
+      if (!subscription.isPetEditable(petId) && !isRecoveryOnlyPetUpdate(updates)) {
+        throw new Error(PET_ACCESS_MESSAGES.protectedPetEdit);
+      }
+
       const updated = await updatePetRecord(petId, updates);
       assertCurrentSession();
       if (!updated) {
@@ -117,7 +135,39 @@ export function usePets() {
 
       setPets(pets.map((pet) => (pet.id === petId ? updated : pet)));
     },
-    [pets, setPets, user?.isGuest, assertCurrentSession],
+    [pets, setPets, subscription, user?.isGuest, assertCurrentSession],
+  );
+
+  // Selecciona la mascota activa del plan Free (persistida en
+  // users.active_pet_id). El trigger del servidor valida propiedad y cooldown;
+  // tras persistir se refresca el perfil para tomar el active_pet_changed_at
+  // real que escribio el trigger.
+  const selectActivePet = useCallback(
+    async (petId: string) => {
+      assertCurrentSession();
+      if (!user || user.isGuest) {
+        throw new Error(PET_ACCESS_MESSAGES.needsAccount);
+      }
+      if (!subscription.activePetSupport) {
+        throw new Error(PET_ACCESS_MESSAGES.selectionUnavailable);
+      }
+      if (!pets.some((pet) => pet.id === petId)) {
+        throw new Error('La mascota seleccionada no existe.');
+      }
+
+      await updateUserActivePet(user.id, petId);
+      assertCurrentSession();
+
+      const refreshed = await fetchUserProfile(user.id);
+      assertCurrentSession();
+      if (refreshed) {
+        setUser(refreshed);
+      } else {
+        // Respaldo si el refetch falla: reflejar la seleccion localmente.
+        setUser({ ...user, activePetId: petId, activePetChangedAt: new Date().toISOString() });
+      }
+    },
+    [pets, setUser, subscription.activePetSupport, user, assertCurrentSession],
   );
 
   return {
@@ -125,9 +175,15 @@ export function usePets() {
     selectedPetId,
     canAddPet: user?.isGuest ? true : subscription.canAddPet,
     freePetLimit: subscription.freePetLimit,
+    isPetEditable: subscription.isPetEditable,
+    activePetId: subscription.activePetId,
+    needsActivePetSelection: subscription.needsActivePetSelection,
+    activePetCooldownUntil: subscription.activePetCooldownUntil,
+    activePetSupport: subscription.activePetSupport,
     addPet,
     removePet,
     selectPet,
     updatePet,
+    selectActivePet,
   };
 }

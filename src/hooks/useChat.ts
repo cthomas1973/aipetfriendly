@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import type { ChatMessage } from '../types';
+import { PET_ACCESS_MESSAGES, assertPetWritable } from '../lib/petAccess';
 import { askPetAssistant, createChatMessage, fetchAiUsageSettings, fetchUserPetAiUsage } from '../lib/supabase';
 
 const GUEST_USAGE_KEY = 'aipetfriendly.guest-ai-usage';
@@ -55,7 +56,7 @@ export interface SuggestedProduct {
   title: string;
   thumbnail: string | null;
   price: number | null;
-  link: string;
+  link: string | null;
 }
 
 const DEFAULT_LIMITS = {
@@ -235,6 +236,7 @@ export function useChat() {
       petId: string,
       imageDataUrl: string | null | undefined,
       recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
+      shoppingProductIds?: string[],
     ) => {
       let text = '';
       let suggestedProduct: SuggestedProduct | null = null;
@@ -286,6 +288,7 @@ export function useChat() {
           recentMessages,
           imageBase64: imageDataUrl || null,
           guestContext,
+          ...(shoppingProductIds !== undefined ? { mode: 'shopping' as const, shoppingProductIds } : {}),
         });
         if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) {
           return { text: '', suggestedProduct: null, persistedImageUrl: null, recommendVetVisit: false, isError: true };
@@ -340,7 +343,7 @@ export function useChat() {
   );
 
   const sendMessage = useCallback(
-    async (content: string, petId: string | null, imageDataUrl?: string | null) => {
+    async (content: string, petId: string | null, imageDataUrl?: string | null, shoppingProductIds?: string[]) => {
       if (!canUseAI) {
         throw new Error('Limite de consultas IA alcanzado para esta mascota.');
       }
@@ -348,6 +351,9 @@ export function useChat() {
       if (!petId) {
         throw new Error('Selecciona una mascota para recibir una respuesta personalizada.');
       }
+      // Consultorio IA solo sobre la mascota activa en plan Free; el historial
+      // de las protegidas sigue siendo consultable.
+      assertPetWritable(subscription, petId, PET_ACCESS_MESSAGES.protectedPetChat);
 
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -356,6 +362,7 @@ export function useChat() {
         petId,
         createdAt: new Date().toISOString(),
         imageUrl: imageDataUrl || null,
+        shoppingProductIds,
       };
 
       const nextMessages = [...messagesWithSystem, userMessage];
@@ -375,7 +382,7 @@ export function useChat() {
           content: message.content,
         }));
 
-      const result = await requestAssistantAnswer(content, petId, imageDataUrl, recentMessages);
+      const result = await requestAssistantAnswer(content, petId, imageDataUrl, recentMessages, shoppingProductIds);
       if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) return;
 
       const assistantMessage: ChatMessage = {
@@ -457,7 +464,7 @@ export function useChat() {
           content: message.content,
         }));
 
-      const result = await requestAssistantAnswer(userMessage.content, petId, userMessage.imageUrl, promptMessages);
+      const result = await requestAssistantAnswer(userMessage.content, petId, userMessage.imageUrl, promptMessages, userMessage.shoppingProductIds);
       if (identityRef.current !== user?.id || sessionRevisionRef.current !== sessionRevision) return;
 
       const updatedMessage: ChatMessage = {
@@ -498,7 +505,7 @@ export function useChat() {
         await persistMessages([updatedMessage]);
       }
     },
-    [selectedPetId, sessionMessagesByPet, requestAssistantAnswer, chatMessages, setChatMessages, user, persistMessages, sessionRevision],
+    [selectedPetId, sessionMessagesByPet, requestAssistantAnswer, chatMessages, setChatMessages, subscription, user, persistMessages, sessionRevision],
   );
 
   return {

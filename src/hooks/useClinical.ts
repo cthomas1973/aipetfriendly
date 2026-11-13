@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useAppState, useSessionGuard } from '../context/AppStateContext';
 import { createClinicalEntry } from '../lib/supabase';
+import { clinicalDownloadAccessError } from '../lib/clinicalPdfPolicy.mjs';
+import { useClinicalPdfEmail } from './useClinicalPdfEmail';
+import { assertPetWritable } from '../lib/petAccess';
 import type {
   ClinicalEntryCategory,
   ClinicalNoteFormData,
@@ -42,6 +45,7 @@ function categoryLabel(category: ClinicalEntryCategory): string {
 export function useClinical() {
   const { clinicalEntries, pets, selectedPetId, setClinicalEntries, user, subscription } = useAppState();
   const assertCurrentSession = useSessionGuard(user?.id);
+  const { sendReport, isSendingPdf } = useClinicalPdfEmail();
   const [activeFilter, setActiveFilter] = useState<ClinicalEntryCategory | 'all'>('all');
 
   const selectedPet: Pet | null = useMemo(
@@ -67,6 +71,7 @@ export function useClinical() {
       if (!user) {
         throw new Error('Debes iniciar sesion para registrar notas clinicas.');
       }
+      assertPetWritable(subscription, data.petId);
 
       if (user.isGuest) {
         const entry: ClinicalTimelineEntry = {
@@ -97,17 +102,17 @@ export function useClinical() {
       setClinicalEntries([saved, ...clinicalEntries]);
       return saved;
     },
-    [clinicalEntries, setClinicalEntries, user, assertCurrentSession],
+    [clinicalEntries, setClinicalEntries, subscription, user, assertCurrentSession],
   );
 
   const generateClinicalPdf = useCallback(
     async (logoUrl?: string) => {
+      assertCurrentSession();
       if (!selectedPet) {
         throw new Error('Selecciona una mascota antes de descargar el PDF.');
       }
-      if (!subscription.isPremiumUser) {
-        throw new Error('La descarga de PDF avanzada es exclusiva para Premium.');
-      }
+      const accessError = clinicalDownloadAccessError(user);
+      if (accessError) throw new Error(accessError);
 
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -251,54 +256,19 @@ export function useClinical() {
       const output = doc.output('blob');
       const safePetName = selectedPet.name.toLowerCase().replace(/\s+/g, '-');
       const fileName = `informe-clinico-${safePetName}.pdf`;
+      assertCurrentSession();
       return { fileName, blob: output };
     },
-    [clinicalEntries, selectedPet, subscription.isPremiumUser, user?.email],
+    [clinicalEntries, selectedPet, user, assertCurrentSession],
   );
 
   const sendClinicalPdfByEmail = useCallback(
     async (email: string, logoUrl?: string) => {
-      if (!subscription.isPremiumUser) {
-        throw new Error('El envio de PDF por email es exclusivo para Premium.');
-      }
-
-      const pdf = await generateClinicalPdf(logoUrl);
-      const arrayBuffer = await pdf.blob.arrayBuffer();
-      const bytes = Array.from(new Uint8Array(arrayBuffer));
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-      if (!supabaseUrl || !anonKey) {
-        throw new Error('Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY en variables de entorno.');
-      }
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/send-clinical-pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify({
-          email,
-          fileName: pdf.fileName,
-          pdfBytes: bytes,
-          petName: selectedPet?.name ?? '',
-        }),
-      });
-
-      if (!response.ok) {
-        let detail = '';
-        try {
-          const payload = await response.json();
-          detail = typeof payload?.error === 'string' ? payload.error : '';
-        } catch {
-          detail = '';
-        }
-        throw new Error(detail || 'No se pudo enviar el PDF por email.');
-      }
+      if (!selectedPet) throw new Error('Selecciona una mascota para enviar el informe.');
+      await sendReport(email, `clinical:${selectedPet.id}`, selectedPet.name,
+        'Historial Clinico', () => generateClinicalPdf(logoUrl), selectedPet.id);
     },
-    [generateClinicalPdf, selectedPet?.name, subscription.isPremiumUser],
+    [generateClinicalPdf, selectedPet, sendReport],
   );
 
   return {
@@ -309,5 +279,6 @@ export function useClinical() {
     addClinicalNote,
     generateClinicalPdf,
     sendClinicalPdfByEmail,
+    isSendingPdf,
   };
 }

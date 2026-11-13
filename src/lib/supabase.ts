@@ -1,5 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type AuthChangeEvent, type Session } from '@supabase/supabase-js';
 import { isBlogPostPubliclyAvailable } from '../../shared/seoMeta.mjs';
+import { resolveAccessState } from '../../supabase/functions/_shared/premiumAccess.mjs';
+import { validateAffiliateLink } from './affiliateLink';
+import { Capacitor } from '@capacitor/core';
+import { isShopResearchRecord, publicShopResearch } from '../../supabase/functions/_shared/shopResearchRecord.mjs';
 import type {
   AdminAiAuditEntry,
   AdminAiDashboardMetrics,
@@ -20,6 +24,9 @@ import type {
   InboundEmailRow,
   NewsCampaign,
   Pet,
+  PetType,
+  PetLifeStage,
+  PetSizeCategory,
   PetAiUsageRow,
   PetWeightLog,
   PetSightingMessage,
@@ -31,6 +38,15 @@ import type {
   PetFriendlyPlaceIncubatorItem,
   PetFriendlyPlaceReview,
   ClinicalTimelineEntry,
+  ClinicalPdfQuota,
+  ClinicalPdfEmailRequest,
+  ClinicalPdfSendStatus,
+  ShopPriceHistory,
+  ShopProduct,
+  ShopRadarDashboard,
+  ShopResearchRecord,
+  ShopDimension,
+  ShopDimensionRecord,
   PreventiveTask,
   ChatMessage,
   AppUser,
@@ -48,6 +64,8 @@ import type {
 interface PetAssistantRequest {
   petId: string;
   question: string;
+  mode?: 'shopping';
+  shoppingProductIds?: string[];
   recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
   /** Imagen adjunta (data URL base64, ej. "data:image/jpeg;base64,...") para que la IA la analice. */
   imageBase64?: string | null;
@@ -86,7 +104,7 @@ interface PetAssistantResponse {
     title: string;
     thumbnail: string | null;
     price: number | null;
-    link: string;
+    link: string | null;
   } | null;
   usage?: {
     tier: 'guest' | 'free' | 'premium';
@@ -154,6 +172,124 @@ export const supabase = supabaseUrl && supabaseAnonKey
 
 export { isSupabaseConfigured };
 
+function parseClinicalPdfQuota(value: unknown): ClinicalPdfQuota {
+  if (!value || typeof value !== 'object'
+    || !('plan' in value) || (value.plan !== 'free' && value.plan !== 'premium')
+    || !('limit' in value) || typeof value.limit !== 'number' || !Number.isInteger(value.limit) || value.limit < 1
+    || !('used' in value) || typeof value.used !== 'number' || !Number.isInteger(value.used) || value.used < 0
+    || !('remaining' in value) || typeof value.remaining !== 'number' || !Number.isInteger(value.remaining) || value.remaining < 0
+    || value.remaining !== Math.max(0, value.limit - value.used)
+    || !('window' in value) || (value.window !== 'day' && value.window !== 'month')
+    || !('resetAt' in value) || typeof value.resetAt !== 'string' || !Number.isFinite(Date.parse(value.resetAt))
+    || !('timezone' in value) || value.timezone !== 'America/Argentina/Buenos_Aires') {
+    throw new Error('El servidor no devolvio un cupo PDF valido.');
+  }
+  return {
+    plan: value.plan, limit: value.limit, used: value.used,
+    remaining: value.remaining, window: value.window,
+    resetAt: value.resetAt, timezone: value.timezone,
+  };
+}
+
+export async function fetchClinicalPdfQuota(): Promise<ClinicalPdfQuota> {
+  const { data, error } = await supabase.rpc('get_clinical_pdf_quota');
+  if (error) throw new Error('No se pudo consultar el cupo PDF. Verifica que la migracion 069 este disponible.');
+  return parseClinicalPdfQuota(data);
+}
+
+export class ClinicalPdfSendError extends Error {
+  constructor(message: string, public readonly code?: string) {
+    super(message);
+  }
+}
+
+async function clinicalPdfSessionToken(expectedUserId: string): Promise<string> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session?.access_token || session.user.id !== expectedUserId) {
+    throw new Error('La sesion cambio. No se envio el PDF.');
+  }
+  const token: string = session.access_token;
+  const { data: { user }, error: verifyError } = await supabase.auth.getUser(token);
+  if (verifyError || user?.id !== expectedUserId || user.is_anonymous) {
+    throw new Error('No se pudo validar la identidad original del envio.');
+  }
+  const { data: latest, error: latestError } = await supabase.auth.getSession();
+  if (latestError || latest.session?.user.id !== expectedUserId
+    || latest.session?.access_token !== token) {
+    throw new Error('La sesion cambio antes del transporte. No se envio el PDF.');
+  }
+  return token;
+}
+
+function parseClinicalPdfSendStatus(value: unknown): ClinicalPdfSendStatus {
+  if (!value || typeof value !== 'object'
+    || !('requestId' in value) || typeof value.requestId !== 'string'
+    || !('status' in value) || (value.status !== 'not_found' && value.status !== 'reserved'
+      && value.status !== 'sending' && value.status !== 'uncertain'
+      && value.status !== 'sent' && value.status !== 'failed')) {
+    throw new Error('El servidor no devolvio un estado PDF valido.');
+  }
+  return { requestId: value.requestId, status: value.status };
+}
+
+export async function fetchClinicalPdfSendStatus(
+  requestId: string, expectedUserId: string,
+): Promise<ClinicalPdfSendStatus> {
+  // Token fijo tambien para lecturas: el SDK no puede cambiar la cuenta
+  // mientras resuelve asincronamente su sesion.
+  const token = await clinicalPdfSessionToken(expectedUserId);
+  const { data, error } = await supabase.rpc('get_clinical_pdf_send_status', {
+    p_request: requestId,
+  }).setHeader('Authorization', `Bearer ${token}`);
+  if (error) throw new Error('No se pudo recuperar el estado PDF. Se requiere la migracion 070.');
+  const status = parseClinicalPdfSendStatus(data);
+  if (status.requestId !== requestId) throw new Error('La respuesta no corresponde a esta operacion PDF.');
+  return status;
+}
+
+export async function fetchPendingClinicalPdfSends(): Promise<ClinicalPdfSendStatus[]> {
+  const { data, error } = await supabase.rpc('get_pending_clinical_pdf_sends');
+  if (error || !Array.isArray(data)) throw new Error('No se pudieron consultar las operaciones PDF pendientes (070).');
+  return data.map(parseClinicalPdfSendStatus);
+}
+
+export async function sendClinicalPdfEmail(
+  body: ClinicalPdfEmailRequest, expectedUserId: string, assertSession: () => void,
+): Promise<ClinicalPdfQuota> {
+  const controller = new AbortController();
+  const { data: { subscription: listener } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+    if (session?.user.id !== expectedUserId) controller.abort();
+  });
+  try {
+    const token = await clinicalPdfSessionToken(expectedUserId);
+    assertSession();
+    if (controller.signal.aborted) throw new Error('La sesion cambio antes del transporte. No se envio el PDF.');
+    const { data, error } = await supabase.functions.invoke('send-clinical-pdf', {
+      body, headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+    });
+    if (error) {
+      let payload: unknown;
+      if (error.context instanceof Response) {
+        try {
+          payload = await error.context.json();
+        } catch {
+          console.error('Respuesta de error PDF sin JSON valido.');
+        }
+      }
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        && typeof payload.error === 'string' ? payload.error : 'No se pudo confirmar el envio del PDF.';
+      const code = payload && typeof payload === 'object' && 'code' in payload
+        && typeof payload.code === 'string' ? payload.code : undefined;
+      throw new ClinicalPdfSendError(message, code);
+    }
+    if (!data?.success) throw new ClinicalPdfSendError('El servidor no confirmo el envio del PDF.');
+    return parseClinicalPdfQuota(data.quota);
+  } finally {
+    listener.unsubscribe();
+    window.dispatchEvent(new Event('clinical-pdf-quota-changed'));
+  }
+}
+
 export async function fetchUserProfile(userId: string, strict = false): Promise<AppUser | null> {
   const { data: user, error } = await supabase
     .from('users')
@@ -180,20 +316,38 @@ export async function fetchUserProfile(userId: string, strict = false): Promise<
     .maybeSingle();
 
   const accessMode = (user.access_mode || 'free') as 'guest' | 'free' | 'premium';
-  const defaultSubscription = subscription
-    ? {
-        plan: subscription.plan,
-        isActive: subscription.is_active,
-        expiresAt: subscription.expires_at,
-      }
-    : { plan: 'free' as const, isActive: false, expiresAt: null };
+  const expiresAt: string | null = subscription?.expires_at ?? null;
+  // Columnas de la migracion 067: pueden no existir aun en el servidor; el
+  // mapeo tolerante (?? null) hace que resolveAccessState las trate como
+  // ausentes hasta que la migracion este aplicada.
+  const graceUntil: string | null = subscription?.grace_until ?? null;
+  const cancelRequestedAt: string | null = subscription?.cancel_requested_at ?? null;
+  const accessState = resolveAccessState({
+    accessMode,
+    subscription: subscription
+      ? {
+          plan: subscription.plan,
+          isActive: subscription.is_active,
+          expiresAt,
+          graceUntil,
+          cancelRequestedAt,
+        }
+      : null,
+  });
+  // Acceso completo: premium vigente, gracia autorizada o cancelacion con
+  // periodo pagado vigente. Un Premium vencido o inconsistente se presenta
+  // como free (sin perder datos: solo cambia el modo de acceso).
+  const fullAccess = accessState === 'premium' || accessState === 'grace' || accessState === 'canceled_pending';
 
-  const resolvedSubscription =
-    accessMode === 'premium'
-      ? { plan: 'premium' as const, isActive: true, expiresAt: defaultSubscription.expiresAt }
-      : accessMode === 'guest'
-        ? { plan: 'free' as const, isActive: false, expiresAt: defaultSubscription.expiresAt }
-        : defaultSubscription;
+  const resolvedSubscription = fullAccess
+    ? { plan: 'premium' as const, isActive: true, expiresAt, graceUntil, cancelRequestedAt }
+    : {
+        plan: 'free' as const,
+        isActive: accessMode !== 'guest' && subscription?.plan === 'free' && subscription.is_active === true,
+        expiresAt,
+        graceUntil,
+        cancelRequestedAt,
+      };
 
   return {
     id: user.id,
@@ -210,7 +364,35 @@ export async function fetchUserProfile(userId: string, strict = false): Promise<
     isGuest: accessMode === 'guest',
     isAdmin: Boolean(adminRow?.user_id),
     subscription: resolvedSubscription,
+    accessState,
+    // Mascota activa del plan Free (067). Si la columna no existe aun en el
+    // servidor, activePetSupport queda en false y la proteccion de mascotas
+    // permanece desactivada (comportamiento previo intacto).
+    activePetId: user.active_pet_id ?? null,
+    activePetChangedAt: user.active_pet_changed_at ?? null,
+    activePetSupport: Object.prototype.hasOwnProperty.call(user, 'active_pet_id'),
   };
+}
+
+// Selecciona (o limpia) la mascota activa del plan Free. Requiere la
+// migracion 067 aplicada: users.active_pet_id con grant de columna y el
+// trigger guard_user_active_pet, que valida propiedad y aplica el cooldown de
+// 30 dias (su mensaje llega tal cual al usuario). active_pet_changed_at lo
+// escribe solo el trigger: el cliente nunca lo envia.
+export async function updateUserActivePet(userId: string, petId: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ active_pet_id: petId })
+    .eq('id', userId);
+
+  if (error) {
+    // 42703 (undefined_column) / PGRST204 (columna fuera del schema cache):
+    // la 067 todavia no esta aplicada en este entorno.
+    if (error.code === '42703' || error.code === 'PGRST204') {
+      throw new Error('La seleccion de mascota activa todavia no esta habilitada en el servidor.');
+    }
+    throw new Error(error.message || 'No se pudo actualizar la mascota activa.');
+  }
 }
 
 export async function updateUserNotificationProfile(args: {
@@ -2038,8 +2220,168 @@ export async function askPetAssistant(payload: PetAssistantRequest): Promise<Pet
   if (!data || typeof data.answer !== 'string') {
     throw new Error('Respuesta invalida de la funcion de IA');
   }
+  const response = data as PetAssistantResponse;
+  const product = response.suggestedProduct;
+  const link = product ? validateAffiliateLink(product.link) : null;
+  return { ...response, suggestedProduct: product ? { ...product, link } : null };
+}
 
-  return data as PetAssistantResponse;
+export async function fetchShopCatalog(signal?: AbortSignal): Promise<{ products: ShopProduct[]; warning: string | null }> {
+  if (Capacitor.isNativePlatform()) {
+    const { shopCategory } = await import('../../supabase/functions/_shared/shopCatalogPolicy.mjs');
+    const rows = await fetchBeneficiosProductos();
+    const dimensions = await fetchShopCompatibility(rows.map(row => row.id));
+    if (signal?.aborted) throw new Error('Consulta de tienda cancelada.');
+    return {
+      products: rows.map(row => {
+        const global = publicShopResearch({ ...row, compatibility_dimensions: dimensions.get(row.id) });
+        return {
+        ...global,
+        id: row.id, externalId:null, title:row.title, thumbnail:row.thumbnail,
+        category: isShopResearchRecord(row.research_record) ? row.research_record.category : shopCategory(row.title, row.grupo),
+        price:row.price, originalPrice:null, currency:null, checkedAt:null, priceStatus:'unverified',
+        source:'supabase',seller:null,
+        brand:isShopResearchRecord(row.research_record) ? row.research_record.brand : null,
+        presentation:null,attributes:isShopResearchRecord(row.research_record) ? row.research_record.attributes : [],
+        petTypes:global.verifiedDimensions?.species || (isShopResearchRecord(row.research_record) ? row.research_record.petTypes : row.pet_types),
+        lifeStages:global.verifiedDimensions?.stage || (isShopResearchRecord(row.research_record) ? row.research_record.lifeStages : row.life_stages),
+        sizes:global.verifiedDimensions?.size || (isShopResearchRecord(row.research_record) ? row.research_record.sizes : row.size_categories),
+        needs:[],freeShipping:row.free_shipping,fastDelivery:row.fast_delivery,link:null,
+      }; }),
+      warning:'Catalogo nativo de Supabase: precios sin verificar y enlaces de compra no disponibles sin la API web.',
+    };
+  }
+    const response = await fetch('/api/beneficios?shop=true', { signal });
+    if (!response.ok) throw new Error('No se pudo cargar el catalogo de la tienda.');
+    const payload: unknown = await response.json();
+    if (!payload || typeof payload !== 'object' || !('products' in payload) || !Array.isArray(payload.products)) {
+      throw new Error('El catalogo recibio una respuesta invalida.');
+    }
+    const categories = ['alimentos','juguetes','paseo','higiene','salud','entrenamiento','descanso','tecnologia'];
+    const products = payload.products.map((p: unknown): ShopProduct => {
+      if (!p || typeof p !== 'object') throw new Error('Producto invalido.');
+      const row = p as Record<string, unknown>;
+      const stringOrNull = (value: unknown): value is string | null => value === null || typeof value === 'string';
+      const numberOrNull = (value: unknown): value is number | null => value === null || typeof value === 'number' && Number.isFinite(value) && value > 0;
+      if (typeof row.id !== 'string' || typeof row.title !== 'string'
+        || !categories.includes(String(row.category))
+        || !numberOrNull(row.price) || !numberOrNull(row.originalPrice)
+        || !['supabase','api','static'].includes(String(row.source))
+        || !['unverified','ok','error'].includes(String(row.priceStatus))
+        || !['externalId','thumbnail','currency','checkedAt','seller','brand','presentation','link'].every(key => stringOrNull(row[key]))
+        || row.currency !== null && !/^[A-Z]{3}$/.test(String(row.currency))
+        || row.checkedAt !== null && !Number.isFinite(Date.parse(String(row.checkedAt)))
+        || typeof row.freeShipping !== 'boolean' || typeof row.fastDelivery !== 'boolean'
+        || !Array.isArray(row.petTypes) || !row.petTypes.every(v => ['perro','gato','otro'].includes(v))
+        || !Array.isArray(row.lifeStages) || !row.lifeStages.every(v => ['cachorro','adulto','senior','todas'].includes(v))
+        || !Array.isArray(row.sizes) || !row.sizes.every(v => ['pequeño','mediano','grande','todos'].includes(v))
+        || !Array.isArray(row.needs) || !row.needs.every(v => typeof v === 'string')
+        || !Array.isArray(row.attributes) || !row.attributes.every(a => a && typeof a.name === 'string' && typeof a.value === 'string')) {
+        throw new Error('La tienda recibio datos de producto incompletos o invalidos.');
+      }
+      const product = p as ShopProduct;
+      if (product.research != null && !isShopResearchRecord(product.research)
+        || product.compatibilityEvidence !== undefined && (!product.compatibilityEvidence
+          || !['species','stage','size'].every(key => typeof (product.compatibilityEvidence as Record<string, unknown>)[key] === 'boolean'))) {
+        throw new Error('Fuentes de investigacion invalidas en el catalogo.');
+      }
+      const evidence = product.compatibilityEvidence;
+      const research = product.research;
+      const global = publicShopResearch({ research_record:product.research,
+        researched_at:product.researchedAt, approval_status:product.approvalStatus, catalog_product_id:product.catalogProductId,
+        compatibility_dimensions:product.verifiedDimensions });
+      if (evidence && (evidence.species || evidence.stage || evidence.size) && !global.verifiedDimensions) throw new Error('Compatibilidad sin dimensiones verificadas.');
+      if (product.approvalStatus && product.approvalStatus !== 'approved') throw new Error('El catalogo publico recibio un producto sin aprobar.');
+      return { ...product, ...global,
+        petTypes:global.verifiedDimensions?.species || research?.petTypes || product.petTypes,
+        lifeStages:global.verifiedDimensions?.stage || research?.lifeStages || product.lifeStages,
+        sizes:global.verifiedDimensions?.size || research?.sizes || product.sizes,
+        link: 'affiliateAvailable' in payload && payload.affiliateAvailable === true ? validateAffiliateLink(product.link) : null };
+    });
+    return { products, warning: 'warning' in payload && typeof payload.warning === 'string' ? payload.warning : null };
+}
+
+async function fetchShopCompatibility(ids: string[]): Promise<Map<string, unknown>> {
+  if (!ids.length) return new Map();
+  const { data, error } = await supabase.rpc('get_shop_compatibility', { p_products: ids });
+  if (error || !Array.isArray(data) || !data.every((row: { product_id?: unknown; dimensions?: unknown }) =>
+    typeof row?.product_id === 'string' && publicShopResearch({ compatibility_dimensions: row.dimensions }).verifiedDimensions)) {
+    throw new Error('No se pudo verificar compatibilidad; requiere migracion 073.');
+  }
+  return new Map(data.map((row: { product_id: string; dimensions: unknown }) => [row.product_id, row.dimensions]));
+}
+
+export async function fetchAdminShopDimensions(productId: string): Promise<ShopDimensionRecord[]> {
+  const { data, error } = await supabase.rpc('admin_get_shop_dimensions', { p_product: productId });
+  if (error || !Array.isArray(data)) throw new Error(error?.message || 'No se pudieron consultar dimensiones.');
+  return data as ShopDimensionRecord[];
+}
+
+export async function saveAdminShopDimension(productId: string, dimension: ShopDimension, action: 'save'|'enable'|'disable', record?: ShopDimensionRecord): Promise<void> {
+  const { error } = await supabase.rpc('admin_shop_dimension', {
+    p_product: productId, p_dimension: dimension, p_action: action,
+    p_values: record?.values_text ?? null, p_verification: record?.verification ?? null,
+    p_source: record?.source ?? null, p_verified_at: record?.verified_at ?? null, p_sku: record?.sku ?? null,
+  });
+  if (error) throw new Error(error.message || 'No se pudo guardar la dimension.');
+}
+
+export async function fetchShopPriceHistory(productIds: string[]): Promise<ShopPriceHistory[]> {
+    if (!productIds.length || productIds.length > 30 || !productIds.every(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
+      throw new Error('Selecciona publicaciones incorporadas al catalogo para consultar su historial.');
+    }
+    const { data, error } = await supabase.rpc('get_shop_price_history', { p_products: productIds });
+    if (error) throw new Error('Historial no disponible. Requiere activar la migracion 071; no se verificaron precios nuevos.');
+    if (!Array.isArray(data)) throw new Error('Respuesta invalida de historial de precios.');
+    return data.map((row: unknown) => {
+      if (!row || typeof row !== 'object') throw new Error('Historial invalido.');
+      const r = row as Record<string, unknown>;
+      if (typeof r.productId !== 'string' || !['untracked','ok','error'].includes(String(r.status))
+        || !Array.isArray(r.changes) || r.changes.length > 4
+        || !['price','regularPrice','promotionalPrice','minimum','maximum'].every(key => r[key] === null || typeof r[key] === 'number' && Number.isFinite(r[key]) && r[key] > 0)
+        || !['lastSuccessAt','lastAttemptAt'].every(key => r[key] === null || typeof r[key] === 'string' && Number.isFinite(Date.parse(r[key])))
+        || r.currency !== null && (typeof r.currency !== 'string' || !/^[A-Z]{3}$/.test(r.currency))
+        || r.error !== null && typeof r.error !== 'string'
+        || !r.changes.every(c => c && typeof c.detectedAt === 'string' && Number.isFinite(Date.parse(c.detectedAt))
+          && typeof c.previousPrice === 'number' && c.previousPrice > 0
+          && typeof c.price === 'number' && c.price > 0
+          && typeof c.difference === 'number' && Number.isFinite(c.difference)
+          && typeof c.percent === 'number' && Number.isFinite(c.percent) && ['up','down'].includes(c.direction))) {
+        throw new Error('Historial de precios incompleto o invalido.');
+      }
+      return row as ShopPriceHistory;
+    });
+}
+
+export async function markShopProductViewed(productId: string): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) {
+    throw new Error('Selecciona una publicacion valida del catalogo.');
+  }
+  const { error } = await supabase.rpc('mark_shop_product_viewed', { p_product: productId });
+  if (error) throw new Error('No se pudo priorizar la actualizacion del producto.');
+}
+
+export async function fetchAdminShopRadar(offset = 0): Promise<ShopRadarDashboard> {
+  if (!Number.isInteger(offset) || offset<0) throw new Error('Pagina Radar invalida.');
+  const { data, error } = await supabase.rpc('admin_list_shop_radar', { p_offset:offset });
+  if (error) throw new Error(error.message || 'Radar no disponible. Requiere migracion 072 y acceso administrativo.');
+  if (!data || !Array.isArray(data.candidates) || !Array.isArray(data.runs)
+    || !data.candidates.every((row: { id?: unknown; events?: unknown; research_record?: unknown }) =>
+      typeof row.id === 'string' && Array.isArray(row.events) && row.research_record && typeof row.research_record === 'object')) {
+    throw new Error('Respuesta invalida del Radar.');
+  }
+  return data as ShopRadarDashboard;
+}
+export async function reviewAdminShopRadar(id: string, action: 'approve'|'publish'|'reject'|'postpone'|'revise'|'retry', reason: string, record?: ShopResearchRecord, until?: string): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('Candidato Radar invalido.');
+  }
+  if (reason.trim().length < 3) throw new Error('Indica un motivo de al menos tres caracteres.');
+  if (record && !isShopResearchRecord(record)) throw new Error('La ficha requiere atributos y fuentes validos.');
+  const { error } = await supabase.rpc('admin_review_shop_radar_safe', {
+    p_id:id, p_action:action, p_reason:reason.trim(), p_record:record || null, p_until:until || null,
+  });
+  if (error) throw new Error(error.message || 'No se pudo guardar la decision del Radar.');
 }
 
 interface WeightInsightRequest {
@@ -2055,7 +2397,7 @@ export interface WeightInsightResponse {
     title: string;
     thumbnail: string | null;
     price: number | null;
-    link: string;
+    link: string | null;
   } | null;
   recommendVetVisit?: boolean;
 }
@@ -2084,7 +2426,13 @@ export async function requestPetWeightInsight(payload: WeightInsightRequest): Pr
     throw new Error('Respuesta invalida del analisis de IA');
   }
 
-  return data as WeightInsightResponse;
+  const response = data as WeightInsightResponse;
+  const product = response.suggestedProduct;
+  const link = product ? validateAffiliateLink(product.link) : null;
+  return {
+    ...response,
+    suggestedProduct: product ? { ...product, link } : null,
+  };
 }
 
 export async function sendFeedbackMessage(args: {
@@ -3132,30 +3480,30 @@ export async function deleteAdminNewsCampaign(id: string): Promise<void> {
 
 export async function fetchBeneficiosProductos(
   grupo?: string,
-  petTypes?: string[],
-  lifeStages?: string[],
-  sizeCategories?: string[],
-): Promise<import('../types').BeneficioProducto[]> {
+  petTypes?: PetType[],
+  lifeStages?: PetLifeStage[],
+  sizeCategories?: PetSizeCategory[],
+): Promise<import('../types').PublicBeneficioProducto[]> {
   let query = supabase
     .from('beneficios_productos')
-    .select('*')
+    .select('id,title,thumbnail,price,grupo,pet_types,life_stages,size_categories,free_shipping,fast_delivery,active,created_at,updated_at,catalog_product_id,research_record,researched_at,approval_status')
     .eq('active', true)
+    .eq('approval_status', 'approved')
     .order('created_at', { ascending: false });
 
   if (grupo) query = query.eq('grupo', grupo);
-  if (petTypes && petTypes.length > 0) {
-    query = query.overlaps('pet_types', petTypes);
-  }
-  if (lifeStages && lifeStages.length > 0) {
-    query = query.overlaps('life_stages', lifeStages);
-  }
-  if (sizeCategories && sizeCategories.length > 0) {
-    query = query.overlaps('size_categories', sizeCategories);
-  }
-
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as import('../types').BeneficioProducto[];
+  const rows = (data ?? []) as import('../types').PublicBeneficioProducto[];
+  if (!petTypes?.length && !lifeStages?.length && !sizeCategories?.length) return rows;
+  const verified = await fetchShopCompatibility(rows.map(row => row.id));
+  return rows.filter(row => {
+    const d = publicShopResearch({ compatibility_dimensions: verified.get(row.id) }).verifiedDimensions;
+    return d && row.grupo !== 'salud'
+      && (!petTypes?.length || petTypes.some(value => d.species.includes(value)))
+      && (!lifeStages?.length || d.stage.includes('todas') || lifeStages.some(value => d.stage.includes(value)))
+      && (!sizeCategories?.length || d.size.includes('todos') || sizeCategories.some(value => d.size.includes(value)));
+  });
 }
 
 export async function fetchAllBeneficiosProductos(): Promise<import('../types').BeneficioProducto[]> {
@@ -3173,10 +3521,10 @@ export async function fetchAllBeneficiosProductos(): Promise<import('../types').
 // admin lo desactiva el link deja de mostrarse solo.
 export async function fetchBeneficioProductoById(
   id: string,
-): Promise<import('../types').BeneficioProducto | null> {
+): Promise<import('../types').PublicBeneficioProducto | null> {
   const { data, error } = await supabase
     .from('beneficios_productos')
-    .select('*')
+    .select('id,title,thumbnail,price,grupo,pet_types,life_stages,size_categories,free_shipping,fast_delivery,active,created_at,updated_at')
     .eq('id', id)
     .eq('active', true)
     .maybeSingle();
@@ -3184,7 +3532,7 @@ export async function fetchBeneficioProductoById(
     console.error('Error fetching beneficio producto by id:', error);
     return null;
   }
-  return (data as import('../types').BeneficioProducto) ?? null;
+  return (data as import('../types').PublicBeneficioProducto) ?? null;
 }
 
 export async function insertBeneficioProducto(

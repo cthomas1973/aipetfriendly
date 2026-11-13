@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { buildAffiliateUrl, resolveAffiliateTracking } from "../_shared/affiliateLink.mjs";
+import { PET_ACCESS_DENIED_MESSAGES, resolvePetWriteAccess } from "../_shared/petAccessServer.mjs";
+import { buildShoppingPrompt, SHOPPING_SYSTEM_PROMPT } from "../_shared/shoppingPrompt.mjs";
+// @deno-types="../_shared/shopEligibleProducts.d.mts"
+import { filterEligibleShopProducts } from "../_shared/shopEligibleProducts.mjs";
+// @deno-types="../_shared/safeAiResponse.d.mts"
+import { safeAiResponse } from "../_shared/safeAiResponse.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,7 +26,8 @@ type RequestPayload = {
   imageBase64?: string | null;
   // "weight_insight": analisis proactivo automatico al registrar un nuevo peso (no cuenta
   // contra el cupo de consultas IA del usuario, no es una pregunta manual del tutor).
-  mode?: "chat" | "weight_insight";
+  mode?: "chat" | "weight_insight" | "shopping";
+  shoppingProductIds?: string[];
   previousWeightKg?: number;
   currentWeightKg?: number;
   daysBetween?: number;
@@ -59,9 +67,22 @@ type UsageSettingsRow = {
   premium_limit_per_pet: number;
 };
 
+// Se leen con select('*') para detectar la disponibilidad del esquema 067
+// (active_pet_id / grace_until / cancel_requested_at pueden no existir aun).
 type UserProfileRow = {
   access_mode: Tier;
   full_name: string | null;
+  active_pet_id?: string | null;
+  [key: string]: unknown;
+};
+
+type SubscriptionRow = {
+  plan: string | null;
+  is_active: boolean | null;
+  expires_at: string | null;
+  grace_until?: string | null;
+  cancel_requested_at?: string | null;
+  [key: string]: unknown;
 };
 
 // Deriva un nombre "amigable" a partir de la parte local del email (lo que esta
@@ -94,6 +115,7 @@ type PetRow = {
   sex: string | null;
   age_years: number | null;
   age_months: number | null;
+  birth_date: string | null;
   weight_kg: number | null;
   notes: string | null;
 };
@@ -227,6 +249,7 @@ function normalizeGuestPet(payload: RequestPayload): PetRow | null {
     sex: pet.sex ? String(pet.sex) : null,
     age_years: typeof pet.ageYears === "number" ? pet.ageYears : null,
     age_months: typeof pet.ageMonths === "number" ? pet.ageMonths : null,
+    birth_date: null,
     weight_kg: typeof pet.weightKg === "number" ? pet.weightKg : null,
     notes: pet.notes ? String(pet.notes) : null,
   };
@@ -356,6 +379,7 @@ function buildPrompt(
     question,
     "",
     "INSTRUCCIONES DE RESPUESTA:",
+    "No nombres ni recomiendes marcas ni productos comerciales concretos. Los productos solo los selecciona el servidor.",
     "1. Responde en espanol claro y accionable.",
     "2. Personaliza usando explicitamente los datos de esta mascota.",
     "3. Si faltan datos para una recomendacion segura, dilo y pide lo minimo necesario.",
@@ -402,6 +426,7 @@ function buildWeightInsightPrompt(
     `Mascota: ${pet.name}, especie ${pet.species}, raza ${pet.breed || "no especificada"}, edad ${pet.age_years ?? 0} anios y ${pet.age_months ?? 0} meses, sexo ${pet.sex || "no especificado"}.`,
     `Peso anterior: ${previousWeightKg} kg. Peso actual: ${currentWeightKg} kg. Cambio: ${changeKg.toFixed(2)} kg (${changePct.toFixed(1)}% de ${direction}) en ${daysBetween} dias.`,
     "INSTRUCCIONES:",
+    "No nombres ni recomiendes marcas ni productos comerciales concretos. Los productos solo los selecciona el servidor.",
     "1. Compara ese cambio contra el rango de peso esperable para esa raza/especie/edad segun tu conocimiento general (es una estimacion aproximada, no una tabla exacta).",
     `2. Si el cambio es significativo (en general, mas de 10% en pocos meses) escribe un aviso corto y calido dirigido a ${ownerName} (maximo 3 oraciones): menciona el porcentaje de cambio, si eso lo aleja del peso ideal, y una sugerencia concreta (revisar la cantidad/tipo de alimento, o consultar al veterinario si preocupa). Cierra invitando a consultarte sobre la dieta cuando quiera.`,
     "3. Si el cambio NO es significativo o es esperable para su etapa de crecimiento/edad, responde con un aviso breve y tranquilizador (1-2 oraciones), sin alarmar.",
@@ -415,7 +440,7 @@ function buildWeightInsightPrompt(
   ].join("\n");
 }
 
-async function callAiModel(prompt: string, imageDataUrl?: string | null) {
+async function callAiModel(prompt: string, imageDataUrl?: string | null, shopping = false) {
   const apiKey = Deno.env.get("AI_API_KEY") || "";
   const model = Deno.env.get("AI_MODEL") || "gpt-4o-mini";
   const baseUrl = (Deno.env.get("AI_BASE_URL") || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -450,7 +475,7 @@ async function callAiModel(prompt: string, imageDataUrl?: string | null) {
       messages: [
         {
           role: "system",
-          content:
+          content: shopping ? SHOPPING_SYSTEM_PROMPT :
             "Eres un asistente veterinario preventivo. Debes ser prudente, preciso y responsable. Nunca presentes una dosis como orden medica definitiva: siempre como sugerencia orientativa y con recomendacion de confirmacion veterinaria. Si el usuario adjunta una imagen, analizala con cautela: describe lo que se observa objetivamente y aclara siempre que un analisis visual por IA no reemplaza un examen fisico veterinario.",
         },
         {
@@ -497,10 +522,11 @@ async function callAiModel(prompt: string, imageDataUrl?: string | null) {
 }
 
 type SuggestedProduct = {
+  productId: string;
   title: string;
   thumbnail: string | null;
   price: number | null;
-  link: string;
+  link: string | null;
 };
 
 // Normaliza texto para matching: minusculas, sin tildes/dieresis.
@@ -623,23 +649,18 @@ function extractVetVisitRecommendation(answer: string): { cleanAnswer: string; r
   return { cleanAnswer: answer, recommendVetVisit: findFallbackVetVisitSignal(answer) };
 }
 
-function getMattToolId(): string {
-  const template = Deno.env.get("ML_AFFILIATE_TEMPLATE") || "";
-  if (template) {
-    try {
-      const url = new URL(template);
-      const value = url.searchParams.get("matt_tool");
-      if (value) return value;
-    } catch {
-      const m = template.match(/[?&]matt_tool=([^&\s]+)/);
-      if (m) return m[1];
-    }
-  }
-  return Deno.env.get("ML_AFFILIATE_ID") || "";
+function buildSuggestedProductLink(permalink: string): string | null {
+  const tracking = resolveAffiliateTracking({
+    template: Deno.env.get("ML_AFFILIATE_TEMPLATE"),
+    id: Deno.env.get("ML_AFFILIATE_ID"),
+  });
+  if (!tracking.ok) return null;
+  const response = buildAffiliateUrl(permalink, tracking.value);
+  return response.ok ? response.url ?? null : null;
 }
 
 // deno-lint-ignore no-explicit-any
-async function findSuggestedProduct(admin: any, query: string, grupoHint: string | null, species: string): Promise<SuggestedProduct | null> {
+async function findSuggestedProduct(admin: any, query: string, grupoHint: string | null, pet: PetRow): Promise<SuggestedProduct | null> {
   const baseWords = normalizeText(query)
     .split(/\s+/)
     .filter((w) => w.length >= 4)
@@ -652,8 +673,8 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
 
   let dbQuery = admin
     .from("beneficios_productos")
-    .select("title,thumbnail,price,permalink,grupo,pet_types")
-    .eq("active", true)
+    .select("id,title,thumbnail,price,permalink,grupo,research_record,researched_at,approval_status")
+    .eq("active", true).eq("approval_status", "approved")
     .or(orFilter)
     .limit(20);
 
@@ -662,14 +683,11 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
   }
 
   const { data, error } = await dbQuery;
-  if (error || !Array.isArray(data) || data.length === 0) return null;
-
-  const petType = species === "cat" ? "gato" : species === "dog" ? "perro" : null;
-
-  type Candidate = { title: string; thumbnail: string | null; price: number | null; permalink: string; pet_types: string[] };
-
-  const scored = (data as Candidate[])
-    .filter((p) => !petType || (Array.isArray(p.pet_types) && (p.pet_types.includes(petType) || p.pet_types.includes("otro"))))
+  if (error || !Array.isArray(data)) throw new Error("No se pudo consultar el catalogo de sugerencias.");
+  type Candidate = { id: string; title: string; thumbnail: string | null; price: number | null; permalink: string; grupo: string; research_record: unknown; researched_at: string | null; approval_status: string };
+  const eligible = await filterEligibleShopProducts(pet, data as Candidate[],
+    ids => admin.rpc("get_shop_compatibility", { p_products: ids }));
+  const scored = eligible.map(({ product }) => product)
     .map((p) => {
       const titleNormalized = normalizeText(p.title);
       const score = words.reduce((acc, w) => acc + (titleNormalized.includes(w) ? 1 : 0), 0);
@@ -681,12 +699,10 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
   const best = scored[0];
   if (!best) return null;
 
-  const mattTool = getMattToolId();
-  const link = mattTool
-    ? `${best.permalink}${best.permalink.includes("?") ? "&" : "?"}matt_tool=${encodeURIComponent(mattTool)}`
-    : best.permalink;
+  const link = buildSuggestedProductLink(best.permalink);
 
   return {
+    productId: best.id,
     title: best.title,
     thumbnail: best.thumbnail,
     price: best.price,
@@ -778,7 +794,7 @@ serve(async (req) => {
         });
       }
 
-      const prompt = buildPrompt(
+      const prompt = payload.mode === "shopping" ? buildShoppingPrompt(guestPet, [], question) : buildPrompt(
         guestPet,
         normalizeGuestClinical(payload),
         normalizeGuestPreventive(payload),
@@ -787,23 +803,23 @@ serve(async (req) => {
         Boolean(imageDataUrl),
       );
 
-      const ai = await callAiModel(prompt, imageDataUrl);
+      const ai = await callAiModel(prompt, imageDataUrl, payload.mode === "shopping");
       const limit = resolveLimitByTier(settingsRowData, "guest");
 
       const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(ai.answer);
-      const { cleanAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
+      const { recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
       let suggestedProduct: SuggestedProduct | null = null;
-      if (query) {
+      if (query && payload.mode !== "shopping") {
         try {
-          suggestedProduct = await findSuggestedProduct(admin, query, grupo, guestPet.species);
+          suggestedProduct = await findSuggestedProduct(admin, query, grupo, guestPet);
         } catch {
-          suggestedProduct = null;
+          console.error("No se pudo verificar la sugerencia de producto.");
         }
       }
 
       return new Response(JSON.stringify({
         ...ai,
-        answer: cleanAnswer,
+        answer: safeAiResponse({ mode: payload.mode, question, products: suggestedProduct ? [suggestedProduct] : [], searched: Boolean(query) }),
         suggestedProduct,
         recommendVetVisit,
         // No se persiste la imagen de un visitante (no hay historial guest en DB).
@@ -841,7 +857,7 @@ serve(async (req) => {
 
     const { data: profile, error: profileError } = await admin
       .from("users")
-      .select("access_mode,full_name")
+      .select("*")
       .eq("id", user.id)
       .single<UserProfileRow>();
 
@@ -849,11 +865,81 @@ serve(async (req) => {
       throw new Error(`Error loading user profile: ${profileError?.message || "not found"}`);
     }
 
-    const tier = profile.access_mode === "premium"
-      ? "premium"
-      : profile.access_mode === "guest"
-        ? "guest"
-        : "free";
+    const { data: subscriptionRow, error: subscriptionError } = await admin
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle<SubscriptionRow>();
+
+    if (subscriptionError) {
+      throw new Error(`Error loading subscription: ${subscriptionError.message}`);
+    }
+
+    // Propiedad real de la mascota: se carga ANTES de cualquier procesamiento
+    // (IA, cupos, escrituras) para que una mascota ajena o protegida se
+    // rechace sin efectos parciales.
+    const { data: pet, error: petError } = await admin
+      .from("pets")
+      .select("id,user_id,name,species,breed,sex,age_years,age_months,birth_date,weight_kg,notes")
+      .eq("id", petId)
+      .eq("user_id", user.id)
+      .maybeSingle<PetRow>();
+
+    if (petError) {
+      throw new Error(`Error loading pet profile: ${petError.message}`);
+    }
+    if (!pet) {
+      return new Response(JSON.stringify({ error: "Pet not found for this user" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Cantidad real de mascotas (para el fallback de unica mascota en Free).
+    // Error de conteo => falla cerrada (500), nunca acceso por defecto.
+    const { count: petCount, error: petCountError } = await admin
+      .from("pets")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id);
+
+    if (petCountError || typeof petCount !== "number") {
+      throw new Error(`Error counting pets: ${petCountError?.message || "no count"}`);
+    }
+
+    // Decision central de acceso (compartida en _shared/petAccessServer.mjs):
+    // JWT -> usuario; estado real desde la base (access_mode + subscriptions,
+    // incluyendo gracia y cancelacion pendiente si la 067 esta aplicada);
+    // en Free solo la mascota activa (o la unica). Nada del payload del
+    // cliente participa en la decision. Pre-067 conserva el comportamiento
+    // actual sin interpretar columnas ausentes como Premium.
+    const access = resolvePetWriteAccess({
+      userId: user.id,
+      profileRow: profile,
+      subscriptionRow: subscriptionRow ?? null,
+      petId,
+      petOwnerId: pet.user_id,
+      petCount,
+    });
+
+    if (!access.allowed) {
+      if (access.reason === "not_owner") {
+        return new Response(JSON.stringify({ error: PET_ACCESS_DENIED_MESSAGES.not_owner }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const message = access.reason === "selection_required"
+        ? PET_ACCESS_DENIED_MESSAGES.selection_required
+        : access.reason === "protected_pet"
+          ? PET_ACCESS_DENIED_MESSAGES.protected_pet
+          : PET_ACCESS_DENIED_MESSAGES.invalid_input;
+      return new Response(JSON.stringify({ error: message, reason: access.reason }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const tier: Tier = access.tier;
 
     // La subida de imagenes para analisis visual es una funcion Premium. Se
     // valida tambien server-side (no solo se oculta/deshabilita en el
@@ -880,25 +966,10 @@ serve(async (req) => {
         });
       }
 
-      const { data: insightPet, error: insightPetError } = await admin
-        .from("pets")
-        .select("id,user_id,name,species,breed,sex,age_years,age_months,weight_kg,notes")
-        .eq("id", petId)
-        .eq("user_id", user.id)
-        .maybeSingle<PetRow>();
-
-      if (insightPetError) {
-        throw new Error(`Error loading pet profile: ${insightPetError.message}`);
-      }
-      if (!insightPet) {
-        return new Response(JSON.stringify({ error: "Pet not found for this user" }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      // La mascota ya fue cargada y autorizada arriba (propiedad + estado de
+      // acceso): se reutiliza directamente.
       const insightPrompt = buildWeightInsightPrompt(
-        insightPet,
+        pet,
         profile.full_name?.trim() || deriveNameFromEmail(user.email || ""),
         previousWeightKg,
         currentWeightKg,
@@ -907,19 +978,19 @@ serve(async (req) => {
       const insightAi = await callAiModel(insightPrompt, null);
 
       const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(insightAi.answer);
-      const { cleanAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
+      const { recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
 
       let suggestedProduct: SuggestedProduct | null = null;
       if (query) {
         try {
-          suggestedProduct = await findSuggestedProduct(admin, query, grupo, insightPet.species);
+          suggestedProduct = await findSuggestedProduct(admin, query, grupo, pet);
         } catch {
-          suggestedProduct = null;
+          console.error("No se pudo verificar la sugerencia de producto.");
         }
       }
 
       return new Response(JSON.stringify({
-        answer: cleanAnswer,
+        answer: safeAiResponse({ mode: "weight_insight", question }),
         suggestedProduct,
         recommendVetVisit,
       }), {
@@ -954,24 +1025,43 @@ serve(async (req) => {
       });
     }
 
-    const { data: pet, error: petError } = await admin
-      .from("pets")
-      .select("id,user_id,name,species,breed,sex,age_years,age_months,weight_kg,notes")
-      .eq("id", petId)
-      .eq("user_id", user.id)
-      .maybeSingle<PetRow>();
+    // (La mascota ya fue cargada y autorizada antes de cualquier procesamiento.)
 
-    if (petError) {
-      throw new Error(`Error loading pet profile: ${petError.message}`);
-    }
-
-    if (!pet) {
-      return new Response(JSON.stringify({ error: "Pet not found for this user" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    let prompt: string;
+    let authorizedProducts: Array<{ title: string }> = [];
+    if (payload.mode === "shopping") {
+      const ids = payload.shoppingProductIds;
+      if (!Array.isArray(ids) || ids.length > 8 || ids.some(id => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
+        return new Response(JSON.stringify({ error: "Seleccion de productos invalida." }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      let query = admin.from("beneficios_productos")
+        .select("id,title,grupo,pet_types,life_stages,size_categories,research_record,researched_at,approval_status")
+        .eq("active", true).eq("approval_status","approved").limit(8);
+      if (ids.length) query = query.in("id", ids);
+      const { data: products, error: catalogError } = await query;
+      if (catalogError) throw new Error("No se pudo consultar el catalogo del asesor.");
+      const productIds = (products || []).map(product => product.id);
+      const eligible = await filterEligibleShopProducts(pet, products || [],
+        ids => admin.rpc("get_shop_compatibility", { p_products: ids }));
+      authorizedProducts = eligible.map(({ product }) => ({ title: product.title }));
+      const { data: prices, error: priceError } = productIds.length
+        ? await admin.rpc("get_shop_price_history", { p_products: productIds })
+        : { data: [], error: null };
+      if (priceError) throw new Error("No se pudo comprobar el historial de precios del asesor.");
+      const priceRows: Array<{ productId: string; price: number | null; currency: string | null; lastSuccessAt: string | null; status: string }> = Array.isArray(prices) ? prices : [];
+      prompt = buildShoppingPrompt(pet, eligible.map(({ product, global }) => {
+        const price = priceRows.find(row => row.productId === product.id);
+        return { id:product.id, title:product.title, category:global.research?.category || product.grupo,
+          petTypes:global.verifiedDimensions?.species,
+          lifeStages:global.verifiedDimensions?.stage,
+          sizes:global.verifiedDimensions?.size,
+          lastKnownPrice: price?.price ?? null, currency: price?.currency ?? null,
+          priceCheckedAt: price?.lastSuccessAt ?? null, priceStatus: price?.status ?? "untracked",
+          compatibilityWarning: "No afirmar seguridad ni adecuacion clinica sin verificacion adicional." };
+      }), question);
+    } else {
     const [{ data: clinicalRows, error: clinicalError }, { data: preventiveRows, error: preventiveError }] =
       await Promise.all([
         admin
@@ -996,7 +1086,7 @@ serve(async (req) => {
       throw new Error(`Error loading preventive tasks: ${preventiveError.message}`);
     }
 
-    const prompt = buildPrompt(
+    prompt = buildPrompt(
       pet,
       (clinicalRows || []) as ClinicalRow[],
       (preventiveRows || []) as PreventiveRow[],
@@ -1004,20 +1094,25 @@ serve(async (req) => {
       promptRecentMessages,
       Boolean(imageDataUrl),
     );
+    }
 
-    const ai = await callAiModel(prompt, imageDataUrl);
+    const ai = await callAiModel(prompt, imageDataUrl, payload.mode === "shopping");
 
     const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(ai.answer);
-    const { cleanAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
-    ai.answer = cleanAnswer;
+    const { recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
     let suggestedProduct: SuggestedProduct | null = null;
-    if (query) {
+    if (query && payload.mode !== "shopping") {
       try {
-        suggestedProduct = await findSuggestedProduct(admin, query, grupo, pet.species);
+        suggestedProduct = await findSuggestedProduct(admin, query, grupo, pet);
       } catch {
-        suggestedProduct = null;
+        console.error("No se pudo verificar la sugerencia de producto.");
       }
     }
+    ai.answer = safeAiResponse({
+      mode: payload.mode, question, hasImage: Boolean(imageDataUrl),
+      products: payload.mode === "shopping" ? authorizedProducts : suggestedProduct ? [suggestedProduct] : [],
+      searched: Boolean(query),
+    });
 
     // Se sube recien aca (con la IA ya respondida OK) para no gastar Storage
     // en imagenes de consultas que fallaron.

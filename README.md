@@ -52,12 +52,19 @@ Plataforma modular, profesional y completamente funcional para gestión de masco
 
 ### 💳 Sistema de Suscripción (Paywall)
 - **Plan Gratis**: 2 mascotas, 5 consultas IA/día, historial básico
-- **Plan Premium**: Mascotas ilimitadas, IA ilimitada, PDF/Email, ofertas exclusivas
+- **PDF**: descarga local gratuita para todas las cuentas; correo Free 2/mes calendario y Premium 5/dia calendario (Buenos Aires).
+- **Plan Premium**: Mascotas ilimitadas, IA ilimitada, ofertas exclusivas
 - Banner de estado y acceso condicionado a funciones
 
-### 🎁 Ofertas Exclusivas
-- Acceso solo para usuarios Premium
-- Ejemplos: 15% OFF alimento, 2x1 antiparasitarios
+### Tienda personalizada
+- Reutiliza el catalogo de beneficios y la afiliacion existente, sin modificar planes.
+- Mascota de referencia, categorias, busqueda explicita con advertencias de incompatibilidad y comparador de hasta seis productos.
+- Asesor contextual mediante `pet-ai-chat`, con los mismos cupos y proteccion de mascotas del chat; no prescribe ni inventa precios.
+- Historial propio: cuatro variaciones reales, promociones, fechas, minimo/maximo por moneda y advertencia de precios antiguos o consultas fallidas.
+- La actualizacion oficial requiere activar la migracion 071 y el workflow existente. Sin esa activacion, los precios se identifican como no verificados.
+- Catalogo global compartido: cada producto se investiga una sola vez (ficha, atributos, fuentes, fechas, aprobacion), y luego se reutiliza para todos los usuarios.
+- Radar diario opcional: detecta hasta 5 candidatos desde rankings oficiales por subcategorias, guarda borradores y requiere aprobacion administrativa antes de incorporarlos.
+- Configuracion y orden de activacion: [SUPABASE_SETUP.md](SUPABASE_SETUP.md#tienda-personalizada-migraciones-071-y-072).
 
 ## 🛠️ Tech Stack
 
@@ -259,11 +266,17 @@ Aplicar `supabase/migrations/013_billing_pricing_settings.sql` para crear:
 1. Ir a "Consultorio" > "Historial Clínico"
 2. Clickear botón "Descargar PDF"
 3. Se descarga informe con encabezado, datos mascota y timeline clínica
+4. Gratuito para cuentas Free y Premium, sin consumir cupo de correo.
 
 ### Enviar PDF por email
 1. Clickear "Enviar Email"
 2. Ingresar email destino
-3. Se envía PDF generado (requiere Premium)
+3. Requiere cuenta registrada (guest no envia). Cupo compartido entre historial,
+   libreta sanitaria y medicacion: Free 2 por mes calendario; Premium 5 por dia
+   calendario en America/Argentina/Buenos_Aires.
+4. Gracia y cancelacion pendiente conservan limite Premium mientras tengan acceso completo.
+5. El servidor valida identidad, plan y cupo; la pantalla muestra consumo real.
+   Ver [operacion y dependencias de la etapa 5.3.1](supabase/functions/README.md#pdf-clinico-etapa-531).
 
 ### Usar chat IA
 1. Ir a tab "Consultorio" (segunda sección)

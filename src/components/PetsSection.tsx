@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
-  Circle, ClipboardList, Download, Heart, Lock, Mail,
+  Circle, ClipboardList, Download, Heart, Mail,
   MapPin, MessageCircle, PawPrint, Pill, Plus, QrCode, Shield, Syringe, Tag, Trash2, Utensils, X,
 } from 'lucide-react';
 import jsQR from 'jsqr';
@@ -13,7 +13,10 @@ import { usePets } from '../hooks/usePets';
 import { usePreventive } from '../hooks/usePreventive';
 import { useAppState } from '../context/AppStateContext';
 import { PetFoodSection } from './PetFoodSection';
+import { ActivePetBanner } from './ActivePetSelector';
 import { BlogTeaser } from './BlogTeaser';
+import { ClinicalPdfQuota } from './ClinicalPdfQuota';
+import { PET_ACCESS_MESSAGES, recoveryOnlyPetUpdate } from '../lib/petAccess';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import {
   buildCountryOptionsForPicker,
@@ -387,7 +390,7 @@ export function PetsSection() {
   const { pets, selectedPetId, canAddPet, freePetLimit, addPet, selectPet, removePet, updatePet } = usePets();
   const { setActiveTab, user, subscription } = useAppState();
   const isPremium = subscription?.isPremiumUser ?? false;
-  const { timeline, addClinicalNote, generateClinicalPdf, sendClinicalPdfByEmail } = useClinical();
+  const { timeline, addClinicalNote, generateClinicalPdf, sendClinicalPdfByEmail, isSendingPdf: sendingClinical } = useClinical();
   const {
     healthBookletEntries,
     lastVaccineSummary,
@@ -396,7 +399,10 @@ export function PetsSection() {
     generateMedicationLogPdf,
     sendHealthBookletPdfByEmail,
     sendMedicationLogPdfByEmail,
+    isSendingPdf: sendingReport,
   } = usePetReports();
+  const sendingPdf = sendingClinical || sendingReport;
+  const isRegistered = Boolean(user && !user.isGuest);
   const { preventiveTasks, addPreventiveTask, toggleTask, rescheduleTaskTo } = usePreventive();
   const { getMessages, markMessageRead, getTagRequest, generatePosterPdf, generatePosterImage, getLinkedTagCode, linkTagCode, unlinkTagCode } = usePetIdentification();
 
@@ -1141,7 +1147,7 @@ export function PetsSection() {
         <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Mis Mascotas</h2>
         <p className="mt-1 text-slate-500">
           {pets.length} registradas
-          {user?.subscription?.plan === 'premium' && user?.subscription?.isActive ? '' : ` (max ${freePetLimit})`}
+          {isPremium ? '' : ` (max ${freePetLimit})`}
         </p>
       </div>
 
@@ -1157,6 +1163,8 @@ export function PetsSection() {
           </button>
         </div>
       )}
+
+      <ActivePetBanner />
 
       {canAddPet && (
         <button type="button" onClick={() => { setStep(1); setForm(INIT); setBirthDateUnknown(false); setView('wizard'); }}
@@ -1200,6 +1208,16 @@ export function PetsSection() {
                 <p className="font-bold text-slate-900">{p.name}</p>
                 <p className="text-sm text-slate-500">{p.breed}</p>
                 <p className="text-xs text-slate-400">{formatAgeLabel(p)} · {p.weightKg} kg</p>
+                {!subscription.isPetEditable(p.id) && (
+                  <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                    Solo lectura
+                  </span>
+                )}
+                {subscription.activePetSupport && subscription.accessState === 'free' && pets.length > 1 && p.id === subscription.activePetId && (
+                  <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    Activa
+                  </span>
+                )}
               </div>
               <ChevronRight size={18} className="shrink-0 text-slate-300" />
             </button>
@@ -1368,6 +1386,13 @@ export function PetsSection() {
         <p className="mt-1 text-sm text-slate-500">Actualiza los datos de tu mascota</p>
       </div>
 
+      {!subscription.isPetEditable(pet.id) && (
+        <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-700">{PET_ACCESS_MESSAGES.protectedPetEdit}</p>
+          <p className="mt-1 text-xs text-slate-500">{PET_ACCESS_MESSAGES.recoveryAvailable}</p>
+        </div>
+      )}
+
       <div className="rounded-3xl bg-white p-5 shadow-sm">
         <div className="space-y-4">
           {/* photo */}
@@ -1488,10 +1513,22 @@ export function PetsSection() {
               setErr('La fecha es requerida.'); return;
             }
             try {
-              await updatePet(pet.id, form);
-              setErr(null);
-              setView('detail');
-              setMsg('Mascota actualizada correctamente.');
+              if (!subscription.isPetEditable(pet.id)) {
+                // Mascota protegida: solo se persisten los datos de
+                // recuperacion (foto y señas), igual que en el servidor (067).
+                await updatePet(pet.id, recoveryOnlyPetUpdate({
+                  photoUrl: form.photoUrl,
+                  distinguishingMarks: form.distinguishingMarks,
+                }));
+                setErr(null);
+                setView('detail');
+                setMsg('Se guardaron la foto y las señas particulares. El resto de la ficha esta en modo lectura con el plan gratuito.');
+              } else {
+                await updatePet(pet.id, form);
+                setErr(null);
+                setView('detail');
+                setMsg('Mascota actualizada correctamente.');
+              }
             } catch (ex) {
               setErr(ex instanceof Error ? ex.message : 'No se pudo actualizar la mascota.');
             }
@@ -1561,6 +1598,11 @@ export function PetsSection() {
             <h2 className="text-2xl font-extrabold">{pet.name}</h2>
             <p className="text-white/80">{pet.breed}</p>
             <p className="text-sm text-white/70">{formatAgeLabel(pet)}</p>
+            {!subscription.isPetEditable(pet.id) && (
+              <span className="mt-1 inline-block rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white">
+                Solo lectura · datos intactos
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -2097,20 +2139,21 @@ export function PetsSection() {
           <button
             type="button"
             onClick={doPdf}
-            title={isPremium ? undefined : 'Funcion Premium: descarga el historial en PDF'}
+            disabled={!isRegistered}
             className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-emerald-400 py-3 font-semibold text-emerald-700"
           >
-            {isPremium ? <Download size={16} /> : <Lock size={16} />} Descargar PDF{!isPremium && ' (Premium)'}
+            <Download size={16} /> Descargar PDF
           </button>
           <button
             type="button"
             onClick={() => setMailModal(true)}
-            title={isPremium ? undefined : 'Funcion Premium: envia el historial por email'}
+            disabled={!isRegistered || sendingPdf}
             className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 font-bold text-white"
           >
-            {isPremium ? <Mail size={16} /> : <Lock size={16} />} Enviar{!isPremium && ' (Premium)'}
+            <Mail size={16} /> {sendingPdf ? 'Enviando...' : 'Enviar'}
           </button>
         </div>
+        <ClinicalPdfQuota />
         {msg && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{msg}</p>}
 
         {timeline.length === 0 ? (
@@ -2151,7 +2194,7 @@ export function PetsSection() {
             <div className="mt-4 flex gap-3">
               <button type="button" onClick={() => setMailModal(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
-              <button type="submit" className="w-full rounded-full bg-emerald-500 py-3 font-bold text-white">Enviar</button>
+              <button type="submit" disabled={!isRegistered || sendingPdf} className="w-full rounded-full bg-emerald-500 py-3 font-bold text-white">{sendingPdf ? 'Enviando...' : 'Enviar'}</button>
             </div>
           </form>
         </div>
@@ -2183,17 +2226,18 @@ export function PetsSection() {
         </div>
 
         <div className="flex gap-3">
-          <button type="button" onClick={doLibretaPdf}
+          <button type="button" onClick={doLibretaPdf} disabled={!isRegistered}
             className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-sky-400 py-3 font-semibold text-sky-700">
             <Download size={16} /> Descargar PDF
           </button>
-          <button type="button" onClick={() => setLibretaMailModal(true)}
+          <button type="button" onClick={() => setLibretaMailModal(true)} disabled={!isRegistered || sendingPdf}
             className="flex flex-1 items-center justify-center gap-2 rounded-full bg-sky-500 py-3 font-bold text-white">
             <Mail size={16} /> Enviar
           </button>
         </div>
         {msg && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{msg}</p>}
 
+        <ClinicalPdfQuota />
         <p className="pt-2 text-sm font-bold uppercase tracking-wide text-slate-500">
           Historial sanitario completo ({healthBookletEntries.length} registro{healthBookletEntries.length !== 1 ? 's' : ''}, reciente a antigua)
         </p>
@@ -2234,7 +2278,7 @@ export function PetsSection() {
             <div className="mt-4 flex gap-3">
               <button type="button" onClick={() => setLibretaMailModal(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
-              <button type="submit" className="w-full rounded-full bg-sky-500 py-3 font-bold text-white">Enviar</button>
+              <button type="submit" disabled={!isRegistered || sendingPdf} className="w-full rounded-full bg-sky-500 py-3 font-bold text-white">{sendingPdf ? 'Enviando...' : 'Enviar'}</button>
             </div>
           </form>
         </div>
@@ -2270,17 +2314,18 @@ export function PetsSection() {
         </p>
 
         <div className="flex gap-3">
-          <button type="button" onClick={doMedicacionPdf}
+          <button type="button" onClick={doMedicacionPdf} disabled={!isRegistered}
             className="flex flex-1 items-center justify-center gap-2 rounded-full border-2 border-purple-400 py-3 font-semibold text-purple-700">
             <Download size={16} /> Descargar PDF
           </button>
-          <button type="button" onClick={() => setMedicacionMailModal(true)}
+          <button type="button" onClick={() => setMedicacionMailModal(true)} disabled={!isRegistered || sendingPdf}
             className="flex flex-1 items-center justify-center gap-2 rounded-full bg-purple-500 py-3 font-bold text-white">
             <Mail size={16} /> Enviar
           </button>
         </div>
         {msg && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{msg}</p>}
 
+        <ClinicalPdfQuota />
         {medicationTreatmentGroups.length === 0 ? (
           <div className="rounded-3xl bg-white px-5 py-10 text-center shadow-sm">
             <p className="text-slate-400">Sin medicacion registrada aun.</p>
@@ -2362,7 +2407,7 @@ export function PetsSection() {
             <div className="mt-4 flex gap-3">
               <button type="button" onClick={() => setMedicacionMailModal(false)}
                 className="w-full rounded-full border-2 border-slate-200 py-3 font-semibold text-slate-600">Cancelar</button>
-              <button type="submit" className="w-full rounded-full bg-purple-500 py-3 font-bold text-white">Enviar</button>
+              <button type="submit" disabled={!isRegistered || sendingPdf} className="w-full rounded-full bg-purple-500 py-3 font-bold text-white">{sendingPdf ? 'Enviando...' : 'Enviar'}</button>
             </div>
           </form>
         </div>

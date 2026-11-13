@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from 'react';
-import { useAppState } from '../context/AppStateContext';
+import { useAppState, useSessionGuard } from '../context/AppStateContext';
 import { buildTimelineReportPdf } from '../lib/reportPdf';
+import { clinicalDownloadAccessError } from '../lib/clinicalPdfPolicy.mjs';
+import { useClinicalPdfEmail } from './useClinicalPdfEmail';
 import type { ClinicalTimelineEntry, Pet } from '../types';
 
 function sortByEventDateDesc(entries: ClinicalTimelineEntry[]) {
@@ -56,51 +58,10 @@ function buildHealthSummary(entries: ClinicalTimelineEntry[]): HealthSummaryCard
   };
 }
 
-async function sendPdfByEmail(args: {
-  email: string;
-  pdf: { fileName: string; blob: Blob };
-  petName: string;
-  reportTitle: string;
-}) {
-  const arrayBuffer = await args.pdf.blob.arrayBuffer();
-  const bytes = Array.from(new Uint8Array(arrayBuffer));
-
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY en variables de entorno.');
-  }
-
-  const response = await fetch(`${supabaseUrl}/functions/v1/send-clinical-pdf`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${anonKey}`,
-    },
-    body: JSON.stringify({
-      email: args.email,
-      fileName: args.pdf.fileName,
-      pdfBytes: bytes,
-      petName: args.petName,
-      reportTitle: args.reportTitle,
-    }),
-  });
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      const payload = await response.json();
-      detail = typeof payload?.error === 'string' ? payload.error : '';
-    } catch {
-      detail = '';
-    }
-    throw new Error(detail || 'No se pudo enviar el PDF por email.');
-  }
-}
-
 export function usePetReports() {
-  const { clinicalEntries, pets, selectedPetId, user, subscription } = useAppState();
+  const { clinicalEntries, pets, selectedPetId, user } = useAppState();
+  const { sendReport, isSendingPdf } = useClinicalPdfEmail();
+  const assertCurrentSession = useSessionGuard(user?.id);
 
   const selectedPet: Pet | null = useMemo(
     () => pets.find((pet) => pet.id === selectedPetId) ?? null,
@@ -135,14 +96,14 @@ export function usePetReports() {
 
   const generateHealthBookletPdf = useCallback(
     async (logoUrl?: string) => {
+      assertCurrentSession();
       if (!selectedPet) {
         throw new Error('Selecciona una mascota antes de descargar el PDF.');
       }
-      if (!subscription.isPremiumUser) {
-        throw new Error('La descarga de PDF avanzada es exclusiva para Premium.');
-      }
+      const accessError = clinicalDownloadAccessError(user);
+      if (accessError) throw new Error(accessError);
 
-      return buildTimelineReportPdf({
+      const pdf = await buildTimelineReportPdf({
         pet: selectedPet,
         ownerEmail: user?.email ?? '',
         entries: healthBookletEntries,
@@ -152,20 +113,22 @@ export function usePetReports() {
         fileNamePrefix: 'libreta-sanitaria',
         logoUrl,
       });
+      assertCurrentSession();
+      return pdf;
     },
-    [healthBookletEntries, selectedPet, subscription.isPremiumUser, user?.email],
+    [healthBookletEntries, selectedPet, user, assertCurrentSession],
   );
 
   const generateMedicationLogPdf = useCallback(
     async (logoUrl?: string) => {
+      assertCurrentSession();
       if (!selectedPet) {
         throw new Error('Selecciona una mascota antes de descargar el PDF.');
       }
-      if (!subscription.isPremiumUser) {
-        throw new Error('La descarga de PDF avanzada es exclusiva para Premium.');
-      }
+      const accessError = clinicalDownloadAccessError(user);
+      if (accessError) throw new Error(accessError);
 
-      return buildTimelineReportPdf({
+      const pdf = await buildTimelineReportPdf({
         pet: selectedPet,
         ownerEmail: user?.email ?? '',
         entries: medicationLogEntries,
@@ -175,30 +138,28 @@ export function usePetReports() {
         fileNamePrefix: 'control-medicacion',
         logoUrl,
       });
+      assertCurrentSession();
+      return pdf;
     },
-    [medicationLogEntries, selectedPet, subscription.isPremiumUser, user?.email],
+    [medicationLogEntries, selectedPet, user, assertCurrentSession],
   );
 
   const sendHealthBookletPdfByEmail = useCallback(
     async (email: string, logoUrl?: string) => {
-      if (!subscription.isPremiumUser) {
-        throw new Error('El envio de PDF por email es exclusivo para Premium.');
-      }
-      const pdf = await generateHealthBookletPdf(logoUrl);
-      await sendPdfByEmail({ email, pdf, petName: selectedPet?.name ?? '', reportTitle: 'Libreta Sanitaria' });
+      if (!selectedPet) throw new Error('Selecciona una mascota para enviar el informe.');
+      await sendReport(email, `booklet:${selectedPet.id}`, selectedPet.name,
+        'Libreta Sanitaria', () => generateHealthBookletPdf(logoUrl), selectedPet.id);
     },
-    [generateHealthBookletPdf, selectedPet?.name, subscription.isPremiumUser],
+    [generateHealthBookletPdf, selectedPet, sendReport],
   );
 
   const sendMedicationLogPdfByEmail = useCallback(
     async (email: string, logoUrl?: string) => {
-      if (!subscription.isPremiumUser) {
-        throw new Error('El envio de PDF por email es exclusivo para Premium.');
-      }
-      const pdf = await generateMedicationLogPdf(logoUrl);
-      await sendPdfByEmail({ email, pdf, petName: selectedPet?.name ?? '', reportTitle: 'Control de Medicacion' });
+      if (!selectedPet) throw new Error('Selecciona una mascota para enviar el informe.');
+      await sendReport(email, `medication:${selectedPet.id}`, selectedPet.name,
+        'Control de Medicacion', () => generateMedicationLogPdf(logoUrl), selectedPet.id);
     },
-    [generateMedicationLogPdf, selectedPet?.name, subscription.isPremiumUser],
+    [generateMedicationLogPdf, selectedPet, sendReport],
   );
 
   return {
@@ -211,5 +172,6 @@ export function usePetReports() {
     generateMedicationLogPdf,
     sendHealthBookletPdfByEmail,
     sendMedicationLogPdfByEmail,
+    isSendingPdf,
   };
 }

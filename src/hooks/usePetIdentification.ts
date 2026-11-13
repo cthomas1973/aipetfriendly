@@ -11,6 +11,7 @@ import {
 } from '../lib/supabase';
 import { buildPetPosterPdf } from '../lib/petPosterPdf';
 import { buildPetPosterImage } from '../lib/petPosterImage';
+import { posterAccessError, tagRequestAccessError } from '../lib/petAccess';
 import type { Pet, PetSightingSource } from '../types';
 
 export function buildPetPublicUrl(pet: Pet, source: PetSightingSource): string {
@@ -39,13 +40,12 @@ export function usePetIdentification() {
 
   const requestTag = useCallback(
     async (petId: string) => {
-      if (!user || user.isGuest) {
-        throw new Error('Debes iniciar sesion para solicitar la chapita.');
+      // La chapita fisica sigue siendo un beneficio Premium (sin cambios).
+      const accessError = tagRequestAccessError(user, subscription.isPremiumUser);
+      if (accessError) {
+        throw new Error(accessError);
       }
-      if (!subscription.isPremiumUser) {
-        throw new Error('Solicitar la chapita es exclusivo para Premium.');
-      }
-      const created = await createPetTagRequest(petId, user.id);
+      const created = await createPetTagRequest(petId, user!.id);
       if (!created) {
         throw new Error('No se pudo registrar la solicitud de chapita.');
       }
@@ -60,11 +60,13 @@ export function usePetIdentification() {
       logoUrl?: string,
       posterInfo?: { lostDate?: string; lostPlace?: string; contactPhone?: string; distinguishingMarks?: string; extraMessage?: string },
     ) => {
-      if (!subscription.isPremiumUser) {
-        throw new Error('Generar el cartel en PDF es exclusivo para Premium.');
-      }
-      if (!pet.publicCode) {
-        throw new Error('Esta mascota todavia no tiene codigo de identificacion.');
+      // El cartel de busqueda esta disponible para cualquier usuario con
+      // sesion y mascota propia con codigo publico, incluso en plan Free y
+      // sobre mascotas protegidas (decision de producto Fase 7.2.2). No es
+      // una funcion Premium: se genera en frontend y no habilita escritura.
+      const accessError = posterAccessError(user, pet);
+      if (accessError) {
+        throw new Error(accessError);
       }
       return buildPetPosterPdf({
         pet,
@@ -77,7 +79,7 @@ export function usePetIdentification() {
         extraMessage: posterInfo?.extraMessage,
       });
     },
-    [subscription.isPremiumUser],
+    [user],
   );
 
   const generatePosterImage = useCallback(
@@ -86,11 +88,10 @@ export function usePetIdentification() {
       logoUrl?: string,
       posterInfo?: { lostDate?: string; lostPlace?: string; contactPhone?: string; distinguishingMarks?: string; extraMessage?: string },
     ) => {
-      if (!subscription.isPremiumUser) {
-        throw new Error('Generar la imagen del cartel es exclusivo para Premium.');
-      }
-      if (!pet.publicCode) {
-        throw new Error('Esta mascota todavia no tiene codigo de identificacion.');
+      // Misma regla que el PDF: disponible tambien para Free (ver arriba).
+      const accessError = posterAccessError(user, pet);
+      if (accessError) {
+        throw new Error(accessError);
       }
       return buildPetPosterImage({
         pet,
@@ -103,7 +104,7 @@ export function usePetIdentification() {
         extraMessage: posterInfo?.extraMessage,
       });
     },
-    [subscription.isPremiumUser],
+    [user],
   );
 
   const getLinkedTagCode = useCallback(async (petId: string) => {

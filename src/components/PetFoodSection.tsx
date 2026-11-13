@@ -1,11 +1,10 @@
 import { FormEvent, useState } from 'react';
-import { ChevronLeft, ExternalLink, MapPinned, Plus, Sparkles } from 'lucide-react';
+import { ChevronLeft, MapPinned, Plus, Sparkles } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { usePetFood } from '../hooks/usePetFood';
+import { SuggestedProductCard } from './SuggestedProductCard';
 import { usePets } from '../hooks/usePets';
 import type { Pet, PetWeightLog } from '../types';
-
-const PRICE_FORMATTER = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -312,29 +311,10 @@ export function PetFoodSection({ pet, onBack }: { pet: Pet; onBack: () => void }
               <>
                 <p className="text-sm text-slate-700">{weightInsight.answer}</p>
                 {weightInsight.suggestedProduct && (
-                  <a
-                    href={weightInsight.suggestedProduct.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <SuggestedProductCard
+                    product={weightInsight.suggestedProduct}
                     className="mt-3 flex items-center gap-3 rounded-2xl bg-emerald-50 p-3 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100"
-                  >
-                    {weightInsight.suggestedProduct.thumbnail && (
-                      <img
-                        src={weightInsight.suggestedProduct.thumbnail}
-                        alt={weightInsight.suggestedProduct.title}
-                        className="h-12 w-12 shrink-0 rounded-xl object-cover bg-white"
-                        loading="lazy"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Producto recomendado</p>
-                      <p className="truncate text-sm font-semibold text-slate-800">{weightInsight.suggestedProduct.title}</p>
-                      {weightInsight.suggestedProduct.price != null && (
-                        <p className="text-xs font-bold text-slate-600">{PRICE_FORMATTER.format(weightInsight.suggestedProduct.price)}</p>
-                      )}
-                    </div>
-                    <ExternalLink size={16} className="shrink-0 text-emerald-600" />
-                  </a>
+                  />
                 )}
                 {weightInsight.recommendVetVisit && (
                   <button

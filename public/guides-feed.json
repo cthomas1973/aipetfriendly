@@ -9,15 +9,6 @@
     "effectiveReleaseDate": "2026-10-01"
   },
   {
-    "slug": "que-hacer-si-tu-mascota-se-atraganta",
-    "title": "Primeros auxilios: qué hacer si tu mascota se atraganta",
-    "category": "salud",
-    "summary": "El atragantamiento con objetos como juguetes, huesos o piedras es una emergencia hogareña que exige actuar rápido. Guía paso a paso para identificarlo, actuar con seguridad y saber qué nunca hay que hacer.",
-    "coverImageSrc": "/guides/que-hacer-si-tu-mascota-se-atraganta/portada.jpg",
-    "relatedProductId": null,
-    "effectiveReleaseDate": "2026-09-28"
-  },
-  {
     "slug": "como-ensenar-a-tu-mascota-el-comando-soltar",
     "title": "Cómo enseñar a tu mascota el comando \"Soltar\"",
     "category": "adiestramiento",
@@ -70,24 +61,6 @@
     "coverImageSrc": "/guides/como-ensenar-a-tu-perro-a-dar-la-pata/portada.jpg",
     "relatedProductId": null,
     "effectiveReleaseDate": "2026-08-07"
-  },
-  {
-    "slug": "vacunas-y-desparasitacion-guia-para-no-perderse",
-    "title": "Vacunas y desparasitación: guía para no perderte ninguna dosis",
-    "category": "salud",
-    "summary": "Cumplir el calendario de vacunas y desparasitaciones es una de las formas más simples y efectivas de prevenir enfermedades graves. Cómo organizarlo sin olvidos.",
-    "coverImageSrc": null,
-    "relatedProductId": null,
-    "effectiveReleaseDate": "2026-08-04"
-  },
-  {
-    "slug": "primeros-auxilios-basicos-para-mascotas",
-    "title": "Primeros auxilios básicos para mascotas: qué hacer mientras llegás al veterinario",
-    "category": "salud",
-    "summary": "Ante una urgencia, los primeros minutos importan. Estas son pautas generales de primeros auxilios, que nunca reemplazan la atención veterinaria.",
-    "coverImageSrc": null,
-    "relatedProductId": null,
-    "effectiveReleaseDate": "2026-07-28"
   },
   {
     "slug": "destructividad-y-ladridos-excesivos",

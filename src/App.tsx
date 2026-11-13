@@ -44,6 +44,13 @@ import { usePreventive } from './hooks/usePreventive';
 import { signOut, useSupabaseSync } from './hooks/useSupabaseSync';
 import { hideBannerAd, isNativeAndroidApp, showBannerForNonPremium } from './lib/mobileAds';
 import { createGuestUser } from './lib/guestUser';
+import {
+  activePetCooldownUntil,
+  hasFullAccess,
+  isPetEditable,
+  needsActivePetSelection,
+  resolveUserAccessState,
+} from './lib/petAccess';
 import type {
   AdminUserRow,
   AppTab,
@@ -1144,18 +1151,33 @@ export default function App() {
 
   const subscriptionState: SubscriptionState = useMemo(() => {
     const isSubscribed = Boolean(user?.subscription?.isActive);
-    const isPremiumUser =
-      user?.subscription?.plan === 'premium' && isSubscribed;
+    // Estado de acceso efectivo centralizado (premium | grace |
+    // canceled_pending conservan acceso completo). No recalcular en
+    // componentes: consumir siempre subscription.accessState / isPremiumUser.
+    const accessState = resolveUserAccessState(user);
+    const isPremiumUser = Boolean(user) && !user?.isGuest && hasFullAccess(accessState);
+    const activePetSupport = Boolean(user?.activePetSupport);
+    const activePetId = user?.activePetId ?? null;
+    const activePetChangedAt = user?.activePetChangedAt ?? null;
+    const petCount = pets.length;
 
     return {
       isPremiumUser,
+      accessState,
       isSubscribed,
       canAddPet: isPremiumUser || pets.length < FREE_PET_LIMIT,
       canUseAI: isPremiumUser || aiDailyUsage < FREE_AI_DAILY_LIMIT,
       freePetLimit: FREE_PET_LIMIT,
       freeAiDailyLimit: FREE_AI_DAILY_LIMIT,
+      activePetId,
+      activePetChangedAt,
+      activePetSupport,
+      needsActivePetSelection: needsActivePetSelection({ accessState, activePetSupport, activePetId, petCount }),
+      activePetCooldownUntil: activePetCooldownUntil(activePetChangedAt),
+      isPetEditable: (petId: string) =>
+        isPetEditable({ accessState, activePetSupport, activePetId, petId, petCount }),
     };
-  }, [aiDailyUsage, pets.length, user?.subscription?.isActive, user?.subscription?.plan]);
+  }, [aiDailyUsage, pets.length, user]);
 
   const contextValue: GlobalAppState = {
       user,

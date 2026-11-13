@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import { usePreventive } from './usePreventive';
+import { assertPetWritable } from '../lib/petAccess';
 import { createPetWeightLog, fetchPetWeightLogs, requestPetWeightInsight, type WeightInsightResponse } from '../lib/supabase';
 import type { Pet, PetWeightLog } from '../types';
 
@@ -70,7 +71,7 @@ function theoreticalDailyFoodKg(pet: Pet): number {
 }
 
 export function usePetFood(pet: Pet | null) {
-  const { user } = useAppState();
+  const { subscription, user } = useAppState();
   const { preventiveTasks, addPreventiveTask } = usePreventive();
   const [weightLogs, setWeightLogs] = useState<PetWeightLog[]>([]);
   const [loadingWeightLogs, setLoadingWeightLogs] = useState(false);
@@ -107,6 +108,7 @@ export function usePetFood(pet: Pet | null) {
       if (!pet) {
         throw new Error('Selecciona una mascota antes de registrar el peso.');
       }
+      assertPetWritable(subscription, pet.id);
       if (!(weightKg > 0)) {
         throw new Error('Ingresa un peso valido en kg.');
       }
@@ -168,7 +170,7 @@ export function usePetFood(pet: Pet | null) {
 
       return saved;
     },
-    [pet, user?.isGuest, weightLogs],
+    [pet, subscription, user?.isGuest, weightLogs],
   );
 
   const feedingTasks = useMemo(

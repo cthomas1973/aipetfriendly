@@ -1,23 +1,25 @@
-// Arma el link de afiliado (matt_tool) para un producto de beneficios_productos
-// cuando se lo referencia como "producto sugerido" desde una guia o un post del
-// blog (ver RelatedLinksBlock.tsx). Reusa el mismo patron que
-// SubscriptionComponents.tsx: el matt_tool se resuelve en el servidor
-// (api/beneficios.js) y se agrega como query param al permalink.
+import { validateAffiliateUrl } from '../../supabase/functions/_shared/affiliateLink.mjs';
 
-let cachedMattTool: Promise<string> | null = null;
-
-export function getMattTool(): Promise<string> {
-  if (!cachedMattTool) {
-    cachedMattTool = fetch('/api/beneficios?grupo=alimentos')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => String(data?.mattTool ?? ''))
-      .catch(() => '');
-  }
-  return cachedMattTool;
+interface AffiliateLinkResponse {
+  affiliateAvailable?: boolean;
+  link?: unknown;
 }
 
-export function buildProductAffiliateLink(permalink: string, mattTool: string): string {
-  if (!permalink) return '';
-  if (!mattTool) return permalink;
-  return permalink + (permalink.includes('?') ? '&' : '?') + `matt_tool=${mattTool}`;
+export function validateAffiliateLink(value: unknown): string | null {
+  return validateAffiliateUrl(value);
+}
+
+export async function fetchProductAffiliateLink(productId: string): Promise<string | null> {
+  if (!productId) return null;
+
+  try {
+    const response = await fetch(`/api/beneficios?productId=${encodeURIComponent(productId)}`);
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as AffiliateLinkResponse;
+    if (payload.affiliateAvailable !== true || typeof payload.link !== 'string') return null;
+    return validateAffiliateLink(payload.link);
+  } catch {
+    return null;
+  }
 }
