@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchOfficialItemPrice, fetchShopJson, getMercadoLibreToken, normalizeItemId, normalizeOfficialPrice, ShopProviderError } from '../api/_lib/mercadoLibre.mjs';
+import { fetchOfficialCatalogListingPrice, fetchOfficialItemPrice, fetchShopJson, getMercadoLibreToken, normalizeItemId, normalizeOfficialPrice, ShopProviderError } from '../api/_lib/mercadoLibre.mjs';
 import { loadShopCatalog, mapShopProduct, shopCategory } from '../api/_lib/shopCatalog.mjs';
 import { updateShopPrices } from '../scripts/update-shop-prices.mjs';
 import { buildShoppingPrompt } from '../supabase/functions/_shared/shoppingPrompt.mjs';
@@ -28,6 +28,29 @@ describe('Precios y catalogo oficiales',()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(response(item)).mockResolvedValueOnce(response({amount:100,regular_amount:null,currency_id:'ARS'}));
     await fetchOfficialItemPrice('MLA1234567890','synthetic',fetcher);
     expect(fetcher.mock.calls[1][0]).toBe('https://api.mercadolibre.com/items/MLA1234567890/sale_price?context=channel_marketplace');
+  });
+  it('precio por catalogo usa la publicacion exacta y no inventa cuando falta',async()=>{
+    const listings={results:[{item_id:'MLA1111111111',price:500,original_price:null,currency_id:'ARS',seller_id:7},
+      {item_id:'MLA1234567890',price:80,original_price:100,currency_id:'ARS',seller_id:12}]};
+    const fetcher=vi.fn(async()=>response(listings));
+    const result=await fetchOfficialCatalogListingPrice('MLA99999999','MLA1234567890','synthetic',fetcher);
+    expect(fetcher.mock.calls[0][0]).toBe('https://api.mercadolibre.com/products/MLA99999999/items');
+    expect(result).toMatchObject({status:'ok',price:80,regularPrice:100,promotionalPrice:80,currency:'ARS'});
+    await expect(fetchOfficialCatalogListingPrice('MLA99999999','MLA0000000000','synthetic',fetcher)).rejects.toThrow('listing_price_unavailable');
+    const invalido=vi.fn(async()=>response({results:[{item_id:'MLA1234567890',price:0,currency_id:'ARS'}]}));
+    await expect(fetchOfficialCatalogListingPrice('MLA99999999','MLA1234567890','synthetic',invalido)).rejects.toThrow('official_price_unavailable');
+  });
+  it('productos con catalogo consultan precios sin tocar /items restringido',async()=>{
+    const job={productId:'p',leaseId:'lease',externalId:'MLA1234567890',permalink:'https://articulo.mercadolibre.com.ar/MLA-1234567890',catalogProductId:'MLA99999999'};
+    const fetcher=vi.fn(async url=>{
+      if(url.includes('claim_shop_price_updates'))return response(fetcher.mock.calls.filter(([u])=>u.includes('claim_shop_price_updates')).length<=1?[job]:[]);
+      if(url.includes('/products/MLA99999999/items'))return response({results:[{item_id:'MLA1234567890',price:80,original_price:100,currency_id:'ARS',seller_id:12}]});
+      return response(null);
+    });
+    expect(await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher})).toMatchObject({updated:1,failed:0});
+    expect(fetcher.mock.calls.some(([url])=>/\/items\/MLA/.test(url))).toBe(false);
+    const finish=fetcher.mock.calls.find(([url])=>url.includes('finish_shop_price_update'));
+    expect(JSON.parse(finish[1].body).p_result).toMatchObject({status:'ok',price:80,promotionalPrice:80,currency:'ARS'});
   });
   it('conserva refresh rotado antes de devolver access token',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(response({status:'refresh',leaseId:'lease',refreshToken:'old'}))

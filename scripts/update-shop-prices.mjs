@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { fetchOfficialItemPrice, getMercadoLibreToken, normalizeItemId, ShopProviderError, shopRpc } from '../api/_lib/mercadoLibre.mjs';
+import { fetchOfficialCatalogListingPrice, fetchOfficialItemPrice, getMercadoLibreToken, normalizeItemId, ShopProviderError, shopRpc } from '../api/_lib/mercadoLibre.mjs';
 
 export async function updateShopPrices({ env = process.env, fetcher = fetch } = {}) {
   // El flag del workflow y enabled en la DB deben activarse expresamente.
@@ -34,7 +34,13 @@ export async function updateShopPrices({ env = process.env, fetcher = fetch } = 
           if (!id) throw new ShopProviderError('catalog_product_requires_listing_id');
           if (tokenError) throw new ShopProviderError(tokenError);
           if (limited) throw new ShopProviderError('provider_rate_limited');
-          result = await fetchOfficialItemPrice(id, token, fetcher);
+          // ML deniega /items/{id} sobre publicaciones de terceros: cuando hay
+          // catalogo se consulta el precio real de la publicacion exacta via
+          // /products/{catalog}/items (permitido); sin catalogo se intenta
+          // /items y un rechazo conserva el ultimo precio valido.
+          result = job.catalogProductId
+            ? await fetchOfficialCatalogListingPrice(job.catalogProductId, id, token, fetcher)
+            : await fetchOfficialItemPrice(id, token, fetcher);
         } catch (error) {
           if (!(error instanceof ShopProviderError)) throw error;
           if (error.code === 'http_429' || error.code === 'http_401' || error.code === 'http_403') limited = true;

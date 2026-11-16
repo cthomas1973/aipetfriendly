@@ -105,3 +105,35 @@ export async function fetchOfficialItemPrice(id, token, fetcher = fetch) {
   const sale = await fetchShopJson(`https://api.mercadolibre.com/items/${id}/sale_price?context=channel_marketplace`, { headers }, fetcher);
   return normalizeOfficialPrice(item, sale);
 }
+
+export function normalizeOfficialCatalogPrice(listing) {
+  // Precio real de la publicacion exacta informado por el catalogo oficial;
+  // si la publicacion no figura entre las del catalogo, no se inventa precio.
+  if (!listing) throw new ShopProviderError('listing_price_unavailable');
+  const amount = listing.price;
+  const regular = listing.original_price;
+  if (!Number.isFinite(amount) || amount <= 0 || !/^[A-Z]{3}$/.test(listing.currency_id || '')) {
+    throw new ShopProviderError('official_price_unavailable');
+  }
+  if (regular !== null && regular !== undefined && (!Number.isFinite(regular) || regular <= 0)) {
+    throw new ShopProviderError('invalid_regular_price');
+  }
+  return {
+    status: 'ok', price: amount, regularPrice: regular || null,
+    promotionalPrice: regular > amount ? amount : null, currency: listing.currency_id,
+    metadata: {
+      seller: Number.isSafeInteger(listing.seller_id) ? `Vendedor ML ${listing.seller_id}` : null,
+      priceContext: 'catalog_listing',
+    },
+  };
+}
+
+// Fuente permitida por ML para publicaciones de terceros: el precio por
+// publicacion que expone la ficha oficial de catalogo (GET /items esta
+// restringido por politica de ML; verificado 2026-11-16).
+export async function fetchOfficialCatalogListingPrice(catalogId, itemId, token, fetcher = fetch) {
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const listings = await fetchShopJson(`https://api.mercadolibre.com/products/${catalogId}/items`, { headers }, fetcher);
+  if (!Array.isArray(listings?.results)) throw new ShopProviderError('catalog_listings_unavailable');
+  return normalizeOfficialCatalogPrice(listings.results.find(row => row.item_id === itemId));
+}

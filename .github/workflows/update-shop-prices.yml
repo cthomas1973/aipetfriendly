@@ -1,0 +1,30 @@
+name: Precios de la tienda
+
+on:
+  schedule:
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prices:
+    if: vars.SHOP_PRICE_TRACKING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Actualizar precios con fuentes oficiales
+        run: node scripts/update-shop-prices.mjs
+        env:
+          SHOP_PRICE_TRACKING_ENABLED: ${{ vars.SHOP_PRICE_TRACKING_ENABLED }}
+          SHOP_PRICE_MAX_BATCHES: ${{ vars.SHOP_PRICE_MAX_BATCHES }}
+          ML_REFRESH_TOKEN: ${{ secrets.ML_REFRESH_TOKEN }}
+          ML_APP_ID: ${{ secrets.ML_APP_ID }}
+          ML_APP_SECRET: ${{ secrets.ML_APP_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
