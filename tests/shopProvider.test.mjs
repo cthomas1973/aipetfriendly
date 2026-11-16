@@ -140,9 +140,31 @@ describe('Precios y catalogo oficiales',()=>{
       return response(null);
     });
     const result=await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic',SHOP_PRICE_MAX_BATCHES:'1'},fetcher});
-    expect(result).toMatchObject({updated:0,failed:1});
+    expect(result).toMatchObject({updated:0,unavailable:1,failed:0});
     const finish=fetcher.mock.calls.find(([url])=>url.includes('finish_shop_price_update'));
     expect(JSON.parse(finish[1].body)).toMatchObject({p_lease:'lease',p_result:{status:'error',error:'http_403'}});
+  });
+  it('un 403 por publicacion no frena el lote; 429 si lo frena',async()=>{
+    vi.spyOn(console,'error').mockImplementation(()=>{});
+    const jobs=[{productId:'p1',leaseId:'l1',externalId:'MLA1111111111',permalink:'https://articulo.mercadolibre.com.ar/MLA-1111111111'},
+      {productId:'p2',leaseId:'l2',externalId:'MLA1234567890',permalink:'https://articulo.mercadolibre.com.ar/MLA-1234567890',catalogProductId:'MLA99999999'}];
+    const fetcher=vi.fn(async url=>{
+      if(url.includes('claim_shop_price_updates'))return response(fetcher.mock.calls.filter(([u])=>u.includes('claim_shop_price_updates')).length<=1?jobs:[]);
+      if(url.includes('/items/MLA1111111111'))return new Response('{"error":"access_denied"}',{status:403});
+      if(url.includes('/products/MLA99999999/items'))return response({results:[{item_id:'MLA1234567890',price:80,original_price:null,currency_id:'ARS'}]});
+      return response(null);
+    });
+    expect(await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher})).toMatchObject({updated:1,unavailable:1,failed:0});
+    const limitado=vi.fn(async url=>{
+      if(url.includes('claim_shop_price_updates'))return response(limitado.mock.calls.filter(([u])=>u.includes('claim_shop_price_updates')).length<=1?[jobs[0]]:[jobs[1]]);
+      if(url.includes('/items/MLA1111111111'))return new Response('{}',{status:429});
+      return response(null);
+    });
+    const result=await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher:limitado});
+    expect(result).toMatchObject({updated:0,failed:1});
+    expect(limitado.mock.calls.filter(([url])=>url.includes('claim_shop_price_updates'))).toHaveLength(1);
+    expect(limitado.mock.calls.some(([url])=>url.includes('/products/')))
+      .toBe(false);
   });
   it('prompt contextual no prescribe ni inventa datos y usa JSON verificado',()=>{
     const prompt=buildShoppingPrompt({species:'dog',breed:'Golden',age_years:0,age_months:8,weight_kg:15},[{title:'Real',lastKnownPrice:null}],'Comparar');

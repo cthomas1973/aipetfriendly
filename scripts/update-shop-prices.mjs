@@ -1,13 +1,20 @@
 import { pathToFileURL } from 'node:url';
 import { fetchOfficialCatalogListingPrice, fetchOfficialItemPrice, getMercadoLibreToken, normalizeItemId, ShopProviderError, shopRpc } from '../api/_lib/mercadoLibre.mjs';
 
+// Codigos esperados cuando Mercado Libre no expone la publicacion (politica
+// de acceso o ficha /p/ sin publicacion): se registran por producto y el
+// precio conserva NULL o la ultima consulta exitosa, pero no son un fallo
+// operativo del proceso.
+const EXPECTED_UNAVAILABLE = new Set(['http_403', 'catalog_product_requires_listing_id', 'listing_price_unavailable']);
+
 export async function updateShopPrices({ env = process.env, fetcher = fetch } = {}) {
   // El flag del workflow y enabled en la DB deben activarse expresamente.
-  if (env.SHOP_PRICE_TRACKING_ENABLED !== 'true') return { enabled: false, updated: 0, failed: 0 };
+  if (env.SHOP_PRICE_TRACKING_ENABLED !== 'true') return { enabled: false, updated: 0, unavailable: 0, failed: 0 };
   const maxBatches = Number(env.SHOP_PRICE_MAX_BATCHES || 10);
   if (!Number.isInteger(maxBatches) || maxBatches < 1 || maxBatches > 50) throw new ShopProviderError('invalid_batch_configuration');
   let token = null;
   let updated = 0;
+  let unavailable = 0;
   let failed = 0;
   let limited = false;
   const started = Date.now();
@@ -43,20 +50,24 @@ export async function updateShopPrices({ env = process.env, fetcher = fetch } = 
             : await fetchOfficialItemPrice(id, token, fetcher);
         } catch (error) {
           if (!(error instanceof ShopProviderError)) throw error;
-          if (error.code === 'http_429' || error.code === 'http_401' || error.code === 'http_403') limited = true;
+          // 401/429 afectan al token o la cuota globales y frenan el lote;
+          // un 403 es la politica por publicacion y no debe frenar al resto.
+          if (error.code === 'http_429' || error.code === 'http_401') limited = true;
           result = { status: 'error', error: error.code };
         }
         await shopRpc('finish_shop_price_update', {
           p_product: job.productId, p_lease: job.leaseId, p_result: result,
         }, env, fetcher);
         if (result.status === 'ok') updated += 1;
+        else if (EXPECTED_UNAVAILABLE.has(result.error)) unavailable += 1;
         else failed += 1;
       }
     }));
     if (limited) break;
   }
+  if (unavailable) console.error(`Tienda: ${unavailable} publicaciones sin fuente de precio permitida por Mercado Libre; conservan NULL o la ultima consulta exitosa.`);
   if (failed) console.error(`Tienda: ${failed} precios sin actualizar; se conserva la ultima consulta exitosa.`);
-  return { enabled: true, updated, failed };
+  return { enabled: true, updated, unavailable, failed };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
