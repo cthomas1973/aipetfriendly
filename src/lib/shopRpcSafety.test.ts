@@ -8,6 +8,7 @@ const product = '72000000-0000-4000-8000-000000000003';
 const candidate = '72000000-0000-4000-8000-000000000004';
 const duplicate = '72000000-0000-4000-8000-000000000005';
 const migration = readFileSync(new URL('../../supabase/migrations/073_shop_compatibility_radar.sql', import.meta.url), 'utf8');
+const fix = readFileSync(new URL('../../supabase/migrations/074_fix_radar_publish_identity.sql', import.meta.url), 'utf8');
 
 describe('RPC de compatibilidad y Radar en PostgreSQL efímero', () => {
   it('exige evidencia habilitada, separa publicación y conserva datos en importaciones repetidas', async () => {
@@ -47,6 +48,9 @@ describe('RPC de compatibilidad y Radar en PostgreSQL efímero', () => {
         if (!definition) throw new Error(`No se encontró ${name}.`);
         await db.exec(definition);
       }
+      const replacement = fix.match(/create or replace function public\.admin_review_shop_radar_safe\([\s\S]*?\$\$;/)?.[0];
+      if (!replacement) throw new Error('No se encontró el reemplazo 074 de admin_review_shop_radar_safe.');
+      await db.exec(replacement);
       await db.exec(`
         alter table public.shop_compatibility_dimensions enable row level security;
         create trigger shop_dimensions_invalidate after update on public.beneficios_productos
@@ -139,6 +143,23 @@ describe('RPC de compatibilidad y Radar en PostgreSQL efímero', () => {
       await expect(rpc('admin_review_shop_radar_safe',[duplicate,'publish','Duplicado',null,null])).rejects.toThrow('ya incorporado');
       await db.exec('reset role');
       expect((await db.query<{ n: number }>('select count(*)::int as n from public.beneficios_productos')).rows[0].n).toBe(2);
+      // Candidato de catalogo: catalog_product_id y mla_id son espacios de ID
+      // distintos en ML; la identidad se verifica por procedencia de la ficha.
+      const catalogOk = '72000000-0000-4000-8000-000000000006';
+      const catalogForeign = '72000000-0000-4000-8000-000000000007';
+      const catalogRecord = (source: string) => JSON.stringify({title:'Producto de catalogo',permalink:'https://articulo.mercadolibre.com.ar/MLA-976543210',category:'juguetes',images:[],petTypes:[],lifeStages:[],sizes:[],provenance:{title:{source,researchedAt:'2026-11-16T12:00:00Z'}}});
+      await db.query(`insert into public.shop_radar_candidates(id,mla_id,catalog_product_id,listing_active,research_status,research_record,researched_at,review_status)
+        values($1,'MLA976543210','MLA55555555',true,'ready',$2,now(),'pending')`,[catalogOk,catalogRecord('https://api.mercadolibre.com/products/MLA55555555')]);
+      await db.query(`insert into public.shop_radar_candidates(id,mla_id,catalog_product_id,listing_active,research_status,research_record,researched_at,review_status)
+        values($1,'MLA976543211','MLA55555556',true,'ready',$2,now(),'pending')`,[catalogForeign,catalogRecord('https://ficha-ajena.example/producto')]);
+      await db.exec(`set role authenticated; select set_config('test.uid','${admin}',false)`);
+      await rpc('admin_review_shop_radar_safe',[catalogOk,'approve','Catalogo revisado',null,null]);
+      await rpc('admin_review_shop_radar_safe',[catalogOk,'publish','Publicar catalogo verificado',null,null]);
+      await rpc('admin_review_shop_radar_safe',[catalogForeign,'approve','Catalogo con fuente ajena',null,null]);
+      await expect(rpc('admin_review_shop_radar_safe',[catalogForeign,'publish','Fuente no oficial',null,null])).rejects.toThrow('requiere identidad');
+      await db.exec('reset role');
+      expect((await db.query<{ n: number }>(`select count(*)::int as n from public.beneficios_productos where catalog_product_id='MLA55555555'`)).rows[0].n).toBe(1);
+      expect((await db.query<{ n: number }>('select count(*)::int as n from public.beneficios_productos')).rows[0].n).toBe(3);
     } finally { await db.close(); }
   }, 60000);
 });
