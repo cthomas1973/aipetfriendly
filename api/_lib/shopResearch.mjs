@@ -4,9 +4,8 @@ import { fetchShopJson, ShopProviderError } from './mercadoLibre.mjs';
 const text = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const id = value => typeof value === 'string' && /^MLA\d{6,}$/.test(value) ? value : null;
 
-export function researchShopItem(item, description, now = new Date().toISOString()) {
+export function researchShopItem(item, description, now = new Date().toISOString(), source = `https://api.mercadolibre.com/items/${item?.id}`) {
   if (!id(item?.id) || item.status !== 'active') throw new ShopProviderError('listing_not_active');
-  const source = `https://api.mercadolibre.com/items/${item.id}`;
   const attributes = Array.isArray(item.attributes) ? item.attributes.flatMap(a =>
     typeof a?.name === 'string' && typeof a.value_name === 'string' && a.value_name.trim()
       ? [{ id: a.id, name: a.name, value: a.value_name, source, researchedAt: now }] : []) : [];
@@ -58,15 +57,46 @@ export function researchShopItem(item, description, now = new Date().toISOString
 
 export async function investigateShopCandidate(candidate, token, fetcher = fetch) {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
-  let mlaId = candidate.mlaId;
-  if (!mlaId && candidate.catalogProductId) {
-    const listings = await fetchShopJson(`https://api.mercadolibre.com/products/${candidate.catalogProductId}/items`, { headers }, fetcher);
+  // Mercado Libre deniega GET /items/{id} sobre publicaciones de terceros
+  // (access_denied), pero permite las fichas oficiales de catalogo /products.
+  // Los candidatos de catalogo se investigan solo con endpoints permitidos.
+  if (!candidate.mlaId && candidate.catalogProductId) {
+    const source = `https://api.mercadolibre.com/products/${candidate.catalogProductId}`;
+    const product = await fetchShopJson(source, { headers }, fetcher);
+    if (product.id !== candidate.catalogProductId) throw new ShopProviderError('catalog_product_mismatch');
+    if (typeof product.name !== 'string' || !product.name.trim()) throw new ShopProviderError('catalog_product_incomplete');
+    const listings = await fetchShopJson(`${source}/items`, { headers }, fetcher);
     if (!Array.isArray(listings.results)) throw new ShopProviderError('catalog_listings_unavailable');
-    mlaId = listings.results.map(p => id(p.item_id || p.id)).find(Boolean);
-    if (!mlaId) throw new ShopProviderError('catalog_has_no_accessible_listing');
+    const listing = listings.results.find(p => id(p.item_id || p.id));
+    if (!listing) throw new ShopProviderError('catalog_has_no_accessible_listing');
+    const mlaId = id(listing.item_id || listing.id);
+    const record = researchShopItem({
+      id: mlaId,
+      status: product.status,
+      title: product.name,
+      // Permalink canonico derivado del item oficial informado por el catalogo;
+      // la publicacion individual no es legible por politica de Mercado Libre.
+      permalink: `https://articulo.mercadolibre.com.ar/MLA-${mlaId.slice(3)}`,
+      category_id: listing.category_id || null,
+      attributes: product.attributes,
+      pictures: product.pictures,
+    }, typeof product.short_description?.content === 'string' ? { plain_text: product.short_description.content } : null,
+    new Date().toISOString(), source);
+    record.limitations.push('Ficha construida desde el catalogo oficial (/products); la publicacion individual no es legible por politica de Mercado Libre.');
+    return { status: 'ready', mlaId, catalogProductId: candidate.catalogProductId, listingActive: true, record };
   }
+  const mlaId = candidate.mlaId;
   if (!id(mlaId)) throw new ShopProviderError('listing_id_unavailable');
-  const item = await fetchShopJson(`https://api.mercadolibre.com/items/${mlaId}`, { headers }, fetcher);
+  let item;
+  try {
+    item = await fetchShopJson(`https://api.mercadolibre.com/items/${mlaId}`, { headers }, fetcher);
+  } catch (error) {
+    if (error instanceof ShopProviderError && error.code === 'http_403') {
+      // Resultado definitivo, no reintentable: requiere revision o alta manual.
+      return { status: 'unsupported', error: 'Mercado Libre no permite leer publicaciones de terceros (access_denied); incorporar manualmente o rechazar.' };
+    }
+    throw error;
+  }
   if (item.id !== mlaId || (candidate.catalogProductId && item.catalog_product_id !== candidate.catalogProductId)) throw new ShopProviderError('catalog_listing_mismatch');
   let description = null;
   const limitations = [];

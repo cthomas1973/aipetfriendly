@@ -15,7 +15,9 @@ beforeEach(()=>{
   vi.stubGlobal('fetch',m.fetch);
   m.auth.mockImplementation(async()=>({data:{user:m.invalid?null:{id:owner}},error:m.invalid?new Error('invalid'):null}));
   m.fetch.mockResolvedValue(new Response(JSON.stringify({choices:[{message:{content:'Comparacion con datos verificados'}}],model:'synthetic',usage:{prompt_tokens:100,completion_tokens:10,total_tokens:110}})));
-  m.rpc.mockResolvedValue({data:[{productId:product,price:80,currency:'ARS',lastSuccessAt:'2026-01-01T00:00:00Z',status:'ok'}],error:null});
+  m.rpc.mockImplementation(async name=>name==='get_shop_compatibility'
+    ?{data:[{product_id:product,dimensions:{species:['perro'],stage:['cachorro'],size:['grande']}}],error:null}
+    :{data:[{productId:product,price:80,currency:'ARS',lastSuccessAt:'2026-01-01T00:00:00Z',status:'ok'}],error:null});
   m.from.mockImplementation(table=>{
     const data=()=>{
       if(table==='ai_usage_settings')return {guest_limit_per_pet:3,free_limit_per_pet:10,premium_limit_per_pet:100};
@@ -48,7 +50,8 @@ describe('Asesor de compras con infraestructura IA existente',()=>{
     const body=JSON.parse(m.fetch.mock.calls[0][1].body);
     expect(body.messages[0].content).toContain('No diagnostiques');
     expect(body.messages[1].content).toContain('Producto real');
-    expect(body.messages[1].content).toContain('Marca publicada');
+    expect(body.messages[1].content).toContain('"petTypes":["perro"]');
+    expect(body.messages[1].content).toContain('No inventes precios, vendedores, marcas');
     expect(body.messages[1].content).toContain('"lastKnownPrice":80');
     expect(body.messages[1].content).not.toContain('999999');
     expect(m.from.mock.calls.map(c=>c[0])).not.toContain('clinical_entries');

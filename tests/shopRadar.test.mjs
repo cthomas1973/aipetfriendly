@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { researchShopItem, investigateShopCandidate, rankingDetections } from '../api/_lib/shopResearch.mjs';
 import { discoverShopRadar, researchShopRadar } from '../scripts/shop-radar.mjs';
 import { isShopResearchRecord, publicShopResearch } from '../supabase/functions/_shared/shopResearchRecord.mjs';
+import { isAllowedMercadoLibrePermalink } from '../supabase/functions/_shared/affiliateLink.mjs';
 const response=body=>new Response(JSON.stringify(body));
 const env={SHOP_RADAR_ENABLED:'true',SHOP_RADAR_RESEARCH_ENABLED:'true',SUPABASE_URL:'https://local.test',SUPABASE_SERVICE_KEY:'synthetic',ML_ACCESS_TOKEN:'synthetic'};
 const item={id:'MLA123456789',title:'Alimento perro cachorro razas grandes',status:'active',permalink:'https://articulo.mercadolibre.com.ar/MLA-123456789',category_id:'MLA12345',pictures:[{secure_url:'https://http2.mlstatic.com/image.jpg'}],attributes:[{id:'BRAND',name:'Marca',value_name:'Marca publicada'}]};
@@ -65,12 +66,62 @@ describe('Radar oficial y atributos globales',()=>{
     expect(result.limitations[0]).toContain('http_403');
     expect(fetcher.mock.calls.some(([url])=>url.includes('record_shop_radar_detection'))).toBe(false);
   });
-  it('resuelve catalogo a una publicacion comprobada sin mezclar IDs',async()=>{
-    const fetcher=vi.fn().mockResolvedValueOnce(response({results:[{item_id:item.id}]}))
-      .mockResolvedValueOnce(response({...item,catalog_product_id:'MLA99999999'})).mockResolvedValueOnce(response({plain_text:'Real'}));
-    expect(await investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',fetcher)).toMatchObject({status:'ready',mlaId:item.id,catalogProductId:'MLA99999999'});
-    expect(fetcher.mock.calls[0][0]).toContain('/products/MLA99999999/items');
+  it('resuelve catalogo con endpoints permitidos, sin tocar /items ni mezclar IDs',async()=>{
+    const product={id:'MLA99999999',status:'active',name:item.title,attributes:item.attributes,
+      pictures:[{url:'https://http2.mlstatic.com/image.jpg'}],short_description:{type:'plaintext',content:'Real'}};
+    const fetcher=vi.fn(async url=>{
+      if(url.endsWith('/products/MLA99999999/items'))return response({results:[{item_id:item.id,category_id:'MLA12345'}]});
+      if(url.endsWith('/products/MLA99999999'))return response(product);
+      return response(null);
+    });
+    const result=await investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',fetcher);
+    expect(result).toMatchObject({status:'ready',mlaId:item.id,catalogProductId:'MLA99999999'});
+    expect(result.record.permalink).toBe('https://articulo.mercadolibre.com.ar/MLA-123456789');
+    expect(isAllowedMercadoLibrePermalink(result.record.permalink)).toBe(true);
+    expect('price' in result.record).toBe(false);
+    expect('seller' in result.record).toBe(false);
+    expect(result.record.provenance.title.source).toBe('https://api.mercadolibre.com/products/MLA99999999');
+    expect(result.record.limitations.join(' ')).toContain('catalogo oficial');
+    expect(fetcher.mock.calls.some(([url])=>/\/items\/MLA/.test(url))).toBe(false);
     expect(fetcher.mock.calls.some(([url])=>url.includes('sale_price'))).toBe(false);
+    const mixed=vi.fn(async url=>url.endsWith('/products/MLA99999999')?response({...product,id:'MLA11111111'}):response(null));
+    await expect(investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',mixed)).rejects.toThrow('catalog_product_mismatch');
+  });
+  it('catalogo incompleto o sin publicacion valida no crea ficha lista',async()=>{
+    const product={id:'MLA99999999',status:'active',name:'Producto',attributes:[],pictures:[]};
+    const sinNombre=vi.fn(async url=>url.endsWith('/products/MLA99999999')?response({...product,name:'  '}):response(null));
+    await expect(investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',sinNombre)).rejects.toThrow('catalog_product_incomplete');
+    const sinItems=vi.fn(async url=>url.endsWith('/products/MLA99999999')?response(product):response({results:[{item_id:'XYZ-INVALIDO'},{otro:'campo'}]}));
+    await expect(investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',sinItems)).rejects.toThrow('catalog_has_no_accessible_listing');
+    const pausado=vi.fn(async url=>url.endsWith('/products/MLA99999999')?response({...product,status:'inactive'}):response({results:[{item_id:item.id}]}));
+    await expect(investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',pausado)).rejects.toThrow('listing_not_active');
+  });
+  it('401 y 429 siguen siendo errores reintentables, no restricciones definitivas',async()=>{
+    for(const status of [401,429]){
+      const fetcher=vi.fn(async url=>url.includes('/items/')?new Response('{}',{status}):response(null));
+      await expect(investigateShopCandidate({mlaId:item.id},'synthetic',fetcher)).rejects.toThrow(`http_${status}`);
+    }
+  });
+  it('un ITEM denegado no contamina al resto del lote de investigacion',async()=>{
+    const product={id:'MLA99999999',status:'active',name:item.title,attributes:item.attributes,pictures:[{url:'https://http2.mlstatic.com/image.jpg'}]};
+    const finishes=[];
+    const fetcher=vi.fn(async(url,options)=>{
+      if(url.includes('claim_shop_radar_research'))return response([
+        {id:'c1',mlaId:item.id,leaseId:'l1'},{id:'c2',catalogProductId:'MLA99999999',leaseId:'l2'}]);
+      if(url.includes('finish_shop_radar_research')){finishes.push(JSON.parse(options.body));return response(null);}
+      if(url.includes('/items/'))return new Response('{"error":"access_denied"}',{status:403});
+      if(url.endsWith('/products/MLA99999999/items'))return response({results:[{item_id:item.id,category_id:'MLA12345'}]});
+      if(url.endsWith('/products/MLA99999999'))return response(product);
+      return response(null);
+    });
+    expect(await researchShopRadar({env,fetcher})).toMatchObject({researched:2,failed:0,status:'finished'});
+    expect(finishes.map(f=>f.p_result.status)).toEqual(['unsupported','ready']);
+  });
+  it('publicacion ajena denegada queda unsupported para decision manual, sin inventar ficha',async()=>{
+    const fetcher=vi.fn(async url=>url.includes('/items/')?new Response('{"error":"access_denied"}',{status:403}):response(null));
+    const result=await investigateShopCandidate({mlaId:item.id},'synthetic',fetcher);
+    expect(result).toMatchObject({status:'unsupported'});
+    expect(result.error).toContain('access_denied');
   });
   it('publicacion pausada no crea ficha lista ni modifica precios',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(response({...item,status:'paused'})).mockResolvedValueOnce(response({plain_text:'Real'}));
