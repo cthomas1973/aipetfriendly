@@ -1,8 +1,10 @@
-name: Precios de la tienda
+name: Tienda - precios y publicaciones
 
 on:
   schedule:
-    - cron: '30 */6 * * *'
+    # Primera corrida del dia (03:30 AR): envia el email de control.
+    - cron: '30 6 * * *'
+    - cron: '30 0,12,18 * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,3 +30,24 @@ jobs:
           ML_APP_SECRET: ${{ secrets.ML_APP_SECRET }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+  # Verifica que cada publicacion siga existiendo en Mercado Libre y desactiva
+  # las eliminadas/pausadas (nunca por falta de precio). El email de resumen va
+  # solo en la primera corrida del dia o cuando hubo desactivaciones.
+  check-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verificar publicaciones en Mercado Libre
+        run: node scripts/check-ml-products-status.mjs
+        env:
+          SEND_STATUS_EMAIL: ${{ (github.event.schedule == '30 6 * * *' || github.event_name == 'workflow_dispatch') && 'true' || 'false' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          ADMIN_NOTIFICATION_EMAIL: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}

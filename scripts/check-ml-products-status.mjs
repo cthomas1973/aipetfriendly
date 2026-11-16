@@ -121,10 +121,17 @@ async function sendSummaryEmail({
   blogUpdates = [],
   guideWarnings = [],
 }) {
-  const { RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL } = process.env;
+  const { RESEND_API_KEY, EMAIL_FROM, ADMIN_NOTIFICATION_EMAIL, SEND_STATUS_EMAIL } = process.env;
 
   if (!RESEND_API_KEY || !ADMIN_NOTIFICATION_EMAIL) {
     console.log('\n[email] RESEND_API_KEY o ADMIN_NOTIFICATION_EMAIL no configurados, no se envia resumen por email.');
+    return;
+  }
+
+  // El resumen de control va solo en la primera corrida del dia; las corridas
+  // intermedias solo avisan si hubo desactivaciones o una alerta de bloqueo.
+  if (SEND_STATUS_EMAIL !== 'true' && !inactiveCount && !aborted) {
+    console.log('\n[email] Corrida intermedia sin novedades: resumen omitido (se envia en la primera corrida del dia).');
     return;
   }
 
@@ -163,7 +170,7 @@ async function sendSummaryEmail({
     ${inactiveListHtml}
     ${blogUpdatesHtml ? `<h3>Articulos de blog con producto sugerido reemplazado</h3>${blogUpdatesHtml}` : ''}
     ${guideWarningsHtml ? `<h3>Guias que requieren revision manual (producto sugerido inactivo)</h3>${guideWarningsHtml}` : ''}
-    <p style="margin-top:20px;font-size:12px;color:#64748b;">Este email se envia automaticamente en cada ejecucion del workflow "Check ML Products Status".</p>
+    <p style="margin-top:20px;font-size:12px;color:#64748b;">Este email lo envia el chequeo de publicaciones del workflow "Tienda: precios y publicaciones" (resumen en la primera corrida del dia; alertas cuando hay desactivaciones).</p>
   </body>
 </html>`;
 
