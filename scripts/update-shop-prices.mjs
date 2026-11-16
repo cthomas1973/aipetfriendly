@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { fetchOfficialCatalogListingPrice, fetchOfficialItemPrice, getMercadoLibreToken, normalizeItemId, ShopProviderError, shopRpc } from '../api/_lib/mercadoLibre.mjs';
+import { fetchOfficialCatalogListingPrice, fetchOfficialItemPrice, getMercadoLibreToken, normalizeCatalogPageId, normalizeItemId, ShopProviderError, shopRpc } from '../api/_lib/mercadoLibre.mjs';
 
 // Codigos esperados cuando Mercado Libre no expone la publicacion (politica
 // de acceso o ficha /p/ sin publicacion): se registran por producto y el
@@ -36,18 +36,21 @@ export async function updateShopPrices({ env = process.env, fetcher = fetch } = 
       while (next < jobs.length) {
         const job = jobs[next++];
         const id = normalizeItemId(job.externalId, job.permalink);
+        // Fichas /p/: sin publicacion propia, el precio real es el de la
+        // publicacion ganadora del catalogo (la que abre el enlace).
+        const catalogId = job.catalogProductId || normalizeCatalogPageId(job.externalId, job.permalink);
         let result;
         try {
-          if (!id) throw new ShopProviderError('catalog_product_requires_listing_id');
           if (tokenError) throw new ShopProviderError(tokenError);
           if (limited) throw new ShopProviderError('provider_rate_limited');
           // ML deniega /items/{id} sobre publicaciones de terceros: cuando hay
-          // catalogo se consulta el precio real de la publicacion exacta via
-          // /products/{catalog}/items (permitido); sin catalogo se intenta
-          // /items y un rechazo conserva el ultimo precio valido.
-          result = job.catalogProductId
-            ? await fetchOfficialCatalogListingPrice(job.catalogProductId, id, token, fetcher)
-            : await fetchOfficialItemPrice(id, token, fetcher);
+          // catalogo se consulta el precio real de la publicacion exacta (o la
+          // ganadora para fichas /p/) via /products/{catalog}/items (permitido);
+          // sin catalogo se intenta /items y un rechazo conserva el ultimo
+          // precio valido.
+          if (catalogId) result = await fetchOfficialCatalogListingPrice(catalogId, id, token, fetcher);
+          else if (id) result = await fetchOfficialItemPrice(id, token, fetcher);
+          else throw new ShopProviderError('catalog_product_requires_listing_id');
         } catch (error) {
           if (!(error instanceof ShopProviderError)) throw error;
           // 401/429 afectan al token o la cuota globales y frenan el lote;

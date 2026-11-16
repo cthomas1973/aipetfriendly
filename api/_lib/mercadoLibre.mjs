@@ -77,6 +77,13 @@ export function normalizeItemId(id, permalink) {
   return /^MLA\d{6,}$/.test(normalized) ? normalized : null;
 }
 
+// Fichas /p/: el identificador guardado es el del catalogo, no una publicacion.
+export function normalizeCatalogPageId(id, permalink) {
+  if (typeof permalink !== 'string' || !/\/p\/MLA/i.test(permalink)) return null;
+  const normalized = String(id || '').replace('-', '').toUpperCase();
+  return /^MLA\d{6,}$/.test(normalized) ? normalized : null;
+}
+
 export function normalizeOfficialPrice(item, sale) {
   if (!item || item.status !== 'active') throw new ShopProviderError('item_not_active');
   const amount = sale?.amount;
@@ -106,7 +113,7 @@ export async function fetchOfficialItemPrice(id, token, fetcher = fetch) {
   return normalizeOfficialPrice(item, sale);
 }
 
-export function normalizeOfficialCatalogPrice(listing) {
+export function normalizeOfficialCatalogPrice(listing, priceContext = 'catalog_listing') {
   // Precio real de la publicacion exacta informado por el catalogo oficial;
   // si la publicacion no figura entre las del catalogo, no se inventa precio.
   if (!listing) throw new ShopProviderError('listing_price_unavailable');
@@ -123,17 +130,19 @@ export function normalizeOfficialCatalogPrice(listing) {
     promotionalPrice: regular > amount ? amount : null, currency: listing.currency_id,
     metadata: {
       seller: Number.isSafeInteger(listing.seller_id) ? `Vendedor ML ${listing.seller_id}` : null,
-      priceContext: 'catalog_listing',
+      priceContext,
     },
   };
 }
 
 // Fuente permitida por ML para publicaciones de terceros: el precio por
 // publicacion que expone la ficha oficial de catalogo (GET /items esta
-// restringido por politica de ML; verificado 2026-11-16).
+// restringido por politica de ML; verificado 2026-11-16). Sin itemId se toma
+// la publicacion ganadora, que es la que abre el enlace de una ficha /p/.
 export async function fetchOfficialCatalogListingPrice(catalogId, itemId, token, fetcher = fetch) {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
   const listings = await fetchShopJson(`https://api.mercadolibre.com/products/${catalogId}/items`, { headers }, fetcher);
   if (!Array.isArray(listings?.results)) throw new ShopProviderError('catalog_listings_unavailable');
-  return normalizeOfficialCatalogPrice(listings.results.find(row => row.item_id === itemId));
+  if (itemId) return normalizeOfficialCatalogPrice(listings.results.find(row => row.item_id === itemId));
+  return normalizeOfficialCatalogPrice(listings.results[0], 'catalog_buy_box_winner');
 }

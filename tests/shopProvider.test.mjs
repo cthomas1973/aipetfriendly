@@ -52,6 +52,25 @@ describe('Precios y catalogo oficiales',()=>{
     const finish=fetcher.mock.calls.find(([url])=>url.includes('finish_shop_price_update'));
     expect(JSON.parse(finish[1].body).p_result).toMatchObject({status:'ok',price:80,promotionalPrice:80,currency:'ARS'});
   });
+  it('fichas /p/ usan el precio real del ganador del catalogo, sin inventar cuando no hay publicaciones',async()=>{
+    vi.spyOn(console,'error').mockImplementation(()=>{});
+    const job={productId:'p',leaseId:'lease',externalId:'MLA-53287165',permalink:'https://www.mercadolibre.com.ar/snack/p/MLA53287165'};
+    const fetcher=vi.fn(async url=>{
+      if(url.includes('claim_shop_price_updates'))return response(fetcher.mock.calls.filter(([u])=>u.includes('claim_shop_price_updates')).length<=1?[job]:[]);
+      if(url.includes('/products/MLA53287165/items'))return response({results:[{item_id:'MLA1234567890',price:120,original_price:null,currency_id:'ARS',seller_id:3}]});
+      return response(null);
+    });
+    expect(await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher})).toMatchObject({updated:1,unavailable:0,failed:0});
+    expect(fetcher.mock.calls.some(([url])=>/\/items\/MLA/.test(url))).toBe(false);
+    const finish=fetcher.mock.calls.find(([url])=>url.includes('finish_shop_price_update'));
+    expect(JSON.parse(finish[1].body).p_result).toMatchObject({status:'ok',price:120,metadata:{priceContext:'catalog_buy_box_winner'}});
+    const vacio=vi.fn(async url=>{
+      if(url.includes('claim_shop_price_updates'))return response(vacio.mock.calls.filter(([u])=>u.includes('claim_shop_price_updates')).length<=1?[job]:[]);
+      if(url.includes('/products/MLA53287165/items'))return response({results:[]});
+      return response(null);
+    });
+    expect(await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher:vacio})).toMatchObject({updated:0,unavailable:1,failed:0});
+  });
   it('conserva refresh rotado antes de devolver access token',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(response({status:'refresh',leaseId:'lease',refreshToken:'old'}))
       .mockResolvedValueOnce(response({access_token:'new-access',refresh_token:'new-refresh',expires_in:3600}))

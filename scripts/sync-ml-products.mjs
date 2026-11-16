@@ -5,7 +5,9 @@ import { ShopProviderError } from '../api/_lib/mercadoLibre.mjs';
 
 runShopRadar().then(result => {
   console.log(JSON.stringify(result));
-  if (result.discovery?.status === 'limited' || result.research?.failed) process.exitCode = 1;
+  // Las limitaciones oficiales quedan registradas en la corrida y el admin;
+  // el job solo falla ante errores operativos de investigacion.
+  if (result.research?.failed) process.exitCode = 1;
 }).catch(error => {
   console.error('Radar no disponible:', error instanceof ShopProviderError ? error.code : 'internal_error');
   process.exitCode = 1;
