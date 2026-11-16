@@ -2,10 +2,10 @@ import { pathToFileURL } from 'node:url';
 import { fetchOfficialCatalogListingPrice, fetchOfficialItemPrice, getMercadoLibreToken, normalizeCatalogPageId, normalizeItemId, ShopProviderError, shopRpc } from '../api/_lib/mercadoLibre.mjs';
 
 // Codigos esperados cuando Mercado Libre no expone la publicacion (politica
-// de acceso o ficha /p/ sin publicacion): se registran por producto y el
-// precio conserva NULL o la ultima consulta exitosa, pero no son un fallo
-// operativo del proceso.
-const EXPECTED_UNAVAILABLE = new Set(['http_403', 'catalog_product_requires_listing_id', 'listing_price_unavailable']);
+// de acceso, ficha /p/ sin publicacion, o publicacion/catalogo eliminados):
+// se registran por producto y el precio conserva NULL o la ultima consulta
+// exitosa, pero no son un fallo operativo del proceso.
+const EXPECTED_UNAVAILABLE = new Set(['http_403', 'http_404', 'catalog_product_requires_listing_id', 'listing_price_unavailable']);
 
 export async function updateShopPrices({ env = process.env, fetcher = fetch } = {}) {
   // El flag del workflow y enabled en la DB deben activarse expresamente.

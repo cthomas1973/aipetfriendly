@@ -71,6 +71,18 @@ describe('Precios y catalogo oficiales',()=>{
     });
     expect(await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher:vacio})).toMatchObject({updated:0,unavailable:1,failed:0});
   });
+  it('publicaciones eliminadas (404) conservan el ultimo precio sin marcar fallo operativo',async()=>{
+    vi.spyOn(console,'error').mockImplementation(()=>{});
+    const job={productId:'p',leaseId:'lease',externalId:'MLA1234567890',permalink:'https://articulo.mercadolibre.com.ar/MLA-1234567890'};
+    const fetcher=vi.fn(async url=>{
+      if(url.includes('claim_shop_price_updates'))return response(fetcher.mock.calls.filter(([u])=>u.includes('claim_shop_price_updates')).length<=1?[job]:[]);
+      if(url.includes('/items/MLA1234567890'))return new Response('{"error":"not_found"}',{status:404});
+      return response(null);
+    });
+    expect(await updateShopPrices({env:{...env,SHOP_PRICE_TRACKING_ENABLED:'true',ML_ACCESS_TOKEN:'synthetic'},fetcher})).toMatchObject({updated:0,unavailable:1,failed:0});
+    const finish=fetcher.mock.calls.find(([url])=>url.includes('finish_shop_price_update'));
+    expect(JSON.parse(finish[1].body).p_result).toEqual({status:'error',error:'http_404'});
+  });
   it('conserva refresh rotado antes de devolver access token',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(response({status:'refresh',leaseId:'lease',refreshToken:'old'}))
       .mockResolvedValueOnce(response({access_token:'new-access',refresh_token:'new-refresh',expires_in:3600}))
