@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  BookOpen,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -13,6 +14,7 @@ import {
   QrCode,
   Search,
   ShieldCheck,
+  ShoppingBag,
   Smartphone,
   Utensils,
 } from 'lucide-react';
@@ -135,6 +137,18 @@ const TOOLS: Array<{
     icon: Palmtree,
     title: 'Lugares Pet Friendly',
     description: 'Descubrí lugares pet friendly para ir con tu mascota.',
+  },
+  {
+    id: 'tool-store',
+    icon: ShoppingBag,
+    title: 'Tienda',
+    description: 'Explorá productos para tu mascota con datos verificados, comparador y seguimiento de precios reales.',
+  },
+  {
+    id: 'tool-guides-blog',
+    icon: BookOpen,
+    title: 'Guías y Blog',
+    description: 'Aprendé con guías prácticas paso a paso y notas con consejos para el cuidado diario.',
   },
 ];
 
