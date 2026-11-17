@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
+
+.apf-home {
+  --apf-deep: #075b46;
+  --apf-green: #159b6b;
+  --apf-mint: #dff4e9;
+  --apf-cream: #fff9e9;
+  --apf-yellow: #ffc72c;
+  --apf-ink: #173d34;
+  --apf-muted: #5c7069;
+  color: var(--apf-ink);
+  background: #f4fbf6;
+  font-family: 'Nunito', 'Segoe UI', sans-serif;
+  padding: 16px clamp(12px, 3vw, 44px) 0;
+  min-height: 100vh;
+}
+.apf-home * { box-sizing: border-box; }
+.apf-header {
+  max-width: 1440px; margin: 0 auto 22px; min-height: 64px; padding: 8px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: rgba(255,255,255,.94); border: 1px solid #cde9d9; border-radius: 999px;
+  box-shadow: 0 5px 18px rgba(18,92,66,.07); position: relative; z-index: 5;
+}
+.apf-brand,.apf-footer-brand { display:flex; align-items:center; gap:9px; color:var(--apf-deep); text-decoration:none; font-weight:900; white-space:nowrap; }
+.apf-brand img { width:42px; height:42px; object-fit:contain; }
+.apf-brand span { font-size:18px; letter-spacing:-.5px; }
+.apf-nav { display:flex; align-items:center; justify-content:center; gap:4px; flex:1; }
+.apf-nav button,.apf-footer nav button {
+  border:0; background:transparent; color:#36574e; cursor:pointer; font:700 13px 'Nunito',sans-serif;
+}
+.apf-nav button { display:flex; align-items:center; gap:6px; padding:10px 12px; border-radius:999px; white-space:nowrap; }
+.apf-nav button svg { width:15px; height:15px; }
+.apf-nav button:hover,.apf-nav button.is-active { background:#e1f4e9; color:var(--apf-deep); }
+.apf-auth { display:flex; gap:8px; align-items:center; }
+.apf-btn { display:inline-flex; justify-content:center; align-items:center; gap:8px; border-radius:999px; padding:10px 18px; font:800 13px 'Nunito',sans-serif; cursor:pointer; transition:.2s; }
+.apf-btn svg { width:17px; height:17px; }
+.apf-btn-primary { color:#fff; background:var(--apf-deep); border:1px solid var(--apf-deep); box-shadow:0 4px 10px #075b4620; }
+.apf-btn-primary:hover { background:#087b5b; transform:translateY(-1px); }
+.apf-btn-outline { color:var(--apf-deep); background:#fff; border:1.5px solid var(--apf-green); }
+.apf-btn-outline:hover { background:#effaf3; }
+.apf-btn-large { padding:13px 21px; font-size:15px; }
+.apf-menu-toggle { display:none; border:1px solid #cce8d8; background:white; color:var(--apf-deep); border-radius:50%; width:44px; height:44px; }
+.apf-hero {
+  max-width:1440px; margin:0 auto 30px; min-height:430px; display:grid; grid-template-columns:.92fr 1.08fr;
+  overflow:hidden; border-radius:26px; background:linear-gradient(115deg,#fffdf4 0%,#f7fff8 48%,#e7f5eb 100%);
+  box-shadow:0 14px 36px rgba(20,93,64,.09); position:relative;
+}
+.apf-hero-copy { padding:clamp(34px,5vw,76px); display:flex; flex-direction:column; justify-content:center; align-items:flex-start; position:relative; z-index:2; }
+.apf-eyebrow,.apf-kicker { color:var(--apf-green); font-weight:900; letter-spacing:.09em; font-size:11px; }
+.apf-eyebrow { display:flex; align-items:center; gap:7px; margin-bottom:14px; }
+.apf-hero h1 { max-width:620px; margin:0; color:var(--apf-deep); font-size:clamp(42px,5vw,68px); line-height:.99; font-weight:900; letter-spacing:-2.7px; }
+.apf-hero h1 span { color:var(--apf-yellow); }
+.apf-yellow-stroke { width:190px; height:9px; background:var(--apf-yellow); border-radius:100%; transform:rotate(-2deg); margin:17px 0 13px; }
+.apf-hero-copy>p { max-width:470px; margin:0; font-size:clamp(17px,1.55vw,21px); line-height:1.35; font-weight:600; color:#344f46; }
+.apf-hero-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:26px; }
+.apf-login-link { margin-top:12px; padding:0; border:0; background:none; color:var(--apf-deep); text-decoration:underline; font:700 12px 'Nunito',sans-serif; cursor:pointer; }
+.apf-hero-visual { position:relative; min-height:430px; overflow:hidden; }
+.apf-hero-visual:before { content:""; position:absolute; z-index:1; inset:0; background:linear-gradient(90deg,#fffdf4 0%,#fffdf400 28%); pointer-events:none; }
+.apf-hero-visual>img { width:100%; height:100%; min-height:430px; object-fit:cover; object-position:58% center; display:block; }
+.apf-floating-tags { position:absolute; right:22px; top:22px; z-index:2; display:flex; flex-direction:column; gap:10px; }
+.apf-floating-tags span { display:flex; align-items:center; gap:8px; padding:9px 13px; border:1px solid #d8ebdc; border-radius:999px; background:#ffffffed; color:var(--apf-deep); box-shadow:0 5px 14px #174c3420; font-size:12px; font-weight:900; white-space:nowrap; }
+.apf-floating-tags svg { width:16px; height:16px; color:var(--apf-green); }
+.apf-features,.apf-discover,.apf-steps { max-width:1360px; margin:0 auto 30px; }
+.apf-section-heading { display:flex; align-items:end; justify-content:space-between; gap:18px; margin-bottom:16px; }
+.apf-section-heading h2,.apf-steps h2,.apf-faq h2 { margin:4px 0 0; font-size:clamp(22px,2.3vw,30px); line-height:1.1; font-weight:900; letter-spacing:-.7px; color:var(--apf-deep); }
+.apf-section-heading h2 b { color:var(--apf-yellow); }
+.apf-text-link { display:flex; align-items:center; gap:7px; border:0; background:none; color:var(--apf-deep); font:800 13px 'Nunito',sans-serif; cursor:pointer; }
+.apf-text-link svg { width:16px; }
+.apf-feature-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+.apf-feature-card { overflow:hidden; padding:0; text-align:left; border:1px solid #d3e9dc; border-radius:19px; background:#fff; box-shadow:0 5px 14px rgba(21,93,65,.07); cursor:pointer; transition:transform .2s,box-shadow .2s; }
+.apf-feature-card:hover { transform:translateY(-4px); box-shadow:0 12px 24px rgba(21,93,65,.13); }
+.apf-feature-image { display:block; width:100%; aspect-ratio:16/8.3; object-fit:cover; }
+.apf-feature-label { display:flex; align-items:center; gap:12px; padding:13px 15px; min-height:66px; color:var(--apf-ink); }
+.apf-feature-icon { width:37px; height:37px; flex:0 0 37px; display:grid; place-items:center; border-radius:11px; background:#e5f6ec; color:var(--apf-green); }
+.apf-feature-icon svg { width:19px; height:19px; }
+.apf-feature-label strong { flex:1; font-size:17px; font-weight:900; }
+.apf-card-arrow { width:30px; height:30px; display:grid; place-items:center; border-radius:50%; background:#eaf7ef; color:var(--apf-green); }
+.apf-card-arrow svg { width:16px; }
+.apf-steps { display:flex; align-items:center; justify-content:space-around; gap:16px; padding:25px 32px; border-radius:24px; background:linear-gradient(100deg,#e7f7eb,#f8fbea); border:1px solid #d8edda; }
+.apf-steps-title { min-width:190px; }
+.apf-step { display:flex; align-items:center; gap:12px; font-size:16px; font-weight:900; color:var(--apf-deep); }
+.apf-step-icon { width:58px; height:58px; display:grid; place-items:center; background:#fff; color:var(--apf-green); border:1px solid #d7eddf; border-radius:50%; box-shadow:0 5px 12px #1a6b4820; }
+.apf-step-icon svg { width:26px; height:26px; }
+.apf-step-arrow { color:var(--apf-green); flex:0 0 auto; }
+.apf-discover { display:grid; grid-template-columns:1.05fr .95fr; gap:28px; }
+.apf-content-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:15px; }
+.apf-content-card { border:1px solid #d6eadd; border-radius:17px; overflow:hidden; background:white; padding:0; text-align:left; cursor:pointer; box-shadow:0 5px 14px #155d410d; }
+.apf-content-card img { width:100%; aspect-ratio:16/8; object-fit:cover; display:block; }
+.apf-content-card span { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 14px; color:var(--apf-deep); font-weight:900; }
+.apf-content-card span svg { width:18px; }
+.apf-faq h2 { margin-bottom:14px; }
+.apf-faq-item { border:1px solid #d9e9dd; border-radius:13px; background:#fff; margin-bottom:8px; overflow:hidden; }
+.apf-faq-item>button { width:100%; padding:13px 15px; display:flex; justify-content:space-between; align-items:center; gap:10px; border:0; background:white; color:#24483d; text-align:left; font:800 14px 'Nunito',sans-serif; cursor:pointer; }
+.apf-faq-item>button svg { width:17px; transition:transform .2s; }
+.apf-faq-item.is-open>button svg { transform:rotate(180deg); }
+.apf-faq-item p { padding:0 15px 14px; margin:0; color:var(--apf-muted); font-size:13px; line-height:1.5; }
+.apf-footer { max-width:1440px; margin:0 auto; padding:24px clamp(18px,4vw,48px); display:flex; align-items:center; gap:22px; background:var(--apf-deep); color:#e9fff1; border-radius:22px 22px 0 0; }
+.apf-footer-brand { color:white; }
+.apf-footer-brand img { width:42px; height:42px; object-fit:contain; background:#fff; border-radius:50%; }
+.apf-footer>span { flex:1; font-size:13px; }
+.apf-footer nav { display:flex; gap:17px; }
+.apf-footer nav button { color:#e9fff1; }
+.apf-footer small { white-space:nowrap; color:#c4e5d3; }
+@media (max-width: 1050px) {
+  .apf-nav { gap:0; }
+  .apf-nav button { padding:9px 7px; font-size:11px; }
+  .apf-auth .apf-btn { padding:9px 12px; font-size:11px; }
+  .apf-hero { min-height:390px; }
+  .apf-hero-visual,.apf-hero-visual>img { min-height:390px; }
+}
+@media (max-width: 760px) {
+  .apf-home { padding:10px 12px 0; }
+  .apf-header { min-height:62px; margin-bottom:15px; padding:7px 12px; border-radius:18px; }
+  .apf-brand img { width:43px; height:43px; }
+  .apf-brand span { font-size:19px; }
+  .apf-menu-toggle { display:grid; place-items:center; }
+  .apf-auth { display:none; }
+  .apf-nav { display:none; position:absolute; left:0; right:0; top:calc(100% + 8px); padding:10px; border:1px solid #d3e9dc; border-radius:18px; background:#fff; box-shadow:0 14px 28px #123e2b20; }
+  .apf-nav.is-open { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .apf-nav button { justify-content:flex-start; padding:12px; font-size:13px; }
+  .apf-hero { display:flex; flex-direction:column; border-radius:22px; margin-bottom:23px; }
+  .apf-hero-copy { padding:25px 22px 19px; order:1; }
+  .apf-eyebrow { margin-bottom:9px; font-size:10px; }
+  .apf-hero h1 { font-size:clamp(34px,9vw,46px); letter-spacing:-1.5px; line-height:1.01; }
+  .apf-yellow-stroke { width:125px; height:6px; margin:11px 0 9px; }
+  .apf-hero-copy>p { font-size:16px; line-height:1.35; }
+  .apf-hero-actions { width:100%; flex-direction:column; margin-top:17px; gap:8px; }
+  .apf-btn-large { width:100%; min-height:46px; }
+  .apf-login-link { margin-top:9px; }
+  .apf-hero-visual { order:2; min-height:245px; height:245px; }
+  .apf-hero-visual>img { min-height:245px; height:245px; object-position:58% 48%; }
+  .apf-hero-visual:before { background:linear-gradient(180deg,#f7fff8 0%,transparent 18%); }
+  .apf-floating-tags { top:10px; left:10px; right:10px; flex-direction:row; flex-wrap:wrap; gap:6px; }
+  .apf-floating-tags span { padding:7px 9px; gap:5px; font-size:10px; }
+  .apf-floating-tags svg { width:13px; height:13px; }
+  .apf-section-heading { align-items:flex-start; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .apf-section-heading h2,.apf-steps h2,.apf-faq h2 { font-size:23px; }
+  .apf-feature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .apf-feature-card { border-radius:14px; }
+  .apf-feature-image { aspect-ratio:1.18/1; }
+  .apf-feature-label { padding:9px; gap:7px; min-height:56px; }
+  .apf-feature-icon { width:29px; height:29px; flex-basis:29px; border-radius:9px; }
+  .apf-feature-icon svg { width:16px; height:16px; }
+  .apf-feature-label strong { font-size:12px; line-height:1.15; }
+  .apf-card-arrow { width:23px; height:23px; }
+  .apf-card-arrow svg { width:13px; }
+  .apf-steps { display:grid; grid-template-columns:1fr; justify-items:center; gap:8px; padding:20px 16px; text-align:center; }
+  .apf-steps-title { min-width:0; margin-bottom:5px; }
+  .apf-step { flex-direction:column; gap:7px; font-size:13px; }
+  .apf-step-icon { width:48px; height:48px; }
+  .apf-step-icon svg { width:22px; }
+  .apf-step-arrow { transform:rotate(90deg); width:17px; height:17px; }
+  .apf-discover { grid-template-columns:1fr; gap:23px; }
+  .apf-content-cards { gap:9px; }
+  .apf-content-card { border-radius:13px; }
+  .apf-content-card span { padding:9px; font-size:12px; }
+  .apf-faq-item>button { font-size:13px; padding:12px; }
+  .apf-footer { margin:0 -12px; border-radius:0; flex-direction:column; align-items:flex-start; gap:12px; padding:22px; }
+  .apf-footer nav { flex-wrap:wrap; gap:14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .apf-home *, .apf-home *::before, .apf-home *::after { scroll-behavior:auto!important; transition:none!important; }
+}

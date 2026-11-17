@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CreditCard,
   Gift,
+  House,
   MapPinned,
   MessageCircle,
   MoreHorizontal,
@@ -20,7 +21,6 @@ import { ChatSection } from './components/ChatSection';
 import { ClinicalHistoryLandingSection } from './components/ClinicalHistoryLandingSection';
 import { HowItWorksSection } from './components/HowItWorksSection';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
-import { LandingSection } from './components/LandingSection';
 import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetFriendlyPlacesSection } from './components/PetFriendlyPlacesSection';
 import { PetsSection } from './components/PetsSection';
@@ -32,6 +32,7 @@ import { AIAssistantLandingSection } from './components/AIAssistantLandingSectio
 import { IdentificationLostPetLandingSection } from './components/IdentificationLostPetLandingSection';
 import { VeterinaryLandingSection } from './components/VeterinaryLandingSection';
 import { PetFriendlyLandingSection } from './components/PetFriendlyLandingSection';
+import { AiPetFriendlyHome } from './components/AiPetFriendlyHome';
 import {
   OffersSection,
   PaywallCard,
@@ -78,6 +79,7 @@ const PENDING_PET_MESSAGES_CODE_KEY = 'apf_pending_pet_messages_code';
 // Identificacion (mensajes recibidos) apenas se renderice con esa mascota
 // seleccionada. Ver tambien src/components/PetsSection.tsx.
 const OPEN_PET_IDENTIFICATION_KEY = 'apf_open_pet_identificacion';
+const VALID_TABS: AppTab[] = ['blog', 'pets', 'clinical', 'agenda', 'map', 'places', 'offers', 'subscription', 'admin'];
 
 // Extrae el codigo publico de una ruta /mascota/{codigo} (pagina de identificacion
 // de la mascota, accesible sin login desde el QR del cartel o de la chapita).
@@ -211,15 +213,18 @@ function BottomNavMoreSheet({
   onChange,
   isAdmin,
   isGuidesRoute,
+  isHomeRoute,
   onClose,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   isAdmin: boolean;
   isGuidesRoute: boolean;
+  isHomeRoute: boolean;
   onClose: () => void;
 }) {
   const items: Array<{ id: string; label: string; icon: typeof Gift; onSelect: () => void; active: boolean }> = [
+    { id: 'home', label: 'Inicio', icon: House, onSelect: () => { window.location.href = '/'; }, active: isHomeRoute },
     { id: 'offers', label: 'Tienda', icon: Gift, onSelect: () => onChange('offers'), active: !isGuidesRoute && activeTab === 'offers' },
   ];
 
@@ -270,12 +275,14 @@ function BottomNav({
   onChange,
   isAdmin,
   isGuidesRoute,
+  isHomeRoute,
   hasMobileBanner,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   isAdmin: boolean;
   isGuidesRoute: boolean;
+  isHomeRoute: boolean;
   hasMobileBanner: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -348,6 +355,7 @@ function BottomNav({
           onChange={onChange}
           isAdmin={isAdmin}
           isGuidesRoute={isGuidesRoute}
+          isHomeRoute={isHomeRoute}
           onClose={() => setMoreOpen(false)}
         />
       )}
@@ -382,7 +390,15 @@ function DesktopTabNav({
 
   return (
     <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className={`grid ${isAdmin ? 'grid-cols-10' : 'grid-cols-9'} gap-2`}>
+      <ul className={`grid ${isAdmin ? 'grid-cols-11' : 'grid-cols-10'} gap-2`}>
+        <li>
+          <a
+            href="/"
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50"
+          >
+            <House size={16} /> Inicio
+          </a>
+        </li>
         {tabs.map((tab) => (
           <li key={tab.id}>
             <button
@@ -456,6 +472,8 @@ function AppContent() {
   const currentPath = window.location.pathname;
   const normalizedPath = currentPath.length > 1 ? currentPath.replace(/\/+$/, '') : currentPath;
   const urlParams = new URLSearchParams(window.location.search);
+  const tabParam = urlParams.get('tab');
+  const requestedTab = tabParam && VALID_TABS.includes(tabParam as AppTab) ? (tabParam as AppTab) : null;
   const hasPublicVetClaimRoute = Boolean(urlParams.get('vet_claim'));
   const hasPublicPlaceClaimRoute = Boolean(urlParams.get('place_claim'));
   const isGuidesRoute = normalizedPath === '/guias' || normalizedPath.startsWith('/guias/');
@@ -481,13 +499,31 @@ function AppContent() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
-  const isLandingRoute = !user && !isResetPasswordRoute && !showAuthGate && !hasPublicVetClaimRoute && !hasPublicPlaceClaimRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute && !isLoginRoute && !isHowItWorksRoute && !isClinicalHistoryRoute && !isRemindersRoute && !isFoodWeightRoute && !isAIAssistantRoute && !isIdentificationLostPetRoute && !isVeterinariesLandingRoute && !isPetFriendlyLandingRoute && !isPetPublicRoute;
+  const isHomeRoute = normalizedPath === '/';
+  const isLandingRoute = isHomeRoute && !requestedTab && !isResetPasswordRoute && !showAuthGate;
+  const isTabHomeRoute = isHomeRoute && Boolean(requestedTab);
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app se muestra tambien en /guias, /blog, las paginas
   // legales y la landing (con o sin login) para que se pueda navegar directo a
   // otras secciones sin volver antes al inicio. /social queda afuera a proposito
   // (es un embudo de conversion, sin distracciones de navegacion).
-  const showAppNav = !isResetPasswordRoute && (!isLandingRoute || !isSocialLandingRoute) && !(isLoginRoute && !user) && !isPetPublicRoute;
+  const showAppNav = !isResetPasswordRoute && !isLandingRoute && !isSocialLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute;
+
+  useEffect(() => {
+    if (!requestedTab) {
+      return;
+    }
+
+    if (!user) {
+      if (requestedTab === 'blog') {
+        window.location.href = '/blog';
+        return;
+      }
+      setUser(createGuestUser());
+    }
+
+    setActiveTab(requestedTab);
+  }, [requestedTab, user, setActiveTab, setUser]);
 
   // Si estamos en una pagina de contenido publico (/guias, /blog, legales) y se
   // elige un tab de la app, no alcanza con cambiar el estado (renderTabContent
@@ -855,7 +891,7 @@ function AppContent() {
 
     if (isLandingRoute) {
       return (
-        <LandingSection
+        <AiPetFriendlyHome
           onRegister={() => {
             setAuthInitialMode('register');
             setShowAuthGate(true);
@@ -863,7 +899,52 @@ function AppContent() {
           onLogin={() => {
             window.location.href = '/login';
           }}
-          onGuest={() => setUser(createGuestUser())}
+          onGuest={() => {
+            setUser(createGuestUser());
+            setActiveTab('pets');
+          }}
+          onNavigate={(destination) => {
+            switch (destination) {
+              case 'pets':
+                handleTabChange('pets');
+                break;
+              case 'agenda':
+                handleTabChange('agenda');
+                break;
+              case 'assistant':
+                handleTabChange('clinical');
+                break;
+              case 'veterinaries':
+                handleTabChange('map');
+                break;
+              case 'pet-friendly':
+                handleTabChange('places');
+                break;
+              case 'store':
+                handleTabChange('offers');
+                break;
+              case 'qr':
+                window.location.href = '/identificacion-y-mascota-perdida';
+                break;
+              case 'blog':
+                window.location.href = '/blog';
+                break;
+              case 'guides':
+                window.location.href = '/guias';
+                break;
+              case 'how-it-works':
+                window.location.href = '/como-funciona';
+                break;
+              case 'about':
+                window.location.href = '/sobre-nosotros';
+                break;
+              case 'contact':
+                window.location.href = '/contacto';
+                break;
+              default:
+                break;
+            }
+          }}
         />
       );
     }
@@ -878,6 +959,14 @@ function AppContent() {
 
     if (!user) {
       return <AuthScreens initialMode={authInitialMode} />;
+    }
+
+    if (isTabHomeRoute && requestedTab === 'admin' && !user.isAdmin) {
+      return (
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">No tienes acceso a la vista de administración.</p>
+        </div>
+      );
     }
 
     if (activeTab === 'blog') {
@@ -924,8 +1013,9 @@ function AppContent() {
 
   return (
     <div className={`min-h-screen bg-[#EAF7F1] ${hasMobileBanner ? 'pb-40' : 'pb-24'} md:pb-10`}>
-      <main className="mx-auto w-full max-w-md px-4 pt-5 md:max-w-5xl md:px-6 md:pt-8">
-        <div className="mb-3 text-center md:mb-5">
+      <main className={`mx-auto w-full max-w-md px-4 pt-5 md:px-6 md:pt-8 ${isLandingRoute ? 'md:max-w-[1280px]' : 'md:max-w-5xl'}`}>
+        {!isLandingRoute && (
+          <div className="mb-3 text-center md:mb-5">
           <button
             type="button"
             onClick={onLogoGoToLogin}
@@ -946,15 +1036,16 @@ function AppContent() {
               </div>
             )}
           </button>
-        </div>
+          </div>
+        )}
 
         {!isResetPasswordRoute && showAppNav && (
           <DesktopTabNav activeTab={activeTab} onChange={handleTabChange} isAdmin={Boolean(user?.isAdmin)} isGuidesRoute={isGuidesRoute} />
         )}
 
-        {user && !user.isGuest && !isResetPasswordRoute && <SubscriptionBanner />}
+        {user && !user.isGuest && !isResetPasswordRoute && !isLandingRoute && <SubscriptionBanner />}
 
-        {user?.isGuest && !isResetPasswordRoute && (
+        {user?.isGuest && !isResetPasswordRoute && !isLandingRoute && (
           <div className="mb-5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 p-4 shadow-md text-white">
             <p className="mb-3 text-sm font-semibold">
               Modo visitante · Lo que cargues no se guardará a menos que te registres (gratis, solo con tu email).
@@ -1010,6 +1101,7 @@ function AppContent() {
           onChange={handleTabChange}
           isAdmin={Boolean(user?.isAdmin)}
           isGuidesRoute={isGuidesRoute}
+          isHomeRoute={isHomeRoute}
           hasMobileBanner={hasMobileBanner}
         />
       )}
