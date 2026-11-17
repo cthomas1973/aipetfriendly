@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import {
-  ArrowRight, CalendarDays, ChevronDown, Menu, MessageCircle,
-  PawPrint, MapPin, ShoppingBag, QrCode, X, Sparkles,
+  ArrowRight, CalendarDays, ChevronDown, MessageCircle,
+  PawPrint, MapPin, Newspaper, Palmtree, ShoppingBag, QrCode, Sparkles,
   BookOpen, UserRound, Heart, CheckCircle2
 } from 'lucide-react';
+import { SiteHeader } from './SiteHeader';
+import { PublicFooter } from './PublicLegalPages';
 import './AiPetFriendlyHome.css';
 
 type Destination =
@@ -45,38 +47,33 @@ const faqs = [
 export function AiPetFriendlyHome({
   onRegister, onLogin, onGuest, onNavigate,
 }: AiPetFriendlyHomeProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const go = (destination: Destination) => {
-    setMenuOpen(false);
     onNavigate?.(destination);
   };
 
   return (
     <main className="apf-home">
-      <header className="apf-header">
-        <a className="apf-brand" href="/" aria-label="AiPetFriendly, inicio">
-          <img src="/logo-aipetfriendly.png" alt="" />
-          <span>AiPetFriendly</span>
-        </a>
-        <button className="apf-menu-toggle" type="button" aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setMenuOpen(v => !v)}>
-          {menuOpen ? <X /> : <Menu />}
-        </button>
-        <nav className={`apf-nav ${menuOpen ? 'is-open' : ''}`} aria-label="Navegación principal">
-          <button className="is-active" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Inicio</button>
-          <button onClick={() => go('pets')}><PawPrint /> Mascotas</button>
-          <button onClick={() => go('agenda')}><CalendarDays /> Agenda</button>
-          <button onClick={() => go('assistant')}><MessageCircle /> Consultorio IA</button>
-          <button onClick={() => go('veterinaries')}><MapPin /> Lugares</button>
-          <button onClick={() => go('store')}><ShoppingBag /> Tienda</button>
-          <button onClick={() => go('blog')}><BookOpen /> Blog</button>
-        </nav>
-        <div className="apf-auth">
-          <button className="apf-btn apf-btn-outline" onClick={onLogin}>Ingresar</button>
-          <button className="apf-btn apf-btn-primary" onClick={onRegister}>Crear cuenta gratis</button>
-        </div>
-      </header>
+      <SiteHeader
+        items={[
+          { key: 'inicio', label: 'Inicio', active: true, onSelect: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
+          { key: 'pets', label: 'Mascotas', icon: PawPrint, onSelect: () => go('pets') },
+          { key: 'agenda', label: 'Agenda', icon: CalendarDays, onSelect: () => go('agenda') },
+          { key: 'assistant', label: 'Consultorio IA', icon: MessageCircle, onSelect: () => go('assistant') },
+          { key: 'map', label: 'Mapa Vet', icon: MapPin, onSelect: () => go('veterinaries') },
+          { key: 'places', label: 'Pet Friendly', icon: Palmtree, onSelect: () => go('pet-friendly') },
+          { key: 'store', label: 'Tienda', icon: ShoppingBag, onSelect: () => go('store') },
+          { key: 'blog', label: 'Blog', icon: Newspaper, onSelect: () => go('blog') },
+          { key: 'guides', label: 'Guías', icon: BookOpen, onSelect: () => go('guides') },
+        ]}
+        auth={(
+          <>
+            <button className="apf-btn apf-btn-outline" onClick={onLogin}>Ingresar</button>
+            <button className="apf-btn apf-btn-primary" onClick={onRegister}>Crear cuenta gratis</button>
+          </>
+        )}
+      />
 
       <section className="apf-hero">
         <div className="apf-hero-copy">
@@ -156,12 +153,7 @@ export function AiPetFriendlyHome({
         </div>
       </section>
 
-      <footer className="apf-footer">
-        <a className="apf-footer-brand" href="/"><img src="/logo-aipetfriendly.png" alt="" /><strong>AiPetFriendly</strong></a>
-        <span>Todo para el bienestar de tus mascotas.</span>
-        <nav><button onClick={() => go('about')}>Quiénes somos</button><button onClick={() => go('contact')}>Contacto</button><button onClick={() => go('guides')}>Guías</button></nav>
-        <small>© {new Date().getFullYear()} AiPetFriendly</small>
-      </footer>
+      <PublicFooter />
     </main>
   );
 }

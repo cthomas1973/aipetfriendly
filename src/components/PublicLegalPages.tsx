@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Facebook, Instagram, Youtube } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { setPageMeta } from '../lib/pageMeta';
+import './AiPetFriendlyHome.css';
 
 type PublicLegalRoute = '/privacidad' | '/terminos' | '/contacto' | '/sobre-nosotros';
 
@@ -37,40 +38,27 @@ const SOCIAL_LINKS: { label: string; href: string; Icon: ComponentType<IconProps
 
 export function PublicFooter() {
   return (
-    <footer className="mt-10 rounded-2xl border border-emerald-100 bg-white px-4 py-5 text-center text-sm text-slate-600">
-      <p className="font-semibold text-slate-700">AiPetFriendly</p>
-      <p className="mt-1">Cuidado inteligente para tu mascota.</p>
-      <div className="mt-4 flex items-center justify-center gap-4">
+    <footer className="apf-footer apf-footer--site">
+      <a className="apf-footer-brand" href="/" aria-label="AiPetFriendly, inicio">
+        <img src="/logo-aipetfriendly.png" alt="" />
+        <strong>AiPetFriendly</strong>
+      </a>
+      <span>Cuidado inteligente para tu mascota.</span>
+      <div className="apf-footer-social">
         {SOCIAL_LINKS.map(({ label, href, Icon }) => (
-          <a
-            key={label}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={label}
-            className="text-slate-400 transition hover:text-emerald-600"
-          >
-            <Icon size={20} />
+          <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label}>
+            <Icon size={18} />
           </a>
         ))}
       </div>
-      <nav className="mt-3 flex flex-wrap items-center justify-center gap-3 text-emerald-700">
-        <a href="/sobre-nosotros" className="font-semibold hover:underline">
-          Sobre nosotros
-        </a>
-        <span className="text-slate-300">|</span>
-        <a href="/privacidad" className="font-semibold hover:underline">
-          Politica de privacidad
-        </a>
-        <span className="text-slate-300">|</span>
-        <a href="/terminos" className="font-semibold hover:underline">
-          Terminos y aviso legal
-        </a>
-        <span className="text-slate-300">|</span>
-        <a href="/contacto" className="font-semibold hover:underline">
-          Contacto
-        </a>
+      <nav aria-label="Enlaces institucionales">
+        <a href="/sobre-nosotros">Sobre nosotros</a>
+        <a href="/privacidad">Politica de privacidad</a>
+        <a href="/terminos">Terminos y aviso legal</a>
+        <a href="/contacto">Contacto</a>
+        <a href="/guias">Guías</a>
       </nav>
+      <small>© {new Date().getFullYear()} AiPetFriendly</small>
     </footer>
   );
 }

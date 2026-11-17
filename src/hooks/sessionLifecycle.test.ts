@@ -63,7 +63,7 @@ vi.mock('../components/NearbyVetsMapSection', () => ({ NearbyVetsMapSection: () 
 vi.mock('../components/PetFriendlyPlacesSection', () => ({ PetFriendlyPlacesSection: () => null }));
 vi.mock('../components/PetsSection', () => ({ PetsSection: () => null }));
 vi.mock('../components/PetPublicProfileSection', () => ({ PetPublicProfileSection: () => null }));
-vi.mock('../components/PublicLegalPages', () => ({ PublicLegalPage: () => null, isPublicLegalRoute: () => false }));
+vi.mock('../components/PublicLegalPages', () => ({ PublicLegalPage: () => null, PublicFooter: () => null, isPublicLegalRoute: () => false }));
 vi.mock('../components/RemindersLandingSection', () => ({ RemindersLandingSection: () => null }));
 vi.mock('../components/FoodWeightLandingSection', () => ({ FoodWeightLandingSection: () => null }));
 vi.mock('../components/AIAssistantLandingSection', () => ({ AIAssistantLandingSection: () => null }));

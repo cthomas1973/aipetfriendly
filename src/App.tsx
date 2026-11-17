@@ -12,6 +12,7 @@ import {
   Palmtree,
   PawPrint,
   Shield,
+  ShoppingBag,
 } from 'lucide-react';
 import { AdminUsersSection } from './components/AdminUsersSection';
 import { AgendaSection } from './components/AgendaSection';
@@ -25,7 +26,8 @@ import { NearbyVetsMapSection } from './components/NearbyVetsMapSection';
 import { PetFriendlyPlacesSection } from './components/PetFriendlyPlacesSection';
 import { PetsSection } from './components/PetsSection';
 import { PetPublicProfileSection } from './components/PetPublicProfileSection';
-import { PublicLegalPage, isPublicLegalRoute } from './components/PublicLegalPages';
+import { PublicLegalPage, PublicFooter, isPublicLegalRoute } from './components/PublicLegalPages';
+import { SiteHeader, type SiteHeaderItem } from './components/SiteHeader';
 import { RemindersLandingSection } from './components/RemindersLandingSection';
 import { FoodWeightLandingSection } from './components/FoodWeightLandingSection';
 import { AIAssistantLandingSection } from './components/AIAssistantLandingSection';
@@ -363,87 +365,6 @@ function BottomNav({
   );
 }
 
-function DesktopTabNav({
-  activeTab,
-  onChange,
-  isAdmin,
-  isGuidesRoute,
-}: {
-  activeTab: AppTab;
-  onChange: (tab: AppTab) => void;
-  isAdmin: boolean;
-  isGuidesRoute: boolean;
-}) {
-  const tabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
-    { id: 'blog', label: 'Blog', icon: Newspaper },
-    { id: 'pets', label: 'Mascotas', icon: PawPrint },
-    { id: 'clinical', label: 'Consultorio', icon: MessageCircle },
-    { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-    { id: 'map', label: 'Mapa Vet', icon: MapPinned },
-    { id: 'places', label: 'Pet Friendly', icon: Palmtree },
-    { id: 'offers', label: 'Tienda', icon: Gift },
-  ];
-
-  if (isAdmin) {
-    tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
-  }
-
-  return (
-    <nav className="mb-5 hidden rounded-2xl bg-white/85 p-2 shadow-sm ring-1 ring-emerald-100 md:block">
-      <ul className={`grid ${isAdmin ? 'grid-cols-11' : 'grid-cols-10'} gap-2`}>
-        <li>
-          <a
-            href="/"
-            className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50"
-          >
-            <House size={16} /> Inicio
-          </a>
-        </li>
-        {tabs.map((tab) => (
-          <li key={tab.id}>
-            <button
-              type="button"
-              onClick={() => onChange(tab.id)}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                !isGuidesRoute && activeTab === tab.id
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'text-slate-600 hover:bg-emerald-50'
-              }`}
-            >
-              <tab.icon size={16} /> {tab.label}
-            </button>
-          </li>
-        ))}
-        <li>
-          <a
-            href="/guias"
-            className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              isGuidesRoute
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'text-slate-600 hover:bg-emerald-50'
-            }`}
-          >
-            <BookOpen size={16} /> Guías
-          </a>
-        </li>
-        <li>
-          <button
-            type="button"
-            onClick={() => onChange('subscription')}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              !isGuidesRoute && activeTab === 'subscription'
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'text-slate-600 hover:bg-emerald-50'
-            }`}
-          >
-            <CreditCard size={16} /> Mi Cuenta
-          </button>
-        </li>
-      </ul>
-    </nav>
-  );
-}
-
 function AppContent() {
   const {
     user,
@@ -500,7 +421,10 @@ function AppContent() {
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
   const isHomeRoute = normalizedPath === '/';
-  const isLandingRoute = isHomeRoute && !requestedTab && !isResetPasswordRoute && !showAuthGate;
+  // La home de marketing se muestra solo sin sesion: con usuario o invitado
+  // activo, / es la app (si no, el menu de la landing y el modo invitado
+  // quedarian atrapados en la portada).
+  const isLandingRoute = isHomeRoute && !user && !requestedTab && !isResetPasswordRoute && !showAuthGate;
   const isTabHomeRoute = isHomeRoute && Boolean(requestedTab);
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app se muestra tambien en /guias, /blog, las paginas
@@ -555,6 +479,38 @@ function AppContent() {
     }
     setActiveTab(tab);
   };
+
+  // Barra de navegacion unica del sitio (mismo estilo que la home). La marca y
+  // el item Inicio siempre vuelven a /; en mobile la navegacion sigue siendo
+  // la barra inferior (BottomNav), por eso la hamburguesa queda apagada.
+  const tabIsActive = (tab: AppTab) => !isGuidesRoute && !isBlogRoute && activeTab === tab;
+  const headerItems: SiteHeaderItem[] = [
+    { key: 'inicio', label: 'Inicio', icon: House, onSelect: () => { window.location.href = '/'; } },
+    { key: 'pets', label: 'Mascotas', icon: PawPrint, active: tabIsActive('pets'), onSelect: () => handleTabChange('pets') },
+    { key: 'agenda', label: 'Agenda', icon: CalendarDays, active: tabIsActive('agenda'), onSelect: () => handleTabChange('agenda') },
+    { key: 'clinical', label: 'Consultorio IA', icon: MessageCircle, active: tabIsActive('clinical'), onSelect: () => handleTabChange('clinical') },
+    { key: 'map', label: 'Mapa Vet', icon: MapPinned, active: tabIsActive('map'), onSelect: () => handleTabChange('map') },
+    { key: 'places', label: 'Pet Friendly', icon: Palmtree, active: tabIsActive('places'), onSelect: () => handleTabChange('places') },
+    { key: 'offers', label: 'Tienda', icon: ShoppingBag, active: tabIsActive('offers'), onSelect: () => handleTabChange('offers') },
+    { key: 'blog', label: 'Blog', icon: Newspaper, active: isBlogRoute || tabIsActive('blog'), onSelect: () => handleTabChange('blog') },
+    { key: 'guias', label: 'Guías', icon: BookOpen, active: isGuidesRoute, onSelect: () => { window.location.href = '/guias'; } },
+    ...(user?.isAdmin ? [{ key: 'admin', label: 'Admin', icon: Shield, active: tabIsActive('admin'), onSelect: () => handleTabChange('admin') }] : []),
+  ];
+  const headerAuth = user && !user.isGuest ? (
+    <button className="apf-btn apf-btn-primary" onClick={() => handleTabChange('subscription')}>
+      <CreditCard /> Mi Cuenta
+    </button>
+  ) : (
+    <>
+      <button className="apf-btn apf-btn-outline" onClick={() => { window.location.href = '/login'; }}>Ingresar</button>
+      <button className="apf-btn apf-btn-primary" onClick={() => handleTabChange('subscription')}>Crear cuenta gratis</button>
+    </>
+  );
+  // El pie unificado se agrega solo donde el contenido no trae ya su propio
+  // PublicFooter (blog, guias, legales y landings publicas lo incluyen).
+  const showSiteFooter = showAppNav && !isResetPasswordRoute && !isGuidesRoute && !isBlogRoute && !isLegalRoute
+    && !isHowItWorksRoute && !isClinicalHistoryRoute && !isRemindersRoute && !isFoodWeightRoute
+    && !isAIAssistantRoute && !isIdentificationLostPetRoute && !isVeterinariesLandingRoute && !isPetFriendlyLandingRoute;
 
   // Sincronizar con Supabase
   const { syncError } = useSupabaseSync();
@@ -1014,7 +970,7 @@ function AppContent() {
   return (
     <div className={`min-h-screen bg-[#EAF7F1] ${hasMobileBanner ? 'pb-40' : 'pb-24'} md:pb-10`}>
       <main className={`mx-auto w-full max-w-md px-4 pt-5 md:px-6 md:pt-8 ${isLandingRoute ? 'md:max-w-[1280px]' : 'md:max-w-5xl'}`}>
-        {!isLandingRoute && (
+        {!isLandingRoute && !showAppNav && (
           <div className="mb-3 text-center md:mb-5">
           <button
             type="button"
@@ -1040,7 +996,7 @@ function AppContent() {
         )}
 
         {!isResetPasswordRoute && showAppNav && (
-          <DesktopTabNav activeTab={activeTab} onChange={handleTabChange} isAdmin={Boolean(user?.isAdmin)} isGuidesRoute={isGuidesRoute} />
+          <SiteHeader items={headerItems} auth={headerAuth} mobileMenu={false} />
         )}
 
         {user && !user.isGuest && !isResetPasswordRoute && !isLandingRoute && <SubscriptionBanner />}
@@ -1093,6 +1049,8 @@ function AppContent() {
             renderTabContent()
           )}
         </section>
+
+        {showSiteFooter && !loading && <PublicFooter />}
       </main>
 
       {!isResetPasswordRoute && showAppNav && (

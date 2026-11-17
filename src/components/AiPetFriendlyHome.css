@@ -1,5 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
 
+/* Variables compartidas: el header y el pie se reutilizan en todo el sitio. */
+:root {
+  --apf-deep: #075b46;
+  --apf-green: #159b6b;
+  --apf-mint: #dff4e9;
+  --apf-cream: #fff9e9;
+  --apf-yellow: #ffc72c;
+  --apf-ink: #173d34;
+  --apf-muted: #5c7069;
+}
+
 .apf-home {
   --apf-deep: #075b46;
   --apf-green: #159b6b;
@@ -40,6 +51,10 @@
 .apf-btn-outline:hover { background:#effaf3; }
 .apf-btn-large { padding:13px 21px; font-size:15px; }
 .apf-menu-toggle { display:none; border:1px solid #cce8d8; background:white; color:var(--apf-deep); border-radius:50%; width:44px; height:44px; }
+/* Barra unificada del sitio: admite mas items que la version original. */
+.apf-header, .apf-footer { font-family:'Nunito','Segoe UI',sans-serif; }
+.apf-header--dense .apf-nav { flex-wrap:wrap; row-gap:2px; }
+.apf-header--dense .apf-nav button { padding:8px 9px; font-size:12px; }
 .apf-hero {
   max-width:1440px; margin:0 auto 30px; min-height:430px; display:grid; grid-template-columns:.92fr 1.08fr;
   overflow:hidden; border-radius:26px; background:linear-gradient(115deg,#fffdf4 0%,#f7fff8 48%,#e7f5eb 100%);
@@ -98,8 +113,15 @@
 .apf-footer-brand { color:white; }
 .apf-footer-brand img { width:42px; height:42px; object-fit:contain; background:#fff; border-radius:50%; }
 .apf-footer>span { flex:1; font-size:13px; }
-.apf-footer nav { display:flex; gap:17px; }
+.apf-footer nav { display:flex; gap:17px; flex-wrap:wrap; align-items:center; }
 .apf-footer nav button { color:#e9fff1; }
+.apf-footer nav a { color:#e9fff1; font:700 13px 'Nunito',sans-serif; text-decoration:none; white-space:nowrap; }
+.apf-footer nav a:hover { text-decoration:underline; }
+.apf-footer-social { display:flex; align-items:center; gap:14px; }
+.apf-footer-social a { color:#c4e5d3; display:inline-flex; transition:.2s; }
+.apf-footer-social a:hover { color:#fff; }
+/* Variante para usarlo fuera de la home (dentro de paginas con padding). */
+.apf-footer--site { margin-top:40px; border-radius:22px; flex-wrap:wrap; }
 .apf-footer small { white-space:nowrap; color:#c4e5d3; }
 @media (max-width: 1050px) {
   .apf-nav { gap:0; }
@@ -155,7 +177,8 @@
   .apf-content-card { border-radius:13px; }
   .apf-content-card span { padding:9px; font-size:12px; }
   .apf-faq-item>button { font-size:13px; padding:12px; }
-  .apf-footer { margin:0 -12px; border-radius:0; flex-direction:column; align-items:flex-start; gap:12px; padding:22px; }
+  .apf-home .apf-footer { margin:0 -12px; border-radius:0; }
+  .apf-footer { flex-direction:column; align-items:flex-start; gap:12px; padding:22px; }
   .apf-footer nav { flex-wrap:wrap; gap:14px; }
 }
 @media (prefers-reduced-motion: reduce) {
