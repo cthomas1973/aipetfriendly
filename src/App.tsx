@@ -451,13 +451,13 @@ function AppContent() {
 
   // Si estamos en una pagina de contenido publico (/guias, /blog, legales) y se
   // elige un tab de la app, no alcanza con cambiar el estado (renderTabContent
-  // prioriza la ruta actual): navegamos al inicio y dejamos el tab pedido
-  // guardado para aplicarlo apenas cargue la app (mismo mecanismo que
-  // POST_SIGNUP_TAB_KEY).
+  // prioriza la ruta actual): navegamos con el deep link ?tab=, que funciona
+  // con y sin sesion (sin sesion crea el modo invitado al cargar y aplica el
+  // tab pedido; el mecanismo POST_SIGNUP_TAB_KEY queda solo para los CTA de
+  // registro, que si requieren esperar a que exista sesion).
   const handleTabChange = (tab: AppTab) => {
     if (isGuidesRoute || isBlogRoute || isLegalRoute || isHowItWorksRoute || isClinicalHistoryRoute || isRemindersRoute || isFoodWeightRoute || isAIAssistantRoute || isIdentificationLostPetRoute || isVeterinariesLandingRoute || isPetFriendlyLandingRoute) {
-      window.localStorage.setItem(POST_SIGNUP_TAB_KEY, tab);
-      window.location.href = '/';
+      window.location.href = tab === 'blog' ? '/blog' : `/?tab=${tab}`;
       return;
     }
     // Sin sesion (landing): Blog ya es publico por ruta, se navega directo.
