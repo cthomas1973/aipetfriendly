@@ -5,6 +5,7 @@ import {
   CreditCard,
   Gift,
   House,
+  LogOut,
   MapPinned,
   MessageCircle,
   MoreHorizontal,
@@ -28,13 +29,14 @@ import { PetsSection } from './components/PetsSection';
 import { PetPublicProfileSection } from './components/PetPublicProfileSection';
 import { PublicLegalPage, PublicFooter, isPublicLegalRoute } from './components/PublicLegalPages';
 import { SiteHeader, type SiteHeaderItem } from './components/SiteHeader';
+import { appTabHref, isPermanentHome } from './lib/siteRoutes';
 import { RemindersLandingSection } from './components/RemindersLandingSection';
 import { FoodWeightLandingSection } from './components/FoodWeightLandingSection';
 import { AIAssistantLandingSection } from './components/AIAssistantLandingSection';
 import { IdentificationLostPetLandingSection } from './components/IdentificationLostPetLandingSection';
 import { VeterinaryLandingSection } from './components/VeterinaryLandingSection';
 import { PetFriendlyLandingSection } from './components/PetFriendlyLandingSection';
-import { AiPetFriendlyHome } from './components/AiPetFriendlyHome';
+import { AiPetFriendlyHome, type HomeAuthState } from './components/AiPetFriendlyHome';
 import {
   OffersSection,
   PaywallCard,
@@ -216,6 +218,8 @@ function BottomNavMoreSheet({
   isAdmin,
   isGuidesRoute,
   isHomeRoute,
+  onHome,
+  onLogout,
   onClose,
 }: {
   activeTab: AppTab;
@@ -223,10 +227,12 @@ function BottomNavMoreSheet({
   isAdmin: boolean;
   isGuidesRoute: boolean;
   isHomeRoute: boolean;
+  onHome: () => void;
+  onLogout?: () => void;
   onClose: () => void;
 }) {
   const items: Array<{ id: string; label: string; icon: typeof Gift; onSelect: () => void; active: boolean }> = [
-    { id: 'home', label: 'Inicio', icon: House, onSelect: () => { window.location.href = '/'; }, active: isHomeRoute },
+    { id: 'home', label: 'Inicio', icon: House, onSelect: onHome, active: isHomeRoute },
     { id: 'offers', label: 'Tienda', icon: Gift, onSelect: () => onChange('offers'), active: !isGuidesRoute && activeTab === 'offers' },
   ];
 
@@ -236,6 +242,10 @@ function BottomNavMoreSheet({
 
   items.push({ id: 'guias', label: 'Guías', icon: BookOpen, onSelect: () => { window.location.href = '/guias'; }, active: isGuidesRoute });
   items.push({ id: 'subscription', label: 'Mi Cuenta', icon: CreditCard, onSelect: () => onChange('subscription'), active: !isGuidesRoute && activeTab === 'subscription' });
+  // Solo para cuentas autenticadas (el invitado ya tiene "Salir" en su aviso).
+  if (onLogout) {
+    items.push({ id: 'logout', label: 'Cerrar sesión', icon: LogOut, onSelect: onLogout, active: false });
+  }
 
   return (
     <div
@@ -279,6 +289,8 @@ function BottomNav({
   isGuidesRoute,
   isHomeRoute,
   hasMobileBanner,
+  onHome,
+  onLogout,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
@@ -286,6 +298,8 @@ function BottomNav({
   isGuidesRoute: boolean;
   isHomeRoute: boolean;
   hasMobileBanner: boolean;
+  onHome: () => void;
+  onLogout?: () => void;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const primaryTabs: Array<{ id: AppTab; label: string; icon: typeof PawPrint }> = [
@@ -358,6 +372,8 @@ function BottomNav({
           isAdmin={isAdmin}
           isGuidesRoute={isGuidesRoute}
           isHomeRoute={isHomeRoute}
+          onHome={onHome}
+          onLogout={onLogout}
           onClose={() => setMoreOpen(false)}
         />
       )}
@@ -385,6 +401,25 @@ function AppContent() {
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
   const [popupQueue, setPopupQueue] = useState<ReminderPopupItem[]>([]);
   const [popupPostponeId, setPopupPostponeId] = useState<string | null>(null);
+  // La ruta se lee de window.location en cada render; este contador fuerza el
+  // re-render cuando se navega dentro de la app (pushState) o con atras/adelante.
+  const [, setRouteVersion] = useState(0);
+  useEffect(() => {
+    const onPopState = () => setRouteVersion((version) => version + 1);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  // Navegacion interna sin recargar: conserva el estado en memoria (p. ej. el
+  // modo visitante). Sin History API (entornos acotados) cae a navegacion normal.
+  const navigateInApp = (url: string, replace = false) => {
+    if (typeof window.history?.pushState !== 'function') {
+      window.location.href = url;
+      return;
+    }
+    if (replace) window.history.replaceState(null, '', url);
+    else window.history.pushState(null, '', url);
+    setRouteVersion((version) => version + 1);
+  };
   useEffect(() => {
     setPopupQueue([]);
     setPopupPostponeId(null);
@@ -421,10 +456,18 @@ function AppContent() {
   const isRecoveryLink = hashParams.get('type') === 'recovery';
   const isResetPasswordRoute = currentPath === '/reset-password' || isRecoveryLink;
   const isHomeRoute = normalizedPath === '/';
-  // La home de marketing se muestra solo sin sesion: con usuario o invitado
-  // activo, / es la app (si no, el menu de la landing y el modo invitado
-  // quedarian atrapados en la portada).
-  const isLandingRoute = isHomeRoute && !user && !requestedTab && !isResetPasswordRoute && !showAuthGate;
+  // La Home es la entrada permanente: se muestra en / para cualquier usuario
+  // (autenticado, invitado o sin sesion). La sesion solo cambia lo que ocurre
+  // al navegar a cada seccion, no si se ve la Home. Los destinos explicitos
+  // (?tab=, reclamos publicos, recuperacion de contrasena) tienen prioridad.
+  const isLandingRoute = isPermanentHome({
+    isHomeRoute,
+    requestedTab,
+    isResetPasswordRoute,
+    showAuthGate,
+    hasPublicVetClaimRoute,
+    hasPublicPlaceClaimRoute,
+  });
   const isTabHomeRoute = isHomeRoute && Boolean(requestedTab);
   const hasMobileBanner = Boolean(user && !user.isGuest && !subscription.isPremiumUser && isNativeAndroidApp());
   // La barra de tabs de la app se muestra tambien en /guias, /blog, las paginas
@@ -432,6 +475,10 @@ function AppContent() {
   // otras secciones sin volver antes al inicio. /social queda afuera a proposito
   // (es un embudo de conversion, sin distracciones de navegacion).
   const showAppNav = !isResetPasswordRoute && !isLandingRoute && !isSocialLandingRoute && !(isLoginRoute && !user) && !isPetPublicRoute;
+
+  // Sincronizar con Supabase. `authChecked` indica que ya se comprobo si hay
+  // una sesion que restaurar (la Home se muestra de todos modos).
+  const { syncError, authChecked = true } = useSupabaseSync();
 
   useEffect(() => {
     if (!requestedTab) {
@@ -443,49 +490,77 @@ function AppContent() {
         window.location.href = '/blog';
         return;
       }
+      // No crear un invitado mientras se restaura una sesion real: se
+      // reemplazaria brevemente la cuenta del usuario por un visitante.
+      if (!authChecked) {
+        return;
+      }
       setUser(createGuestUser());
     }
 
     setActiveTab(requestedTab);
-  }, [requestedTab, user, setActiveTab, setUser]);
+  }, [requestedTab, user, authChecked, setActiveTab, setUser]);
 
-  // Si estamos en una pagina de contenido publico (/guias, /blog, legales) y se
-  // elige un tab de la app, no alcanza con cambiar el estado (renderTabContent
-  // prioriza la ruta actual): navegamos con el deep link ?tab=, que funciona
-  // con y sin sesion (sin sesion crea el modo invitado al cargar y aplica el
-  // tab pedido; el mecanismo POST_SIGNUP_TAB_KEY queda solo para los CTA de
-  // registro, que si requieren esperar a que exista sesion).
+  // Desde paginas de contenido publico (/guias, /blog, legales, landings) hay
+  // que cambiar de pagina: se navega con el deep link ?tab=, que funciona con
+  // y sin sesion (sin sesion crea el modo invitado al cargar y aplica el tab;
+  // POST_SIGNUP_TAB_KEY queda solo para los CTA de registro). Desde la Home o
+  // la app se navega sin recargar, dejando la URL ?tab= para que la Home
+  // permanente no tape la seccion elegida y atras/adelante funcionen.
   const handleTabChange = (tab: AppTab) => {
     if (isGuidesRoute || isBlogRoute || isLegalRoute || isHowItWorksRoute || isClinicalHistoryRoute || isRemindersRoute || isFoodWeightRoute || isAIAssistantRoute || isIdentificationLostPetRoute || isVeterinariesLandingRoute || isPetFriendlyLandingRoute) {
-      window.location.href = tab === 'blog' ? '/blog' : `/?tab=${tab}`;
+      window.location.href = appTabHref(tab);
       return;
     }
-    // Sin sesion (landing): Blog ya es publico por ruta, se navega directo.
-    // El resto de las pestañas (Mascotas, Consultorio, Agenda, Mapa, Pet
-    // Friendly, Tienda, Mi Cuenta) ya son funcionales en modo invitado, asi
-    // que en vez de abrir un gate de registro sin contexto, entramos como
-    // invitado (mismo criterio que el boton "Seguir como visitante" del hero)
-    // y navegamos directo a la seccion pedida. Esto evita el callejon sin
-    // salida de tocar un tab visible y terminar en un formulario de registro
-    // inesperado.
+    // Blog ya es una pagina publica con ruta propia.
+    if (tab === 'blog') {
+      window.location.href = '/blog';
+      return;
+    }
+    // Sin sesion, las pestañas ya son funcionales en modo invitado: se entra
+    // como visitante directo a la seccion (sin gate de registro). Con sesion
+    // se usa siempre la cuenta autenticada; nunca se crea un invitado.
     if (!user) {
-      if (tab === 'blog') {
-        window.location.href = '/blog';
-        return;
-      }
       setUser(createGuestUser());
-      setActiveTab(tab);
-      return;
     }
+    navigateInApp(appTabHref(tab));
     setActiveTab(tab);
   };
 
+  // Vuelve a la Home permanente sin recargar (conserva sesion o modo visitante).
+  const goHome = () => {
+    setShowAuthGate(false);
+    navigateInApp('/');
+    window.scrollTo?.({ top: 0 });
+  };
+
+  // Cierre de sesion de una cuenta autenticada: logout de Supabase, limpieza
+  // del estado en memoria y de las pistas de navegacion de la sesion, y
+  // recarga completa en la Home (sin restos de la cuenta anterior).
+  const handleSignOut = async () => {
+    if (switchingUser) {
+      return;
+    }
+    setSwitchingUser(true);
+    try {
+      await signOut();
+      setUser(null);
+      window.localStorage.removeItem(POST_SIGNUP_TAB_KEY);
+      window.localStorage.removeItem(PENDING_PET_MESSAGES_CODE_KEY);
+      window.localStorage.removeItem(OPEN_PET_IDENTIFICATION_KEY);
+      window.location.href = '/';
+    } catch (err) {
+      console.error('No se pudo cerrar la sesion:', err);
+      setSwitchingUser(false);
+    }
+  };
+
   // Barra de navegacion unica del sitio (mismo estilo que la home). La marca y
-  // el item Inicio siempre vuelven a /; en mobile la navegacion sigue siendo
-  // la barra inferior (BottomNav), por eso la hamburguesa queda apagada.
+  // el item Inicio siempre vuelven a la Home; en mobile la navegacion sigue
+  // siendo la barra inferior (BottomNav), por eso la hamburguesa queda apagada.
   const tabIsActive = (tab: AppTab) => !isGuidesRoute && !isBlogRoute && activeTab === tab;
   const headerItems: SiteHeaderItem[] = [
-    { key: 'inicio', label: 'Inicio', icon: House, onSelect: () => { window.location.href = '/'; } },
+    { key: 'inicio', label: 'Inicio', icon: House, active: isHomeRoute && !requestedTab, onSelect: () => goHome() },
     { key: 'pets', label: 'Mascotas', icon: PawPrint, active: tabIsActive('pets'), onSelect: () => handleTabChange('pets') },
     { key: 'agenda', label: 'Agenda', icon: CalendarDays, active: tabIsActive('agenda'), onSelect: () => handleTabChange('agenda') },
     { key: 'clinical', label: 'Consultorio IA', icon: MessageCircle, active: tabIsActive('clinical'), onSelect: () => handleTabChange('clinical') },
@@ -496,13 +571,28 @@ function AppContent() {
     { key: 'guias', label: 'Guías', icon: BookOpen, active: isGuidesRoute, onSelect: () => { window.location.href = '/guias'; } },
     ...(user?.isAdmin ? [{ key: 'admin', label: 'Admin', icon: Shield, active: tabIsActive('admin'), onSelect: () => handleTabChange('admin') }] : []),
   ];
-  const headerAuth = user && !user.isGuest ? (
-    <button className="apf-btn apf-btn-primary" onClick={() => handleTabChange('subscription')}>
-      <CreditCard /> Mi Cuenta
-    </button>
+  const headerAuth = !user && !authChecked ? (
+    <span className="apf-auth-placeholder" aria-hidden="true" />
+  ) : user && !user.isGuest ? (
+    <>
+      <button className="apf-btn apf-btn-outline" onClick={() => handleTabChange('subscription')}>
+        <CreditCard /> Mi Cuenta
+      </button>
+      <button className="apf-btn apf-btn-primary" onClick={() => { void handleSignOut(); }}>
+        <LogOut /> Cerrar sesión
+      </button>
+    </>
   ) : (
     <>
-      <button className="apf-btn apf-btn-outline" onClick={() => { window.location.href = '/login'; }}>Ingresar</button>
+      <button
+        className="apf-btn apf-btn-outline"
+        onClick={() => {
+          if (user?.isGuest && !confirmLeaveGuestMode()) return;
+          window.location.href = '/login';
+        }}
+      >
+        Ingresar
+      </button>
       <button className="apf-btn apf-btn-primary" onClick={() => handleTabChange('subscription')}>Crear cuenta gratis</button>
     </>
   );
@@ -512,8 +602,20 @@ function AppContent() {
     && !isHowItWorksRoute && !isClinicalHistoryRoute && !isRemindersRoute && !isFoodWeightRoute
     && !isAIAssistantRoute && !isIdentificationLostPetRoute && !isVeterinariesLandingRoute && !isPetFriendlyLandingRoute;
 
-  // Sincronizar con Supabase
-  const { syncError } = useSupabaseSync();
+  // Una cuenta autenticada que termina en /login (login exitoso) o en el
+  // formulario de registro abierto desde la Home vuelve a la Home: la entrada
+  // permanente del sitio, nunca el Blog.
+  useEffect(() => {
+    if (!user || user.isGuest) {
+      return;
+    }
+    if (showAuthGate) {
+      setShowAuthGate(false);
+    }
+    if (isLoginRoute) {
+      navigateInApp('/', true);
+    }
+  }, [user, showAuthGate, isLoginRoute]);
 
   // Si el usuario llego desde un CTA especifico (ej. "Quiero Premium" en /social)
   // y recien ahora tiene sesion iniciada (pudo requerir confirmacion por email,
@@ -527,6 +629,10 @@ function AppContent() {
     if (pendingTab) {
       window.localStorage.removeItem(POST_SIGNUP_TAB_KEY);
       setActiveTab(pendingTab as AppTab);
+      // La Home permanente solo cede ante un destino explicito en la URL.
+      if (VALID_TABS.includes(pendingTab as AppTab)) {
+        navigateInApp(appTabHref(pendingTab as AppTab), true);
+      }
     }
   }, [user, setActiveTab]);
 
@@ -571,6 +677,8 @@ function AppContent() {
       setSelectedPetId(matchedPet.id);
       setActiveTab('pets');
       window.localStorage.setItem(OPEN_PET_IDENTIFICATION_KEY, matchedPet.id);
+      // Salir de la Home permanente hacia la seccion Mascotas.
+      navigateInApp(appTabHref('pets'), true);
     }
   }, [user, pets, setSelectedPetId, setActiveTab]);
 
@@ -590,11 +698,15 @@ function AppContent() {
     );
   };
 
+  // Salir del modo visitante (no es un cierre de sesion autenticada): se
+  // descarta el visitante en memoria y se vuelve a la Home permanente.
   const onSignOutGuest = () => {
     if (!confirmLeaveGuestMode()) {
       return;
     }
     setUser(null);
+    setShowAuthGate(false);
+    navigateInApp('/');
   };
 
   const onLogoGoToLogin = async () => {
@@ -609,23 +721,18 @@ function AppContent() {
       return;
     }
 
-    if (user?.isGuest && !confirmLeaveGuestMode()) {
+    if (user?.isGuest) {
+      onSignOutGuest();
       return;
     }
 
-    setSwitchingUser(true);
-    try {
-      if (user?.isGuest) {
-        setUser(null);
-      } else if (user) {
-        await signOut();
-      }
-      setActiveTab('blog');
-    } catch (err) {
-      console.error('No se pudo cambiar de usuario:', err);
-    } finally {
-      setSwitchingUser(false);
+    if (user) {
+      // Cuenta autenticada: cierra la sesion y vuelve a la Home.
+      await handleSignOut();
+      return;
     }
+
+    window.location.href = '/';
   };
 
   useEffect(() => {
@@ -846,19 +953,24 @@ function AppContent() {
     }
 
     if (isLandingRoute) {
+      const homeAuthState: HomeAuthState = user
+        ? (user.isGuest ? 'guest' : 'user')
+        : (authChecked ? 'anonymous' : 'checking');
       return (
         <AiPetFriendlyHome
+          authState={homeAuthState}
           onRegister={() => {
             setAuthInitialMode('register');
             setShowAuthGate(true);
           }}
           onLogin={() => {
+            if (user?.isGuest && !confirmLeaveGuestMode()) return;
             window.location.href = '/login';
           }}
-          onGuest={() => {
-            setUser(createGuestUser());
-            setActiveTab('pets');
-          }}
+          onGuest={() => handleTabChange('pets')}
+          onOpenAccount={() => handleTabChange('subscription')}
+          onLogout={() => { void handleSignOut(); }}
+          onLeaveGuest={onSignOutGuest}
           onNavigate={(destination) => {
             switch (destination) {
               case 'pets':
@@ -911,6 +1023,16 @@ function AppContent() {
 
     if (!user && hasPublicPlaceClaimRoute) {
       return <PetFriendlyPlacesSection />;
+    }
+
+    // Deep link ?tab= con sesion todavia restaurandose: se espera en lugar de
+    // mostrar el login o crear un visitante sobre una cuenta real.
+    if (!user && isTabHomeRoute && !authChecked) {
+      return (
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Cargando tu sesión...</p>
+        </div>
+      );
     }
 
     if (!user) {
@@ -996,7 +1118,7 @@ function AppContent() {
         )}
 
         {!isResetPasswordRoute && showAppNav && (
-          <SiteHeader items={headerItems} auth={headerAuth} mobileMenu={false} />
+          <SiteHeader items={headerItems} auth={headerAuth} mobileMenu={false} onHome={goHome} />
         )}
 
         {user && !user.isGuest && !isResetPasswordRoute && !isLandingRoute && <SubscriptionBanner />}
@@ -1061,6 +1183,8 @@ function AppContent() {
           isGuidesRoute={isGuidesRoute}
           isHomeRoute={isHomeRoute}
           hasMobileBanner={hasMobileBanner}
+          onHome={goHome}
+          onLogout={user && !user.isGuest ? () => { void handleSignOut(); } : undefined}
         />
       )}
 

@@ -177,6 +177,18 @@ describe('Recuperacion y aislamiento de sesion con Supabase simulado', () => {
     render(useSupabaseSync); await settle();
     expect(render(useSupabaseSync).syncError).toBeNull();
   });
+  it('indica que la sesion ya fue comprobada tanto sin sesion como al restaurar una cuenta', async () => {
+    services.getUser.mockResolvedValue({ data: { user: null }, error: { name: 'AuthSessionMissingError' } });
+    expect(render(useSupabaseSync).authChecked).toBe(false);
+    await settle();
+    expect(render(useSupabaseSync).authChecked).toBe(true);
+    runtime.slots = []; runtime.cursor = 0;
+    services.getUser.mockResolvedValue({ data: { user: account('owner') }, error: null });
+    expect(render(useSupabaseSync).authChecked).toBe(false);
+    await settle();
+    expect(render(useSupabaseSync).authChecked).toBe(true);
+    expect(runtime.state.user?.id).toBe('owner');
+  });
   it('ingresar despues del modo invitado no mezcla sus datos temporales', async () => {
     runtime.state.user = { ...account('guest'), isGuest: true };
     runtime.state.pets = [pet('temporary')];
@@ -438,6 +450,8 @@ describe('Proveedor real de estado con hooks simulados', () => {
     expect(provider().pets[0].id).toBe('kept');
   });
   it('cancelar conserva el invitado y aceptar limpia sus datos en el handler existente', () => {
+    // El invitado esta dentro de la app (deep link ?tab=); en / se vería la Home permanente.
+    (window.location as { search: string }).search = '?tab=pets';
     let state = provider(); state.setUser({ ...account('guest'), isGuest: true });
     state = provider(); state.setPets([pet('temporary')]);
     const root = render(App);

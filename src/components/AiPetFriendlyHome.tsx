@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ArrowRight, CalendarDays, ChevronDown, MessageCircle,
+  ArrowRight, CalendarDays, ChevronDown, LogOut, MessageCircle,
   PawPrint, MapPin, Newspaper, Palmtree, ShoppingBag, QrCode, Sparkles,
   BookOpen, UserRound, Heart, CheckCircle2
 } from 'lucide-react';
@@ -13,10 +13,22 @@ type Destination =
   | 'pet-friendly' | 'store' | 'qr' | 'blog' | 'guides'
   | 'how-it-works' | 'about' | 'contact';
 
+/**
+ * Estado de la sesion que la Home refleja solo en el area de acceso:
+ * `checking` (restaurando sesion, sin parpadeos), `anonymous`, `guest`
+ * (modo visitante) o `user` (cuenta autenticada). La Home se muestra igual
+ * en todos los casos.
+ */
+export type HomeAuthState = 'checking' | 'anonymous' | 'guest' | 'user';
+
 interface AiPetFriendlyHomeProps {
   onRegister: () => void;
   onLogin: () => void;
   onGuest: () => void;
+  authState?: HomeAuthState;
+  onOpenAccount?: () => void;
+  onLogout?: () => void;
+  onLeaveGuest?: () => void;
   /** The integrating app maps these stable keys to its real routes/tabs. */
   onNavigate?: (destination: Destination) => void;
 }
@@ -46,12 +58,36 @@ const faqs = [
 
 export function AiPetFriendlyHome({
   onRegister, onLogin, onGuest, onNavigate,
+  authState = 'anonymous', onOpenAccount, onLogout, onLeaveGuest,
 }: AiPetFriendlyHomeProps) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const go = (destination: Destination) => {
     onNavigate?.(destination);
   };
+
+  const auth = authState === 'checking'
+    ? <span className="apf-auth-placeholder" aria-hidden="true" />
+    : authState === 'user'
+      ? (
+        <>
+          <button className="apf-btn apf-btn-outline" onClick={onOpenAccount}><UserRound /> Mi cuenta</button>
+          <button className="apf-btn apf-btn-primary" onClick={onLogout}><LogOut /> Cerrar sesión</button>
+        </>
+      )
+      : authState === 'guest'
+        ? (
+          <>
+            <button className="apf-btn apf-btn-outline" onClick={onRegister}>Crear cuenta gratis</button>
+            <button className="apf-btn apf-btn-primary" onClick={onLeaveGuest}><LogOut /> Salir del modo visitante</button>
+          </>
+        )
+        : (
+          <>
+            <button className="apf-btn apf-btn-outline" onClick={onLogin}>Ingresar</button>
+            <button className="apf-btn apf-btn-primary" onClick={onRegister}>Crear cuenta gratis</button>
+          </>
+        );
 
   return (
     <main className="apf-home">
@@ -67,12 +103,7 @@ export function AiPetFriendlyHome({
           { key: 'blog', label: 'Blog', icon: Newspaper, onSelect: () => go('blog') },
           { key: 'guides', label: 'Guías', icon: BookOpen, onSelect: () => go('guides') },
         ]}
-        auth={(
-          <>
-            <button className="apf-btn apf-btn-outline" onClick={onLogin}>Ingresar</button>
-            <button className="apf-btn apf-btn-primary" onClick={onRegister}>Crear cuenta gratis</button>
-          </>
-        )}
+        auth={auth}
       />
 
       <section className="apf-hero">
@@ -81,11 +112,19 @@ export function AiPetFriendlyHome({
           <h1>Todo para cuidar mejor a quienes más querés<span>.</span></h1>
           <div className="apf-yellow-stroke" />
           <p>Organizá sus cuidados, encontrá recursos y disfrutá más tiempo juntos.</p>
-          <div className="apf-hero-actions">
-            <button className="apf-btn apf-btn-primary apf-btn-large" onClick={onGuest}><PawPrint /> Explorar herramientas</button>
-            <button className="apf-btn apf-btn-outline apf-btn-large" onClick={onRegister}><UserRound /> Crear cuenta gratis</button>
-          </div>
-          <button className="apf-login-link" onClick={onLogin}>Ya tengo cuenta</button>
+          {authState === 'user' ? (
+            <div className="apf-hero-actions">
+              <button className="apf-btn apf-btn-primary apf-btn-large" onClick={() => go('pets')}><PawPrint /> Ir a mis mascotas</button>
+            </div>
+          ) : (
+            <>
+              <div className="apf-hero-actions">
+                <button className="apf-btn apf-btn-primary apf-btn-large" onClick={onGuest}><PawPrint /> Explorar herramientas</button>
+                <button className="apf-btn apf-btn-outline apf-btn-large" onClick={onRegister}><UserRound /> Crear cuenta gratis</button>
+              </div>
+              <button className="apf-login-link" onClick={onLogin}>Ya tengo cuenta</button>
+            </>
+          )}
         </div>
         <div className="apf-hero-visual">
           <img src="/landing/home/hero-dog-cat.webp" alt="Un perro Golden Retriever y un gato descansando juntos" />

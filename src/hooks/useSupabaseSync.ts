@@ -189,6 +189,10 @@ export function useSupabaseSync() {
   } = useAppState();
 
   const [syncError, setSyncError] = useState<string | null>(null);
+  // Indica que ya se resolvio la comprobacion inicial de sesion (haya o no
+  // usuario). Permite mostrar la Home sin parpadeos y no crear un invitado
+  // transitorio mientras se restaura una sesion real.
+  const [authChecked, setAuthChecked] = useState<boolean>(!isSupabaseConfigured);
   const userRef = useRef(user);
   userRef.current = user;
 
@@ -196,6 +200,9 @@ export function useSupabaseSync() {
     let disposed = false;
     let revision = 0;
     let scheduled: ReturnType<typeof setTimeout> | undefined;
+    const markChecked = () => { if (!disposed) setAuthChecked(true); };
+    // Red de seguridad: si la comprobacion no responde, no se bloquea la UI.
+    const checkedFallback = setTimeout(markChecked, 8000);
     const clear = () => {
       contextSetUser(null);
       userRef.current = null;
@@ -242,8 +249,10 @@ export function useSupabaseSync() {
         setClinicalEntries(clinicalByPet.flat());
         setPreventiveTasks(preventiveByPet.flat());
         setChatMessages(chatMessages);
+        markChecked();
       } catch (error) {
         if (identityUnchanged()) setSyncError(error instanceof Error ? error.message : 'No se pudieron recuperar tus datos. Recarga para reintentar.');
+        markChecked();
       }
     };
     const initialize = async () => {
@@ -252,11 +261,13 @@ export function useSupabaseSync() {
       try {
         const { data: { user: authUser }, error } = await supabase.auth.getUser();
         if (disposed || ticket !== revision) return;
-        if (error?.name === 'AuthSessionMissingError') return;
+        if (error?.name === 'AuthSessionMissingError') { markChecked(); return; }
         if (error) throw error;
         if (authUser) await load(authUser, ticket);
+        else markChecked();
       } catch {
         if (!disposed && ticket === revision) setSyncError('No se pudo comprobar la sesion. Recarga para reintentar.');
+        markChecked();
       }
     };
     void initialize();
@@ -269,6 +280,7 @@ export function useSupabaseSync() {
       if (event === 'SIGNED_OUT' || !session) {
         if (!userRef.current?.isGuest) clear();
         setSyncError(null);
+        markChecked();
       } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
         scheduled = setTimeout(() => { void load(session.user, ticket); }, 0);
       }
@@ -279,11 +291,12 @@ export function useSupabaseSync() {
       disposed = true;
       revision += 1;
       clearTimeout(scheduled);
+      clearTimeout(checkedFallback);
       window.removeEventListener('aipetfriendly:guest-migrated', refresh);
       subscription?.unsubscribe();
     };
   }, [contextSetUser, setAdminUsers, setChatMessages, setClinicalEntries, setPreventiveTasks, setPets, setSelectedPetId]);
-  return { syncError };
+  return { syncError, authChecked };
 }
 
 export async function signUpWithEmail(
