@@ -50,6 +50,42 @@ describe('Radar administrativo integrado',()=>{
     expect(screen.queryByRole('button',{name:'Aprobar investigacion'})).toBeNull();
     expect(screen.getByText('Trazabilidad de decisiones e investigacion')).toBeTruthy();
   });
+  it('descarta un candidato desde el listado con confirmacion, motivo automatico y sin borrarlo',async()=>{
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
+    render(<AdminShopRadarSection />);
+    fireEvent.click(await screen.findByRole('button',{name:'Descartar MLA123456789'}));
+    expect(confirm.mock.calls[0][0]).toContain('Producto investigado');
+    await waitFor(()=>expect(m.review).toHaveBeenCalledWith('candidate','reject',expect.stringContaining('Descartado desde el listado')));
+    await screen.findByText(/Candidato descartado/);
+    expect(m.load).toHaveBeenCalledTimes(2);
+    confirm.mockRestore();
+  });
+  it('cancelar la confirmacion no registra ninguna decision',async()=>{
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+    render(<AdminShopRadarSection />);
+    fireEvent.click(await screen.findByRole('button',{name:'Descartar MLA123456789'}));
+    expect(m.review).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+  it('muestra el error del servidor al descartar (p. ej. investigacion en curso)',async()=>{
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
+    m.review.mockRejectedValue(new Error('Investigacion en curso.'));
+    render(<AdminShopRadarSection />);
+    fireEvent.click(await screen.findByRole('button',{name:'Descartar MLA123456789'}));
+    expect((await screen.findByRole('alert')).textContent).toContain('Investigacion en curso.');
+    confirm.mockRestore();
+  });
+  it.each([
+    ['aprobado (se publica o se revisa)',{review_status:'approved' as const}],
+    ['rechazado',{review_status:'rejected' as const}],
+    ['ya publicado',{duplicate_product_id:'product'}],
+  ])('no ofrece descartar un candidato %s',async(_name,override)=>{
+    m.load.mockResolvedValue({candidates:[{...candidate,...override}],runs:[]});
+    render(<AdminShopRadarSection />);
+    fireEvent.click(screen.getByLabelText('Mostrar resueltos'));
+    await screen.findByRole('button',{name:'Revisar MLA123456789'});
+    expect(screen.queryByRole('button',{name:'Descartar MLA123456789'})).toBeNull();
+  });
   it('cuenta no administrativa no consulta datos del Radar',()=>{
     m.user.isAdmin=false;render(<AdminShopRadarSection />);
     expect(m.load).not.toHaveBeenCalled();expect(screen.getByRole('alert')).toBeTruthy();

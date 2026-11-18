@@ -37,6 +37,25 @@ export function AdminShopRadarSection() {
     setSelected(candidate); setReason(''); setUntil(''); setError(null); setMessage(null);
     setRecord(JSON.stringify(candidate.research_record, null, 2));
   };
+  // Descarte rapido desde el listado: no borra la fila (el Radar la volveria a
+  // detectar), la marca como rechazada con motivo y rastro; queda oculta salvo
+  // que se active "Mostrar resueltos".
+  const discard = useCallback(async (candidate: ShopRadarCandidate) => {
+    const label = candidate.research_record && 'title' in candidate.research_record && candidate.research_record.title
+      ? candidate.research_record.title
+      : candidate.mla_id || candidate.catalog_product_id || 'este candidato';
+    if (!window.confirm(`¿Descartar "${label}"? Dejará de aparecer en el listado y el Radar no volverá a proponerlo.`)) return;
+    guard(); setError(null); setMessage(null);
+    try {
+      setBusy(true);
+      await reviewAdminShopRadar(candidate.id, 'reject', 'Descartado desde el listado del Radar: no interesa para la tienda.');
+      guard();
+      if (selected?.id === candidate.id) { setSelected(null); setRecord(''); setReason(''); }
+      setMessage('Candidato descartado. Podés verlo con "Mostrar resueltos".');
+      await load();
+    } catch (e) { guard(); setError(e instanceof Error ? e.message : 'No se pudo descartar el candidato.'); }
+    finally { guard(); setBusy(false); }
+  }, [guard, load, selected?.id]);
   const decide = useCallback(async (action: 'approve'|'publish'|'reject'|'postpone'|'revise'|'retry') => {
     if (!selected) return;
     guard(); setError(null); setMessage(null);
@@ -77,7 +96,14 @@ export function AdminShopRadarSection() {
         <td className="p-2">{date(c.detected_at)}</td><td>{'title' in c.research_record ? c.research_record.title : c.mla_id || c.catalog_product_id}<br />{c.mla_id || 'Publicacion no resuelta'} · {c.catalog_product_id || 'Sin catalogo ML'}</td>
         <td>{c.category_name} ({c.category_id})</td><td>{c.ranking_position ?? 'No informado'}</td><td>{c.research_status}</td>
         <td>{c.duplicate_product_id ? 'Ya incorporado / duplicado global' : 'Sin duplicado global registrado'}</td>
-        <td>{c.review_status}<br />{c.decision_reason}</td><td><button className={button} onClick={() => choose(c)}>Revisar {c.mla_id || c.catalog_product_id}</button></td>
+        <td>{c.review_status}<br />{c.decision_reason}</td>
+        <td><div className="flex flex-wrap gap-1">
+          <button className={button} onClick={() => choose(c)}>Revisar {c.mla_id || c.catalog_product_id}</button>
+          {['pending','postponed'].includes(c.review_status) && !c.duplicate_product_id && (
+            <button className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50" disabled={busy}
+              aria-label={`Descartar ${c.mla_id || c.catalog_product_id}`} onClick={() => void discard(c)}>Descartar</button>
+          )}
+        </div></td>
       </tr>)}</tbody>
     </table></div>
     <div className="flex gap-2">
