@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { articleSlug, contentFingerprint, EditorialPolicyError, ensureGenerationAsset, generateVerifiedArticleWithOptions, isDuplicateArticle, isGenerationDue, renderInfographic, reviewVerifiedArticle, runEditorialGeneration, validateEditorialArticle, verifySource } from '../api/cron/_blog-editorial-pipeline.js';
+import { reviewArticleSemantically } from '../api/cron/_blog-vet-review.js';
 
 const source = { id: 'cats-protection', url: 'https://www.cats.org.uk/example', title: 'Source', consulted_at: '2026-10-27', text_sha256: 'hash', text: 'Leave written daily care instructions for your trusted cat sitter. Keep the usual bowls and familiar toys accessible.' };
 function articleFixture() {
@@ -210,7 +211,10 @@ describe('etapas persistidas y borrador', () => {
     expect(rpc.mock.calls[1][1].p_stage).toBe('retained');
   });
   it('solo finaliza con ambas imagenes y conserva status draft de la RPC', async () => {
-    const payload = { ...articleFixture(), sources: [source], quality: { ready: true }, cover_url: 'https://example.test/cover.png', infographic_url: 'https://example.test/info.png' };
+    const base = { ...articleFixture(), sources: [source], quality: { ready: true }, cover_url: 'https://example.test/cover.png', infographic_url: 'https://example.test/info.png' };
+    // Desde la revision semantica veterinaria, finalizar exige una aprobacion vigente para este texto exacto.
+    const vet_review = await reviewArticleSemantically(base, async () => ({ requires_veterinary_validation: false, contains_clinical_advice: false, everyday_non_clinical: true, confidence: 0.95, issues: [] }));
+    const payload = { ...base, vet_review };
     const rpc = vi.fn(async (name) => name === 'claim_blog_generation' ? { data: { id: 'run', lease_token: 'token', stage: 'finalize', payload, attempts: 1 }, error: null } : { data: { id: 'post', slug: payload.slug, status: 'draft' }, error: null });
     const admin = { rpc, from: () => ({ select: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) };
     expect(await runEditorialGeneration(admin)).toMatchObject({ stage: 'complete', post: { status: 'draft' } });

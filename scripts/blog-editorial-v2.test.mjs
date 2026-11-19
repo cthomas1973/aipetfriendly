@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import sharp from 'sharp';
 import { analyzeEditorialDepth, classifyEditorialSafety, runEditorialGeneration, saveExistingDraftRevision, validateEditorialArticle, verifyInternalLinks } from '../api/cron/_blog-editorial-pipeline.js';
 import { INFOGRAPHIC_VERSION, OFFICIAL_LOGO_SHA256, infographicContentHash, loadOfficialLogo, renderVisualInfographic, validateVisualPlan } from '../api/cron/_blog-infographic.js';
+import { approveRevisionSemantically } from '../api/cron/_blog-vet-review.js';
 import { HOLIDAY_BRIEF, HOLIDAY_CONTENT, HOLIDAY_VISUAL_PLAN } from './editorial/cat-holiday-revision.mjs';
 
 const article = () => ({ title: 'Cómo preparar el cuidado de tu gato durante las vacaciones', content: HOLIDAY_CONTENT, editorial_brief: HOLIDAY_BRIEF, visual_plan: structuredClone(HOLIDAY_VISUAL_PLAN), quality: { ready: true } });
@@ -48,7 +49,9 @@ describe('cobertura y rigor editorial v2', () => {
 describe('infografia visual oficial', () => {
   it('actualiza el mismo ID como borrador mediante la RPC sin crear otro articulo', async () => {
     const original = { id: 'existing-id', status: 'draft', slug: 'existing-slug' };
-    const candidate = { ...article(), slug: original.slug, infographic_validation: { valid: true, content_hash: infographicContentHash(article()) } };
+    const unreviewed = { ...article(), slug: original.slug, infographic_validation: { valid: true, content_hash: infographicContentHash(article()) } };
+    // Una revision cambia el texto, asi que ahora exige una aprobacion semantica veterinaria vigente para el texto nuevo.
+    const candidate = await approveRevisionSemantically(unreviewed, async () => ({ requires_veterinary_validation: false, contains_clinical_advice: false, everyday_non_clinical: true, confidence: 0.95, issues: [] }));
     const calls = [];
     const admin = { rpc: async (name, args) => { calls.push({ name, args }); return { data: original, error: null }; } };
     expect(await saveExistingDraftRevision(admin, original, 'version-token', candidate)).toEqual(original);

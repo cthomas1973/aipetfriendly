@@ -16,6 +16,8 @@ import type {
   BillingPricingSettings,
   BlogPost,
   BlogGenerationRun,
+  BlogGenerationRunDetail,
+  BlogCandidatePoolRow,
   Cotutor,
   CotutorFormData,
   DiscountCode,
@@ -3300,7 +3302,26 @@ export async function fetchAdminBlogPosts(): Promise<BlogPost[]> {
 export async function fetchAdminBlogGenerationRuns(): Promise<BlogGenerationRun[]> {
   const { data, error } = await supabase.rpc('admin_list_blog_generation_runs');
   if (error) throw error;
-  return (data || []).map((row: any) => ({ id: row.id, stage: row.stage, createdAt: row.created_at, error: row.error || undefined, payload: row.payload || {} }));
+  return (data || []).map((row: any) => ({ id: row.id, stage: row.stage, createdAt: row.created_at, error: row.error || undefined, payload: row.payload || {},
+    species: row.species || undefined, topicId: row.topic_id || undefined, selection: row.selection && Object.keys(row.selection).length > 0 ? row.selection : undefined }));
+}
+
+export async function fetchAdminBlogGenerationRunDetail(runId: string): Promise<BlogGenerationRunDetail> {
+  const { data, error } = await supabase.rpc('admin_blog_generation_run_detail', { p_run_id: runId });
+  if (error) throw error;
+  return {
+    postId: data?.post_id || undefined,
+    completedAt: data?.run?.completed_at || undefined,
+    attempts: (data?.attempts || []).map((row: any) => ({ id: row.id, at: row.at, sourceId: row.source_id, url: row.url, title: row.title || undefined, species: row.species || undefined,
+      category: row.category || undefined, outcome: row.outcome, reasonCode: row.reason_code || undefined, httpStatus: row.http_status || undefined,
+      detail: row.detail || undefined, verificationCounted: Boolean(row.verification_counted) })),
+  };
+}
+
+export async function fetchAdminBlogCandidatePool(): Promise<BlogCandidatePoolRow[]> {
+  const { data, error } = await supabase.rpc('admin_blog_candidate_pool_summary');
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ sourceId: row.source_id, species: row.species, total: row.total, eligible: row.eligible, used: row.used, discarded: row.discarded }));
 }
 
 export async function updateAdminBlogPost(input: {

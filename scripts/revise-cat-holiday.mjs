@@ -5,7 +5,8 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { loadEnv } from 'vite';
 import { createClient } from '@supabase/supabase-js';
-import { EDITORIAL_VERSION, ensureGenerationAsset, reviewVerifiedArticle, saveExistingDraftRevision, validateEditorialArticle, verifyInternalLinks, verifySource } from '../api/cron/_blog-editorial-pipeline.js';
+import { EDITORIAL_VERSION, ensureGenerationAsset, requestEditorialJson, reviewVerifiedArticle, saveExistingDraftRevision, validateEditorialArticle, verifyInternalLinks, verifySource } from '../api/cron/_blog-editorial-pipeline.js';
+import { approveRevisionSemantically } from '../api/cron/_blog-vet-review.js';
 import { INFOGRAPHIC_VERSION, OFFICIAL_LOGO_SHA256, infographicContentHash, loadOfficialLogo, renderVisualInfographic } from '../api/cron/_blog-infographic.js';
 import { HOLIDAY_BRIEF, HOLIDAY_CONTENT, HOLIDAY_TITLE, HOLIDAY_VISUAL_PLAN, POST_ID } from './editorial/cat-holiday-revision.mjs';
 
@@ -55,6 +56,13 @@ if (!article.quality?.ready) {
   const quality = article.quality || {};
   throw new Error(`Revision retenida: ${Array.isArray(quality.failed) ? quality.failed.join(', ') : 'quality_missing'}; semantic=${quality.semanticReview?.approved === true ? 'approved' : 'rejected'}; issues=${Array.isArray(quality.semanticReview?.issues) ? quality.semanticReview.issues.join(' | ') : 'no informado'}`);
 }
+// Revalidacion veterinaria semantica del texto NUEVO: descarta cualquier aprobacion anterior y falla cerrado ante error, duda o baja confianza.
+// Es lo ultimo que puede tocar titulo, texto o meta descripcion: un cambio posterior invalida la aprobacion.
+try {
+  article.vet_review = (await approveRevisionSemantically(article, requestEditorialJson)).vet_review;
+} catch (error) {
+  throw new Error(`Revision retenida por la revision semantica veterinaria: ${error.message}`);
+}
 const cover = await fetch(original.image_url, { signal: AbortSignal.timeout(15000) });
 if (!cover.ok) throw new Error('La portada existente no esta disponible');
 const coverMetadata = await sharp(Buffer.from(await cover.arrayBuffer())).metadata();
@@ -68,7 +76,8 @@ await fs.writeFile(preview, buffer);
 article.infographic_validation = { valid: true, content_hash: visualHash, logo_sha256: OFFICIAL_LOGO_SHA256, renderer: INFOGRAPHIC_VERSION };
 article.revision_key = crypto.createHash('sha256').update(JSON.stringify({ visualHash, meta: article.meta_description,
   cover: article.cover_url, category: article.category, tags: article.tags, sourceName: article.source_name,
-  semanticReview: article.quality.semanticReview })).digest('hex');
+  semanticReview: article.quality.semanticReview,
+  vetReview: { content: article.vet_review.content_md5, title: article.vet_review.title_md5, meta: article.vet_review.meta_md5 } })).digest('hex');
 
 if (process.argv.includes('--apply')) {
   article.infographic_url = await ensureGenerationAsset(admin, original.generation_run_id, `infographic-${visualHash.slice(0, 20)}`, async () => buffer);

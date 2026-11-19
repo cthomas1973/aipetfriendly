@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ posts: vi.fn(), runs: vi.fn(), products: vi.fn(), save: vi.fn() }));
-vi.mock('../lib/supabase', () => ({ fetchAdminBlogPosts: api.posts, fetchAdminBlogGenerationRuns: api.runs,
+const api = vi.hoisted(() => ({ posts: vi.fn(), runs: vi.fn(), products: vi.fn(), save: vi.fn(), pool: vi.fn(async () => []) }));
+vi.mock('../lib/supabase', () => ({ fetchAdminBlogPosts: api.posts, fetchAdminBlogGenerationRuns: api.runs, fetchAdminBlogCandidatePool: api.pool,
   fetchAllBeneficiosProductos: api.products, updateAdminBlogPost: api.save, deleteAdminBlogPost: vi.fn() }));
 vi.mock('../data/petGuides', () => ({ getGuidesSortedByDate: () => [] }));
 import { AdminBlogSection } from './AdminBlogSection';
@@ -33,6 +33,30 @@ describe('revision administrativa real', () => {
     expect(screen.getByText('Publicación bloqueada: revisión editorial, gráfica o veterinaria pendiente.')).toBeTruthy();
     expect(screen.getByText('Motivos: editorial_revision_requires_revalidation')).toBeTruthy();
     expect(api.save).not.toHaveBeenCalled();
+  });
+
+  it('bloquea Publicar y explica por que cuando una edicion invalido la aprobacion veterinaria (aunque el resto de los controles siga en verde)', async () => {
+    api.products.mockResolvedValue([]); api.runs.mockResolvedValue([]);
+    api.posts.mockResolvedValue([{ id: 'post', title: 'Meta editada', slug: 'meta-editada', content: 'Texto del borrador', status: 'draft', createdAt: '2026-10-27T18:00:00Z', estimatedReadingTime: 3,
+      editorialMetadata: { editorial_version: 'editorial-v2', quality: { ready: true, failed: [], veterinaryReviewRequired: false, humanEditorialReviewRequired: true }, infographic_validation: { valid: true },
+        vet_review: { approved: false, invalidated: true, invalidated_reason: 'texto_modificado' } } }]);
+    render(<AdminBlogSection />);
+    expect((await screen.findByRole('button', { name: 'Publicar' })).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/La aprobación veterinaria semántica quedó invalidada porque cambió el título, el texto o la meta descripción/)).toBeTruthy();
+    expect(api.save).not.toHaveBeenCalled();
+  });
+
+  it('no bloquea de mas: un generado historico sin vet_review y un articulo manual se publican como siempre', async () => {
+    api.products.mockResolvedValue([]); api.runs.mockResolvedValue([]);
+    const generated = { id: 'historico', title: 'Historico', slug: 'historico', content: 'Texto', status: 'draft', createdAt: '2026-10-20T18:00:00Z', estimatedReadingTime: 3,
+      editorialMetadata: { editorial_version: 'editorial-v2', quality: { ready: true, failed: [], veterinaryReviewRequired: false, humanEditorialReviewRequired: true }, infographic_validation: { valid: true } } };
+    const manual = { id: 'manual', title: 'Manual', slug: 'manual', content: 'Texto', status: 'draft', createdAt: '2026-10-21T18:00:00Z', estimatedReadingTime: 2 };
+    api.posts.mockResolvedValue([generated, manual]);
+    render(<AdminBlogSection />);
+    const buttons = await screen.findAllByRole('button', { name: 'Publicar' });
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => !button.hasAttribute('disabled'))).toBe(true);
+    expect(screen.queryByText(/quedó invalidada/)).toBeNull();
   });
 
   it('devuelve a draft un artículo generado publicado cuando se edita', async () => {

@@ -408,9 +408,32 @@ export interface BlogEditorialMetadata {
   brand?: { logo_sha256: string; renderer: string };
   infographic_validation?: { valid: boolean; content_hash?: string; logo_sha256?: string; renderer?: string };
   validation_snapshot?: { content?: string; title?: string; cover_url?: string; source_name?: string; infographic_url?: string };
+  vet_review?: { approved: boolean; confidence?: number | null; issues?: string[]; invalidated?: boolean; invalidated_reason?: string; invalidated_at?: string };
   quality?: { ready: boolean; failed: string[]; veterinaryReviewRequired: boolean; humanEditorialReviewRequired: boolean;
     criteria?: Record<string, boolean>; wordCount?: number; reviewScope?: string;
     semanticReview?: { approved: boolean; issues: string[] }; depth?: { wordCount: number; repetition: number; consistentVoseo: boolean } };
+}
+
+export interface BlogSearchState {
+  started_at?: string;
+  pulses?: number;
+  verifications?: number;
+  semantic_checks?: number;
+  drafts?: number;
+  species_order?: string[];
+  discarded?: Array<{ title: string; url: string; code: string }>;
+}
+
+export interface BlogGenerationSelection {
+  phase?: string;
+  pulses?: number;
+  verifications?: number;
+  semantic_checks?: number;
+  drafts?: number;
+  alternatives_tried?: number;
+  species_order?: string[];
+  outcome?: string;
+  selected?: { candidate_id?: string; title?: string; url?: string; source_id?: string; species?: string; category?: string } | null;
 }
 
 export interface BlogGenerationRun {
@@ -418,7 +441,40 @@ export interface BlogGenerationRun {
   stage: string;
   createdAt: string;
   error?: string;
-  payload: BlogEditorialMetadata & { title?: string; content?: string; cover_url?: string };
+  species?: string;
+  topicId?: string;
+  selection?: BlogGenerationSelection;
+  payload: BlogEditorialMetadata & { title?: string; content?: string; cover_url?: string; phase?: string; search?: BlogSearchState };
+}
+
+export interface BlogGenerationAttempt {
+  id: number;
+  at: string;
+  sourceId: string;
+  url: string;
+  title?: string;
+  species?: string;
+  category?: string;
+  outcome: string;
+  reasonCode?: string;
+  httpStatus?: number;
+  detail?: string;
+  verificationCounted: boolean;
+}
+
+export interface BlogGenerationRunDetail {
+  postId?: string;
+  completedAt?: string;
+  attempts: BlogGenerationAttempt[];
+}
+
+export interface BlogCandidatePoolRow {
+  sourceId: string;
+  species: string;
+  total: number;
+  eligible: number;
+  used: number;
+  discarded: number;
 }
 
 

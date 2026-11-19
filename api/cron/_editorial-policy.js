@@ -64,3 +64,41 @@ export function evaluateEditorialContent({ title, topic, reader_need, takeaway, 
   if (contentIssue && !(contentIssue.code === 'treatment_instruction' && safeMedicationLogistics)) return { status: 'excluded', code: contentIssue.code, reason: contentIssue.message, clinicalClaims: [contentIssue.code] };
   return { status: 'allowed', code: 'everyday_care', reason: 'El tema y el contenido se mantienen dentro del cuidado cotidiano.', clinicalClaims: [] };
 }
+
+// Compuerta para candidatos autonomos (fuentes en ingles). Ante la duda se descarta: no hay reformulacion ni descargo.
+const CANDIDATE_CLINICAL_TERMS = /\b(?:health(?:y|care)?|medical|medicine|medication|drugs?|dos(?:e|age)|vets?|veterinar\w*|vaccin\w*|immunis\w*|treatments?|therap\w*|symptoms?|signs of|diagnos\w*|diseases?|illness\w*|sick\w*|infect\w*|parasit\w*|fleas?|ticks?|worm\w*|poison\w*|toxic\w*|emergenc\w*|first aid|injur\w*|wounds?|pain\w*|surg\w*|neuter\w*|spay\w*|castrat\w*|pregnan\w*|vomit\w*|diarrh\w*|seizure\w*|allerg\w*|skin conditions?|cancer|diabet\w*|arthritis|kidney|obes\w*|overweight|weight (?:loss|management)|dental|teeth|tooth|anxiety|phobia\w*|aggress\w*|spraying|toilet(?:ing)?|incontinen\w*|heat ?stroke|senior|elderly|geriatric|salud|enfermedad\w*|cl[ií]nic\w*)\b/i;
+const CANDIDATE_STRONG_CLINICAL_TERMS = /\b(?:symptoms?|diagnos\w*|treatments?|medicat\w*|vaccin\w*|poison\w*|emergenc\w*|first aid|dos(?:e|age)|prescri\w+|surg\w*|infect\w*|diseases?)\b/i;
+const CLINICAL_DENSITY_TERMS = /\b(?:vets?|veterinar\w*|symptoms?|diagnos\w*|treatments?|treated|medicat\w*|vaccin\w*|diseases?|infect\w*|illness\w*|poison\w*|emergenc\w*|injur\w*|parasit\w*|dos(?:e|age)|prescri\w+)\b/gi;
+export const CLINICAL_DENSITY_LIMIT = 8;
+export const SEMANTIC_ALLOWED_CATEGORIES = ['conducta', 'juego', 'enriquecimiento', 'grooming', 'viajes', 'paseos', 'convivencia', 'hogar', 'tenencia responsable', 'cuidado cotidiano'];
+
+export function clinicalDensity(text) {
+  const body = String(text || '');
+  const words = Math.max(1, body.split(/\s+/).filter(Boolean).length);
+  return ((body.match(CLINICAL_DENSITY_TERMS) || []).length / words) * 1000;
+}
+
+export function evaluateCandidateTopic({ title = '', slug = '', url = '', headings = [], text = '' } = {}) {
+  const urlText = (() => { try { return new URL(url).pathname.replace(/[-_/]+/g, ' '); } catch { return ''; } })();
+  const identity = [title, String(slug).replace(/[-_]+/g, ' '), urlText].filter(Boolean).join('\n');
+  const spanish = evaluateEditorialTopic(title);
+  if (spanish.status !== 'allowed') return { status: 'excluded', code: 'vet_validation', reason: spanish.reason, matched: spanish.code };
+  const identityHit = identity.match(CANDIDATE_CLINICAL_TERMS);
+  if (identityHit) return { status: 'excluded', code: 'vet_validation', reason: 'El tema o su ruta apunta a salud, clinica o conducta que puede requerir validacion veterinaria.', matched: identityHit[0] };
+  const clinicalHeadings = headings.filter((heading) => CANDIDATE_CLINICAL_TERMS.test(heading));
+  const strongHeading = headings.find((heading) => CANDIDATE_STRONG_CLINICAL_TERMS.test(heading));
+  if (strongHeading || clinicalHeadings.length >= 2) return { status: 'excluded', code: 'vet_validation', reason: 'Los apartados de la fuente incluyen contenido clinico.', matched: strongHeading || clinicalHeadings[0] };
+  const density = text ? clinicalDensity(text) : 0;
+  if (density > CLINICAL_DENSITY_LIMIT) return { status: 'excluded', code: 'vet_validation', reason: 'La fuente tiene una densidad clinica alta.', matched: `density:${density.toFixed(1)}` };
+  return { status: 'allowed', code: 'everyday_care', reason: 'Sin senales clinicas en el tema, la ruta, los apartados ni el texto.', matched: null, density };
+}
+
+// Decision semantica de un clasificador externo. Cualquier ambiguedad, error de formato o baja confianza se descarta.
+export function interpretSemanticVerdict(verdict) {
+  const category = String(verdict?.category || '').toLowerCase();
+  const confidence = Number(verdict?.confidence);
+  const allowed = verdict?.requires_veterinary_validation === false && verdict?.everyday_non_clinical === true
+    && Number.isFinite(confidence) && confidence >= 0.8 && SEMANTIC_ALLOWED_CATEGORIES.includes(category);
+  return { allowed, category: allowed ? category : null, confidence: Number.isFinite(confidence) ? confidence : null,
+    reasons: Array.isArray(verdict?.reasons) ? verdict.reasons.slice(0, 4).map((item) => String(item).slice(0, 160)) : [] };
+}
