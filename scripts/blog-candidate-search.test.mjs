@@ -738,6 +738,19 @@ describe('revision semantica del articulo completo antes de crear el borrador', 
     expect(db.attempts.at(-1).detail).toContain('tratamiento casero');
   });
 
+  it('un rechazo de la revision factual descarta el borrador, vuelve a buscar y la fuente queda 48 h en espera (no 30 dias)', async () => {
+    const db = createDb();
+    const { run, candidate } = articleRun(db, { article: { factual_review_done: false } });
+    const options = pipelineOptions({ reviewText: vi.fn(async (article) => ({ ...article, quality: { ...article.quality, ready: false, failed: ['semantic_review'], semanticReview: { approved: false, issues: ['La cita no respalda la afirmacion.'] } } })) });
+    const result = await runEditorialGeneration(db, options);
+    expect(result).toMatchObject({ stage: 'text', phase: 'select', rejected: 'quality_failed' });
+    expect(db.runs.get(run.id).payload.phase).toBe('select');
+    expect(candidate).toMatchObject({ status: 'rejected', permanent: false });
+    expect(candidate.next_retry_at).toBe(Date.now() + 48 * HOUR);
+    expect(options.generateCover).not.toHaveBeenCalled();
+    expect(db.posts).toHaveLength(0);
+  });
+
   it('si ya se agoto el presupuesto de revisiones del articulo no se llama al modelo y se descarta', async () => {
     const db = createDb();
     articleRun(db, { budget: { article_semantic: 2 } });

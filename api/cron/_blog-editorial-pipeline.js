@@ -221,10 +221,10 @@ export async function draftArticleFromSource({ topic, source, history, requestJs
     'Primero identifica la intencion de busqueda y la necesidad concreta. Desarrolla decisiones, alternativas, preparacion, instrucciones y cierre con ejemplos organizativos propios. Ajusta la extension a lo que necesita el lector; no persigas un minimo de palabras. Usa ## y ### descriptivos, separados por lineas en blanco, y voseo consistente: elegi, prepara con acento en la ultima a, deja con acento en la a; nunca Elige, Prepara, Deja ni Manten. No inventes funciones del producto.',
     'No incluyas diagnosticos, interpretacion de sintomas, tratamientos, medicamentos, dosis, primeros auxilios, urgencias ni recomendaciones clinicas individualizadas, aunque agregues un descargo. Una mencion organizativa y breve de consultar a un profesional puede conservarse solo cuando sea necesaria para el tema.',
     'Respondé JSON con title (45-95 caracteres), sections, meta_description (120-160 caracteres), category, tags (2-5), cover_alt, editorial_brief {reader_need,takeaway,essential_sections:[{key,terms:[palabras que deben aparecer]}]} y visual_plan.',
-    'sections es un array de 6-10 objetos {heading,paragraphs:[{text,source_quote_index}]}. Apertura con heading vacio. Ultimo heading Para cerrar. Cada apartado aporta razonamiento o decisiones concretas; las listas son secundarias, no el articulo entero.',
+    'sections es un array de 6-10 objetos {heading,paragraphs:[{text,source_quote_index}]}. Apertura con heading vacio. Ultimo heading Para cerrar. Usa al menos 5 apartados con heading (## ). Cada apartado tiene 2 o 3 parrafos de 50 a 90 palabras con razonamiento o decisiones concretas y ejemplos cotidianos propios; el articulo completo debe quedar entre 800 y 1200 palabras. Las listas son secundarias, no el articulo entero.',
     'visual_plan tiene {kind:process|comparison|scene|relationships,title,closing,sections:[{heading,layout:comparison|scene|record|conversation|timeline|relationship,items:[{icon,label,anchor}]}]}. Crear 3-5 bloques con al menos dos tipos de composicion segun el contenido: alternativas comparadas, objetos en una escena, flujo conectado o relacion. NO seis tarjetas numeradas con frases largas.',
     'Iconos permitidos: home,caregiver,residence,food,water,rest,litter,carrier,record,routine,medicine,contact,message,phone,history,agenda,safety,wellbeing,cat,info. Etiquetas de 3-28 caracteres, encabezados de hasta42, titulo de hasta72. anchor es un fragmento LITERAL del articulo que contiene las palabras de label. closing es una oracion LITERAL del articulo de hasta100 caracteres. Maximo5 objetos por bloque. El grafico no introduce datos nuevos.',
-    'En cada parrafo que describa hechos de la fuente, indicar source_quote_index (indice desde 0 del fragmento exacto que lo respalda). No inventar citas: el sistema agrega el enlace de la fuente verificada. Los ejemplos organizativos generales usan source_quote_index:null. No afirmar datos que no puedas asociar a un fragmento.',
+    'En un parrafo que describa un hecho de la fuente, indicar source_quote_index (indice desde 0 del fragmento exacto que lo respalda) SOLO si el parrafo parafrasea fielmente ESE fragmento: mismo hecho, sin agregar detalles, causas, beneficios ni conclusiones que el fragmento no diga. Todo parrafo con ejemplos, consejos propios, razonamiento o contexto adicional usa source_quote_index:null. Es mejor citar pocos parrafos con respaldo exacto que muchos con respaldo dudoso. No inventar citas: el sistema agrega el enlace de la fuente verificada. No afirmar datos que no puedas asociar a un fragmento.',
     'El esquema solo resume organizacion cotidiana; ninguna nueva indicacion medica en la infografia.',
     'Cuando aporte valor podes enlazar /historial-clinico, /recordatorios o /consultorio-ia. AiPetFriendly permite actualizar datos de la mascota, consultar antecedentes y organizar recordatorios; no comparte instrucciones automaticamente con cuidadores. Menciona limites y condiciones del servicio, no inventes funciones.',
     `FUENTE: ${JSON.stringify({ id: source.id, title: source.title, url: source.url, organization: source.organization, excerpts })}`,
@@ -484,8 +484,14 @@ export async function runEditorialGeneration(admin, { origin = 'scheduled', gene
       if (payload.content && payload.quality?.ready) {
         if (!payload.factual_review_done) {
           payload = await reviewText(payload);
-          if (payload.quality?.ready) payload.factual_review_done = true;
-          nextStage = payload.quality?.ready ? 'text' : 'retained';
+          if (payload.quality?.ready) { payload.factual_review_done = true; nextStage = 'text'; } else {
+            // Un rechazo factual descarta este borrador y busca otra alternativa (si quedan presupuestos); la fuente no queda castigada 30 dias.
+            const policyFailure = payload.quality?.failed?.includes('editorial_policy');
+            const search = normalizeSearch(payload.search, Date.now());
+            return rejectCandidate({ search, candidate: candidateOf(payload.selection_summary), code: policyFailure ? 'content_rejected' : 'quality_failed',
+              reason: policyFailure ? (payload.editorial_policy?.reason || 'El texto no supera la politica editorial') : `La revisión factual rechazó el borrador: ${(payload.quality?.semanticReview?.issues || []).join(' | ').slice(0, 200) || 'sin detalle'}`,
+              failedArticle: payload, flag: policyFailure ? 'editorial_policy' : 'semantic_review' });
+          }
         } else if (!vetReviewIsValid(payload)) {
           // Revision semantica del articulo completo, en un pulso propio y ANTES de portada, infografia y borrador. Falla cerrado.
           const search = normalizeSearch(payload.search, Date.now());

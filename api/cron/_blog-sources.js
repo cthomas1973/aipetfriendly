@@ -38,7 +38,7 @@ export const BUDGET_KINDS = Object.freeze({
 export const COOLDOWN_HOURS = Object.freeze({
   http_403: 24, http_429: 24, http_5xx: 24, http_error: 24, timeout: 24, dns: 24, connection: 24,
   http_404: 720, redirect_unauthorized: 720, redirect_path_not_allowed: 720, too_large: 720, unsupported_content: 720,
-  insufficient_content: 336, topic_not_supported: 720, quality_failed: 720, semantic_unavailable: 1, semantic_budget_exhausted: 6,
+  insufficient_content: 336, topic_not_supported: 720, quality_failed: 48, semantic_unavailable: 1, semantic_budget_exhausted: 6,
   article_review_unavailable: 24,
   domain_not_allowed: null, path_not_allowed: null, vet_validation: null, policy_rejected: null,
   semantic_rejected: null, duplicate_topic: null, content_rejected: null, article_semantic_rejected: null,
