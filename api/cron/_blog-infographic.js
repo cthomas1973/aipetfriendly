@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import opentype from 'opentype.js';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ArrowRight, Bath, Bed, Briefcase, Building2, Calendar, Cat, ChevronDown, ClipboardList, Droplet, FileText, Heart, Home, Info, MessageCircle, NotebookPen, Phone, Pill, Shield, Smartphone, Soup, Users } from 'lucide-react';
@@ -14,7 +18,6 @@ const ICONS = { home: Home, caregiver: Users, residence: Building2, food: Soup, 
   history: FileText, agenda: NotebookPen, safety: Shield, wellbeing: Heart, cat: Cat, info: Info };
 const LAYOUTS = ['comparison', 'scene', 'record', 'conversation', 'timeline', 'relationship'];
 const normalized = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-const escape = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function infographicContentHash(article) {
   return crypto.createHash('sha256').update(JSON.stringify({ title: article.title, content: article.content, sources: article.sources?.map((source) => ({ url: source.url, hash: source.text_sha256 })), plan: article.visual_plan, version: INFOGRAPHIC_VERSION })).digest('hex');
@@ -69,10 +72,28 @@ function lines(text, maximum) {
   }
   return result;
 }
+// El texto se dibuja como trazados con una fuente empaquetada (api/cron/assets/):
+// librsvg usa las fuentes del sistema y el runtime serverless de Vercel no tiene
+// ninguna, lo que dejaba la infografia con rectangulos en lugar de letras.
+const FONT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets', 'Baloo2-Bold.ttf');
+let cachedFont;
+function loadFont() {
+  if (!cachedFont) {
+    const data = readFileSync(FONT_PATH);
+    cachedFont = opentype.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+  }
+  return cachedFont;
+}
 function label(text, x, y, { size = 32, width = 25, color = BRAND.ink, centered = false } = {}) {
   const wrapped = lines(text, width);
   if (wrapped.length > 3) throw new Error('Texto no legible en el bloque visual');
-  return wrapped.map((line, index) => `<text x="${x}" y="${y + index * (size + 6)}" font-size="${size}" fill="${color}" ${centered ? 'text-anchor="middle"' : ''}>${escape(line)}</text>`).join('');
+  const font = loadFont();
+  return wrapped.map((line, index) => {
+    const left = centered ? x - font.getAdvanceWidth(line, size) / 2 : x;
+    const glyphs = font.getPath(line, left, y + index * (size + 6), size);
+    if (!glyphs.commands.length) throw new Error('La fuente empaquetada no cubre el texto de la infografia');
+    return `<path d="${glyphs.toPathData(2)}" fill="${color}" stroke="${color}" stroke-width="${(size * 0.035).toFixed(2)}" stroke-linejoin="round"/>`;
+  }).join('');
 }
 function icon(name, x, y, size = 66, color = BRAND.green) {
   return `<g transform="translate(${x} ${y})">${renderToStaticMarkup(React.createElement(ICONS[name] || Info, { width: size, height: size, color, strokeWidth: 1.8 }))}</g>`;
@@ -110,7 +131,7 @@ function drawSection(section, top, height, index) {
   let context = '';
   if (section.layout === 'comparison') context = items.map((_, itemIndex) => {
     const center = 90 + column * (itemIndex + 0.5);
-    return `<circle cx="${center}" cy="${top + 80}" r="37" fill="white" stroke="${itemIndex % 2 ? '#bfdbfe' : '#a7d7b5'}" stroke-width="3"/>`;
+    return `<circle cx="${center}" cy="${top + 80}" r="34" fill="white" stroke="${itemIndex % 2 ? '#bfdbfe' : '#a7d7b5'}" stroke-width="3"/>`;
   }).join('');
   if (section.layout === 'record') context = `<rect x="76" y="${top + 51}" width="928" height="${height - 57}" rx="12" fill="white" stroke="#bfd6c5" stroke-width="3"/><path d="M102 ${top + 79} H976" stroke="#e2e8f0" stroke-width="2"/>`;
   if (section.layout === 'scene') context = `<path d="M78 ${top + 75} V${top + 160} H1002 V${top + 75}" stroke="#a7d7b5" stroke-width="3" fill="none"/>`;
@@ -136,7 +157,7 @@ export async function renderVisualInfographic(article, { logoLoader = loadOffici
     + (article.visual_plan.kind === 'process' && index < article.visual_plan.sections.length - 1 ? arrow(531, 185 + index * sectionStep + sectionHeight - 10, true, 18) : '')).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="white"/>
     <path d="M0 176 H1080" stroke="${BRAND.warm}" stroke-width="7"/>
-    <g font-family="Segoe UI, DejaVu Sans, sans-serif" font-weight="bold">${label(article.visual_plan.title, 52, 60, { size: titleSize, width: 33, color: BRAND.green })}
+    <g>${label(article.visual_plan.title, 52, 60, { size: titleSize, width: 33, color: BRAND.green })}
     ${sections}<rect x="0" y="1125" width="1080" height="225" fill="${BRAND.light}"/>
     ${label(article.visual_plan.closing, 280, 1185, { size: 29, width: 43, color: BRAND.green })}
     ${label('AiPetFriendly · Organización cotidiana', 280, 1295, { size: 23, width: 58 })}

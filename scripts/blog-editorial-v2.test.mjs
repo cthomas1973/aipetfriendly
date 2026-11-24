@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
-import { analyzeEditorialDepth, classifyEditorialSafety, runEditorialGeneration, saveExistingDraftRevision, validateEditorialArticle, verifyInternalLinks } from '../api/cron/_blog-editorial-pipeline.js';
+import { analyzeEditorialDepth, buildFallbackVisualPlan, classifyEditorialSafety, runEditorialGeneration, saveExistingDraftRevision, validateEditorialArticle, verifyInternalLinks } from '../api/cron/_blog-editorial-pipeline.js';
 import { INFOGRAPHIC_VERSION, OFFICIAL_LOGO_SHA256, infographicContentHash, loadOfficialLogo, renderVisualInfographic, validateVisualPlan } from '../api/cron/_blog-infographic.js';
 import { approveRevisionSemantically } from '../api/cron/_blog-vet-review.js';
 import { HOLIDAY_BRIEF, HOLIDAY_CONTENT, HOLIDAY_VISUAL_PLAN } from './editorial/cat-holiday-revision.mjs';
@@ -103,5 +103,13 @@ describe('infografia visual oficial', () => {
   });
   it('no sustituye el logo por un recurso inventado', async () => {
     await expect(renderVisualInfographic(article(), { logoLoader: async () => Buffer.from('fake-logo') })).rejects.toThrow('Logo no autorizado');
+  });
+  it('el plan de respaldo no arrastra marcadores markdown a los textos del grafico', () => {
+    const content = ['Intro del articulo.', '## ## Usá incentivos atractivos', 'a', '## Practicá en un ambiente controlado', 'b',
+      '### Incorporá juegos en el entrenamiento', 'c', '## Para cerrar', 'Con práctica lograrás que responda con alegría. ¡A disfrutar juntos!'].join('\n\n');
+    const plan = buildFallbackVisualPlan({ title: 'Cómo enseñar a tu perro a venir', content });
+    const texts = plan.sections.flatMap((section) => [section.heading, ...section.items.map((item) => item.label)]);
+    expect(texts.some((text) => text.includes('#'))).toBe(false);
+    expect(plan.sections[0].heading).toBe('Usá incentivos atractivos');
   });
 });

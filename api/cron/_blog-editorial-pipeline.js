@@ -153,8 +153,8 @@ export function applyHumanDecisionPolicy(article) {
 
 export function buildFallbackVisualPlan(article) {
   const headings = [...String(article.content || '').matchAll(/^#{2,3} (.+)$/gm)]
-    .map((match) => ({ heading: match[1].trim(), anchor: match[0] }))
-    .filter((item) => !/^(?:para cerrar|conclusi[oó]n|cierre)$/i.test(item.heading))
+    .map((match) => ({ heading: match[1].replace(/^[#\s]+/, '').trim(), anchor: match[0] }))
+    .filter((item) => item.heading && !/^(?:para cerrar|conclusi[oó]n|cierre)$/i.test(item.heading))
     .slice(0, 5);
   if (headings.length < 3) return null;
 
