@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { draftSelectedArticle, runEditorialGeneration, validateEditorialArticle } from '../api/cron/_blog-editorial-pipeline.js';
+import { applyHumanDecisionPolicy, draftSelectedArticle, runEditorialGeneration, validateEditorialArticle, validationSnapshotOf } from '../api/cron/_blog-editorial-pipeline.js';
 import { discoverFromIndex, hostReady, reserveBudget, rotationOrder, runSelectionPulse, speciesOfPost } from '../api/cron/_blog-candidates.js';
 import { assessTopicSupport, verifySourceCandidate } from '../api/cron/_blog-source-verifier.js';
 import { BUDGET_KINDS, SEARCH_LIMITS, classifyCandidateUrl, getSourceById, seedCandidates } from '../api/cron/_blog-sources.js';
@@ -135,7 +135,10 @@ function createDb({ posts = [], candidates = [] } = {}) {
         || review.meta_md5 !== md5(payload.meta_description)) {
         return { data: null, error: { message: 'Borrador bloqueado: falta una revision semantica veterinaria aprobada para este texto' } };
       }
-      const post = { id: `post-${db.posts.length + 1}`, title: payload.title, slug: payload.slug, content: payload.content, topic: payload.topic, status: 'draft', species: payload.species };
+      const post = { id: `post-${db.posts.length + 1}`, title: payload.title, slug: payload.slug, content: payload.content, topic: payload.topic, status: 'draft', species: payload.species,
+        quality: structuredClone(payload.quality),
+        // Replica del guard 063: sin snapshot que coincida con el contenido el borrador nace invalidado y no puede publicarse.
+        invalidated: payload.validation_snapshot?.content !== payload.content || payload.validation_snapshot?.title !== payload.title };
       db.posts.push(post);
       Object.assign(run, { stage: 'complete', lease_token: null, lease_until: null }); db.active = null; db.lastSuccess = Date.now(); db.nextEligible = Date.now() + 36 * HOUR;
       trigger(run);
@@ -583,7 +586,7 @@ describe('ciclo completo hasta el borrador', () => {
     expect([...db.assets.keys()].some((path) => path.endsWith('/cover.png'))).toBe(true);
     expect([...db.assets.keys()].some((path) => /infographic-/.test(path))).toBe(true);
     expect(db.posts).toHaveLength(2);
-    expect(db.posts.at(-1)).toMatchObject({ status: 'draft', species: 'dog' });
+    expect(db.posts.at(-1)).toMatchObject({ status: 'draft', species: 'dog', invalidated: false });
     expect([...db.candidates.values()][0]).toMatchObject({ status: 'used', permanent: true });
     expect(db.nextEligible - db.lastSuccess).toBe(36 * HOUR);
   });
@@ -614,6 +617,30 @@ describe('ciclo completo hasta el borrador', () => {
     expect(requestJson.mock.calls[0][0]).toContain('Especie: perros');
     expect(requestJson.mock.calls[0][0]).toContain('hechos de Dogs Trust');
     expect(requestJson.mock.calls[0][0]).not.toMatch(/Cats Protection/);
+  });
+  const runDraftCycle = async (db, quality) => {
+    let result;
+    for (let step = 0; step < 12 && result?.stage !== 'complete'; step += 1) {
+      result = await runEditorialGeneration(db, { fetcher: routes({ [BASICS]: html(page('Basics')) }), requestJson: makeAi(), generateCover: png, reviewText: async (article) => article,
+        drafter: async (admin, selection) => ({ ...fullArticle(selection), quality }),
+        selector: (admin, run, payload, deps) => runSelectionPulse(admin, run, payload, { ...deps, limits: { poolMin: 0 } }) });
+      vi.setSystemTime(Date.now() + MINUTE);
+    }
+    return result;
+  };
+
+  it('un borrador con fallos blandos de calidad (editorial, seo) llega como borrador con advertencias para el administrador', async () => {
+    const db = createDb({ candidates: [dog('/dog-advice/training/basics', 'Basics')] });
+    expect(await runDraftCycle(db, { ready: false, failed: ['editorial', 'seo'] })).toMatchObject({ stage: 'complete' });
+    expect(db.posts).toHaveLength(1);
+    expect(db.posts[0]).toMatchObject({ status: 'draft', quality: { ready: true, humanDecisionRequired: true, review_warnings: ['editorial', 'seo'] }, invalidated: false });
+  });
+
+  it.each([['infografia'], ['duplication'], ['brand'], ['editorial_policy'], ['safety']])('un fallo duro de calidad (%s) en la redaccion sigue descartando el borrador', async (name) => {
+    const db = createDb({ candidates: [dog('/dog-advice/training/basics', 'Basics')] });
+    await runDraftCycle(db, { ready: false, failed: ['editorial', name] });
+    expect(db.posts).toHaveLength(0);
+    expect(db.attempts.some((attempt) => attempt.reason_code === 'quality_failed' || attempt.reason_code === 'content_rejected')).toBe(true);
   });
 });
 
@@ -738,18 +765,50 @@ describe('revision semantica del articulo completo antes de crear el borrador', 
     expect(db.attempts.at(-1).detail).toContain('tratamiento casero');
   });
 
-  it('un rechazo de la revision factual descarta el borrador, vuelve a buscar y la fuente queda 48 h en espera (no 30 dias)', async () => {
+  it('un rechazo factual (blando) no descarta el borrador: pasa a revision humana con los motivos y la fuente no queda castigada', async () => {
     const db = createDb();
     const { run, candidate } = articleRun(db, { article: { factual_review_done: false } });
-    const options = pipelineOptions({ reviewText: vi.fn(async (article) => ({ ...article, quality: { ...article.quality, ready: false, failed: ['semantic_review'], semanticReview: { approved: false, issues: ['La cita no respalda la afirmacion.'] } } })) });
-    const result = await runEditorialGeneration(db, options);
-    expect(result).toMatchObject({ stage: 'text', phase: 'select', rejected: 'quality_failed' });
-    expect(db.runs.get(run.id).payload.phase).toBe('select');
-    expect(candidate).toMatchObject({ status: 'rejected', permanent: false });
-    expect(candidate.next_retry_at).toBe(Date.now() + 48 * HOUR);
+    const issues = ['La cita no respalda la afirmacion.'];
+    const reviewText = vi.fn(async (article) => ({ ...article, quality: { ...article.quality, ready: false, failed: ['semantic_review'], semanticReview: { approved: false, issues } } }));
+    const options = pipelineOptions({ reviewText });
+    expect(await runEditorialGeneration(db, options)).toMatchObject({ stage: 'text' });
+    const saved = db.runs.get(run.id).payload;
+    expect(saved).toMatchObject({ factual_review_done: true, quality: { ready: true, humanDecisionRequired: true, review_warnings: ['semantic_review'], semanticReview: { issues } } });
+    expect(candidate.status).toBe('selected');
+    expect(db.attempts.filter((attempt) => attempt.outcome === 'content_rejected')).toHaveLength(0);
+    let result;
+    for (let step = 0; step < 8 && result?.stage !== 'complete'; step += 1) {
+      result = await runEditorialGeneration(db, options);
+      vi.setSystemTime(Date.now() + MINUTE);
+    }
+    expect(result).toMatchObject({ stage: 'complete' });
+    expect(db.posts).toHaveLength(1);
+    expect(db.posts[0]).toMatchObject({ status: 'draft', quality: { ready: true, humanDecisionRequired: true, review_warnings: ['semantic_review'] }, invalidated: false });
+  });
+
+  it.each([['politica editorial', ['editorial_policy']], ['duplicado', ['duplication']], ['seguridad', ['safety']]])(
+    'un rechazo factual con fallo duro (%s) sigue descartando el borrador y la fuente queda 48 h en espera (no 30 dias)', async (_name, failed) => {
+      const db = createDb();
+      const { run, candidate } = articleRun(db, { article: { factual_review_done: false } });
+      const options = pipelineOptions({ reviewText: vi.fn(async (article) => ({ ...article, quality: { ...article.quality, ready: false, failed, semanticReview: { approved: false, issues: ['x'] } } })) });
+      const result = await runEditorialGeneration(db, options);
+      expect(result).toMatchObject({ stage: 'text', phase: 'select', rejected: failed[0] === 'editorial_policy' ? 'content_rejected' : 'quality_failed' });
+      expect(db.runs.get(run.id).payload.phase).toBe('select');
+      expect(candidate).toMatchObject({ status: 'rejected' });
+      expect(options.generateCover).not.toHaveBeenCalled();
+      expect(db.posts).toHaveLength(0);
+    });
+
+  it('la revision veterinaria del articulo sigue bloqueando un borrador con advertencias blandas', async () => {
+    const db = createDb();
+    articleRun(db, { article: { quality: { ready: true, failed: ['editorial'], review_warnings: ['editorial'], humanDecisionRequired: true } } });
+    const options = pipelineOptions({ requestJson: makeAi(OK_VERDICT, { ...OK_ARTICLE_VERDICT, requires_veterinary_validation: true }) });
+    expect(await runEditorialGeneration(db, options)).toMatchObject({ rejected: 'article_semantic_rejected' });
     expect(options.generateCover).not.toHaveBeenCalled();
     expect(db.posts).toHaveLength(0);
   });
+
+
 
   it('si ya se agoto el presupuesto de revisiones del articulo no se llama al modelo y se descarta', async () => {
     const db = createDb();
@@ -777,7 +836,7 @@ describe('revision semantica del articulo completo antes de crear el borrador', 
     const db = createDb();
     const { run, payload } = articleRun(db, { article: { cover_url: 'https://example.test/c.png', infographic_url: 'https://example.test/i.png' } });
     const saved = db.runs.get(run.id);
-    saved.payload = { ...payload, infographic_validation: { valid: true, content_hash: infographicContentHash(payload) } };
+    saved.payload = { ...payload, infographic_validation: { valid: true, content_hash: infographicContentHash(payload) }, validation_snapshot: validationSnapshotOf(payload) };
     saved.stage = 'finalize';
     const options = pipelineOptions();
     const result = await runEditorialGeneration(db, options);
@@ -799,7 +858,7 @@ describe('revision semantica del articulo completo antes de crear el borrador', 
     const tampered = { ...payload, vet_review: review, ...change };
     expect(vetReviewIsValid(tampered)).toBe(false);
     // Incluso con la infografia revalidada para el texto nuevo, la aprobacion veterinaria ya no corresponde a este texto.
-    db.runs.get(run.id).payload = { ...tampered, infographic_validation: { valid: true, content_hash: infographicContentHash(tampered) } };
+    db.runs.get(run.id).payload = { ...tampered, infographic_validation: { valid: true, content_hash: infographicContentHash(tampered) }, validation_snapshot: validationSnapshotOf(tampered) };
     db.runs.get(run.id).stage = 'finalize';
     const result = await runEditorialGeneration(db, pipelineOptions());
     expect(result).toMatchObject({ stage: 'text', phase: 'article_review' });
@@ -812,7 +871,7 @@ describe('revision semantica del articulo completo antes de crear el borrador', 
     const { run, payload } = articleRun(db, { article: { cover_url: 'https://example.test/c.png', infographic_url: 'https://example.test/i.png' } });
     const review = await reviewArticleSemantically(payload, async () => OK_ARTICLE_VERDICT);
     const tampered = { ...payload, vet_review: review, content: `${payload.content}\n\nAplicá 5 ml de una loción cada ocho horas.` };
-    db.runs.get(run.id).payload = { ...tampered, infographic_validation: { valid: true, content_hash: infographicContentHash(tampered) } };
+    db.runs.get(run.id).payload = { ...tampered, infographic_validation: { valid: true, content_hash: infographicContentHash(tampered) }, validation_snapshot: validationSnapshotOf(tampered) };
     db.runs.get(run.id).stage = 'finalize';
     expect(await runEditorialGeneration(db, pipelineOptions())).toMatchObject({ stage: 'retained' });
     expect(db.calls).not.toContain('finish_blog_generation');
@@ -830,6 +889,32 @@ describe('revision semantica del articulo completo antes de crear el borrador', 
     expect(db.posts).toHaveLength(0);
     saved.payload = { ...payload, vet_review: await reviewArticleSemantically(payload, async () => OK_ARTICLE_VERDICT) };
     expect((await db.rpc('finish_blog_generation', { p_id: run.id, p_token: claimed.lease_token })).data).toMatchObject({ status: 'draft' });
+  });
+});
+
+describe('applyHumanDecisionPolicy', () => {
+  const source = { id: 's', url: BASICS, text_sha256: 'h', consulted_at: '2026-01-01T00:00:00Z' };
+  it('solo habilita fallos blandos y deja constancia de los motivos', () => {
+    const article = { sources: [source], quality: { ready: false, failed: ['editorial', 'sources', 'semantic_review'] } };
+    expect(applyHumanDecisionPolicy(article)).toEqual({ eligible: true, hard: [], soft: ['editorial', 'sources', 'semantic_review'] });
+    expect(article.quality).toMatchObject({ ready: true, humanDecisionRequired: true, review_warnings: ['editorial', 'sources', 'semantic_review'] });
+  });
+  it('un borrador sin fallos no queda marcado para decision humana', () => {
+    const article = { sources: [source], quality: { ready: true, failed: [] } };
+    expect(applyHumanDecisionPolicy(article)).toMatchObject({ eligible: true, soft: [] });
+    expect(article.quality.humanDecisionRequired).toBe(false);
+  });
+  it.each([
+    ['un criterio duro', { sources: [source], quality: { ready: false, failed: ['seo', 'duplication'] } }, 'duplication'],
+    ['requiere validacion veterinaria', { sources: [source], quality: { ready: false, failed: [], veterinaryReviewRequired: true } }, 'veterinary_review'],
+    ['sin fuente verificada', { sources: [], quality: { ready: false, failed: ['seo'] } }, 'source_missing'],
+    ['no ready sin motivo conocido', { sources: [source], quality: { ready: false, failed: [] } }, 'quality_unknown'],
+    ['sin calidad', { sources: [source] }, 'veterinary_review'],
+  ])('rechaza: %s', (_name, article, hard) => {
+    const result = applyHumanDecisionPolicy(article);
+    expect(result.eligible).toBe(false);
+    expect(result.hard).toContain(hard);
+    expect(article.quality?.ready).not.toBe(true);
   });
 });
 

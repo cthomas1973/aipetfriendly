@@ -123,8 +123,33 @@ export function AdminBlogSection() {
   const drafts = rows.filter((row) => row.status === 'draft');
   const published = rows.filter((row) => row.status === 'published');
 
+  const WARNING_LABELS: Record<string, string> = {
+    editorial: 'estructura o extensión editorial',
+    sources: 'respaldo de las afirmaciones en la fuente',
+    seo: 'metadatos SEO',
+    links: 'enlaces internos',
+    semantic_review: 'revisión factual automática',
+  };
+
+  const reviewWarningsOf = (row: BlogPost) => {
+    const quality = row.editorialMetadata?.quality;
+    if (!quality?.humanDecisionRequired && !quality?.review_warnings?.length) return null;
+    const names = quality.review_warnings?.length ? quality.review_warnings : (quality.failed || []);
+    return {
+      labels: names.map((name) => WARNING_LABELS[name] || name),
+      issues: quality.semanticReview?.issues || [],
+    };
+  };
+
+  const handlePublish = (row: BlogPost) => {
+    const warnings = reviewWarningsOf(row);
+    if (warnings && !window.confirm(`Este borrador no superó los controles automáticos de: ${warnings.labels.join(', ')}. ¿Confirmás que lo revisaste y querés publicarlo igual?`)) return;
+    void persistChange(row, 'published', false);
+  };
+
   const renderRow = (row: BlogPost) => {
     const isEditing = editingId === row.id;
+    const reviewWarnings = reviewWarningsOf(row);
     const vetReviewInvalidated = row.editorialMetadata?.vet_review?.approved === false;
     const pendingValidation = row.editorialMetadata?.quality?.ready === false
       || row.editorialMetadata?.quality?.veterinaryReviewRequired === true
@@ -266,7 +291,7 @@ export function AdminBlogSection() {
               <button
                 type="button"
                 disabled={saving || pendingValidation}
-                onClick={() => persistChange(row, 'published', false)}
+                onClick={() => handlePublish(row)}
                 className="flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-70"
               >
                 <CheckCircle2 size={14} /> Publicar
@@ -289,6 +314,15 @@ export function AdminBlogSection() {
               >
                 <Trash2 size={14} /> Descartar
               </button>
+            )}
+          </div>
+        )}
+        {reviewWarnings && (
+          <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-bold">Requiere tu decisión: no superó todos los controles automáticos</p>
+            <p className="mt-1">Pendiente de revisión humana en: {reviewWarnings.labels.join(', ')}. La revisión veterinaria sí fue aprobada; leelo y decidí si publicarlo, editarlo o descartarlo.</p>
+            {reviewWarnings.issues.length > 0 && (
+              <ul className="mt-2 list-disc pl-5">{reviewWarnings.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
             )}
           </div>
         )}

@@ -59,6 +59,39 @@ describe('revision administrativa real', () => {
     expect(screen.queryByText(/quedó invalidada/)).toBeNull();
   });
 
+  it('muestra los motivos de un borrador con advertencias blandas y publica solo si el administrador confirma', async () => {
+    api.products.mockResolvedValue([]); api.runs.mockResolvedValue([]);
+    const row = { id: 'warn', title: 'Con advertencias', slug: 'con-advertencias', content: 'Texto', status: 'draft', createdAt: '2026-10-27T18:00:00Z', estimatedReadingTime: 3,
+      editorialMetadata: { editorial_version: 'editorial-v2', infographic_validation: { valid: true }, vet_review: { approved: true, confidence: 0.95 },
+        quality: { ready: true, failed: ['semantic_review'], veterinaryReviewRequired: false, humanEditorialReviewRequired: true, humanDecisionRequired: true,
+          review_warnings: ['semantic_review'], semanticReview: { approved: false, issues: ['La cita no respalda la afirmacion.'] } } } };
+    api.posts.mockResolvedValue([row]);
+    api.save.mockResolvedValue({ ...row, status: 'published' });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    render(<AdminBlogSection />);
+    expect(await screen.findByText('Requiere tu decisión: no superó todos los controles automáticos')).toBeTruthy();
+    expect(screen.getByText(/revisión factual automática/)).toBeTruthy();
+    expect(screen.getByText('La cita no respalda la afirmacion.')).toBeTruthy();
+    const button = screen.getByRole('button', { name: 'Publicar' });
+    expect(button.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(button);
+    expect(api.save).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+    expect(api.save.mock.calls[0][0].status).toBe('published');
+    expect(confirm).toHaveBeenCalledTimes(2);
+    confirm.mockRestore();
+  });
+
+  it('un borrador con advertencias sigue bloqueado si la aprobacion veterinaria fue invalidada', async () => {
+    api.products.mockResolvedValue([]); api.runs.mockResolvedValue([]);
+    api.posts.mockResolvedValue([{ id: 'warn2', title: 'Invalidado', slug: 'invalidado', content: 'Texto', status: 'draft', createdAt: '2026-10-27T18:00:00Z', estimatedReadingTime: 3,
+      editorialMetadata: { editorial_version: 'editorial-v2', infographic_validation: { valid: true }, vet_review: { approved: false, invalidated: true },
+        quality: { ready: true, failed: ['seo'], veterinaryReviewRequired: false, humanEditorialReviewRequired: true, humanDecisionRequired: true, review_warnings: ['seo'] } } }]);
+    render(<AdminBlogSection />);
+    expect((await screen.findByRole('button', { name: 'Publicar' })).hasAttribute('disabled')).toBe(true);
+  });
+
   it('devuelve a draft un artículo generado publicado cuando se edita', async () => {
     api.products.mockResolvedValue([]); api.runs.mockResolvedValue([]);
     const row = { id: 'post', title: 'Artículo generado', slug: 'articulo-generado', content: 'Texto inicial', status: 'published', createdAt: '2026-10-27T18:00:00Z', estimatedReadingTime: 3,

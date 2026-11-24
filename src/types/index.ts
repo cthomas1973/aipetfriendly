@@ -411,7 +411,8 @@ export interface BlogEditorialMetadata {
   vet_review?: { approved: boolean; confidence?: number | null; issues?: string[]; invalidated?: boolean; invalidated_reason?: string; invalidated_at?: string };
   quality?: { ready: boolean; failed: string[]; veterinaryReviewRequired: boolean; humanEditorialReviewRequired: boolean;
     criteria?: Record<string, boolean>; wordCount?: number; reviewScope?: string;
-    semanticReview?: { approved: boolean; issues: string[] }; depth?: { wordCount: number; repetition: number; consistentVoseo: boolean } };
+    semanticReview?: { approved: boolean; issues: string[] }; depth?: { wordCount: number; repetition: number; consistentVoseo: boolean };
+    review_warnings?: string[]; humanDecisionRequired?: boolean };
 }
 
 export interface BlogSearchState {

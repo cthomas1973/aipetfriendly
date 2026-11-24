@@ -130,6 +130,27 @@ export function validateEditorialArticle(article, sources, history = []) {
     failed: Object.keys(criteria).filter((key) => !criteria[key]), wordCount: words };
 }
 
+// Criterios de calidad editorial que no justifican descartar el borrador: llegan al administrador con sus motivos.
+// El resto (politica editorial, seguridad veterinaria, duplicados, infografia, marca) sigue bloqueando.
+export const SOFT_CRITERIA = Object.freeze(['editorial', 'sources', 'seo', 'links', 'semantic_review']);
+
+// Un borrador con solo fallos blandos pasa a revision humana (ready=true, review_warnings con los motivos). Nunca publica.
+export function applyHumanDecisionPolicy(article) {
+  const quality = article.quality;
+  if (!quality || quality.veterinaryReviewRequired === true) return { eligible: false, hard: ['veterinary_review'], soft: [] };
+  const failed = Array.isArray(quality.failed) ? [...new Set(quality.failed)] : [];
+  const hard = failed.filter((name) => !SOFT_CRITERIA.includes(name));
+  const hasSource = Array.isArray(article.sources) && article.sources.some((source) => source?.url && source.text_sha256 && source.consulted_at);
+  if (!hasSource) hard.push('source_missing');
+  if (quality.ready !== true && failed.length === 0) hard.push('quality_unknown');
+  if (hard.length > 0) return { eligible: false, hard, soft: [] };
+  const soft = failed.filter((name) => SOFT_CRITERIA.includes(name));
+  quality.ready = true;
+  quality.review_warnings = soft;
+  quality.humanDecisionRequired = soft.length > 0;
+  return { eligible: true, hard: [], soft };
+}
+
 export function buildFallbackVisualPlan(article) {
   const headings = [...String(article.content || '').matchAll(/^#{2,3} (.+)$/gm)]
     .map((match) => ({ heading: match[1].trim(), anchor: match[0] }))
@@ -231,7 +252,7 @@ export async function draftArticleFromSource({ topic, source, history, requestJs
   ].join('\n');
   const article = await requestJson(prompt);
   if (Array.isArray(article.sections)) {
-    article.content = article.sections.map((section) => [section.heading ? `## ${section.heading}` : '',
+    article.content = article.sections.map((section) => [section.heading ? `## ${String(section.heading).replace(/^[#\s]+/, '')}` : '',
       ...(Array.isArray(section.paragraphs) ? section.paragraphs.map((paragraph) => {
         const text = String(paragraph.text || '');
         return Number.isInteger(paragraph.source_quote_index) && excerpts[paragraph.source_quote_index]
@@ -421,6 +442,10 @@ export async function draftSelectedArticle(admin, selection, requestJson = reque
   }
 }
 
+export const validationSnapshotOf = (article) => ({ content: article.content, title: article.title, cover_url: article.cover_url,
+  source_name: article.source_name, sources: article.sources.map(({ text, ...source }) => source),
+  visual_plan: article.visual_plan, infographic_url: article.infographic_url });
+
 const summarizeSelection = (selection) => {
   const { source, ...summary } = selection;
   return { ...summary, source: { id: source.id, url: source.url, title: source.title, organization: source.organization, consulted_at: source.consulted_at, http_status: source.http_status } };
@@ -484,6 +509,8 @@ export async function runEditorialGeneration(admin, { origin = 'scheduled', gene
       if (payload.content && payload.quality?.ready) {
         if (!payload.factual_review_done) {
           payload = await reviewText(payload);
+          // Un rechazo factual (blando) no descarta el borrador: queda para decision del administrador con los motivos a la vista.
+          if (!payload.quality?.ready && !payload.quality?.failed?.includes('editorial_policy')) applyHumanDecisionPolicy(payload);
           if (payload.quality?.ready) { payload.factual_review_done = true; nextStage = 'text'; } else {
             // Un rechazo factual descarta este borrador y busca otra alternativa (si quedan presupuestos); la fuente no queda castigada 30 dias.
             const policyFailure = payload.quality?.failed?.includes('editorial_policy');
@@ -537,7 +564,10 @@ export async function runEditorialGeneration(admin, { origin = 'scheduled', gene
           return rejectCandidate({ search, candidate, code: 'content_rejected', reason: policy.reason || 'El borrador requiere validación veterinaria', failedArticle: article, flag: 'editorial_policy' });
         }
         if (article.quality?.ready !== true) {
-          return rejectCandidate({ search, candidate, code: 'quality_failed', reason: `El borrador no superó los controles: ${(article.quality?.failed || []).join(', ') || 'calidad'}`, failedArticle: article, flag: 'quality' });
+          const decision = applyHumanDecisionPolicy(article);
+          if (!decision.eligible) {
+            return rejectCandidate({ search, candidate, code: 'quality_failed', reason: `El borrador no superó los controles: ${decision.hard.join(', ') || 'calidad'}`, failedArticle: article, flag: 'quality' });
+          }
         }
         payload = article;
         nextStage = 'text';
@@ -557,21 +587,23 @@ export async function runEditorialGeneration(admin, { origin = 'scheduled', gene
       payload.infographic_alt = `${payload.visual_plan.title}. ${payload.visual_plan.sections.map((section) => section.heading).join('. ')}.`;
       payload.infographic_caption = 'Resumen visual de las ideas desarrolladas en este articulo. Fuentes consultadas al final.';
       payload.infographic_validation = { valid: true, content_hash: visualHash, logo_sha256: OFFICIAL_LOGO_SHA256, renderer: INFOGRAPHIC_VERSION };
+      // finish_blog_generation lee el payload guardado (y el guardado libera la reserva): el snapshot debe persistirse en esta etapa.
+      payload.validation_snapshot = validationSnapshotOf(payload);
       nextStage = 'finalize';
     } else if (run.stage === 'finalize') {
       const finalPolicyRejection = await retainForEditorialPolicy(payload);
       if (finalPolicyRejection) return finalPolicyRejection;
       if (payload.editorial_version === EDITORIAL_VERSION) {
         const validGraphic = payload.infographic_validation?.valid === true && payload.infographic_validation.content_hash === infographicContentHash(payload);
-        if (!validGraphic) {
+        const snapshot = payload.validation_snapshot;
+        const validSnapshot = snapshot?.content === payload.content && snapshot?.title === payload.title && snapshot?.cover_url === payload.cover_url
+          && snapshot?.infographic_url === payload.infographic_url;
+        if (!validGraphic || !validSnapshot) {
           payload.quality.ready = false;
-          payload.quality.failed.push('infographic_changed_after_validation');
+          payload.quality.failed.push(validGraphic ? 'validation_snapshot_missing' : 'infographic_changed_after_validation');
           await save('retained');
           return { runId: run.id, stage: 'retained' };
         }
-        payload.validation_snapshot = { content: payload.content, title: payload.title, cover_url: payload.cover_url,
-          source_name: payload.source_name, sources: payload.sources.map(({ text, ...source }) => source),
-          visual_plan: payload.visual_plan, infographic_url: payload.infographic_url };
       }
       if (!vetReviewIsValid(payload)) {
         // Sin una aprobacion semantica vigente para ESTE texto no se crea ningun borrador: se vuelve a la revision.
