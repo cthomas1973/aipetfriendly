@@ -12,6 +12,8 @@ describe('Filtro del asesor en servidor', () => {
     expect(eligibleShoppingProduct(pet, { ...dimensions, stage:['cachorro'] }, 'alimentos')).toBe(false);
     expect(eligibleShoppingProduct(pet, { ...dimensions, size:['grande'] }, 'alimentos')).toBe(false);
     expect(eligibleShoppingProduct(pet, dimensions, 'salud')).toBe(false);
+    expect(eligibleShoppingProduct(pet, dimensions, 'salud', Date.now(), { allowHealth:true })).toBe(true);
+    expect(eligibleShoppingProduct(pet, null, 'salud', Date.now(), { allowHealth:true })).toBe(false);
     expect(eligibleShoppingProduct({ ...pet, birth_date:'2026-01-01' }, dimensions, 'alimentos', Date.parse('2026-06-01'))).toBe(false);
   });
   it('exige el RPC para sugerencias generales y asesor, sin confiar en etiquetas heredadas', async () => {

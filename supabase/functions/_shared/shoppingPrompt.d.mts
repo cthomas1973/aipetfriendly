@@ -9,4 +9,5 @@ export function eligibleShoppingProduct(
   dimensions: { species: string[]; stage: string[]; size: string[] } | null,
   category: string,
   now?: number,
+  options?: { allowHealth?: boolean },
 ): boolean;

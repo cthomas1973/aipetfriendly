@@ -19,4 +19,5 @@ export function filterEligibleShopProducts<T extends CatalogRow>(
   pet: PetProfile,
   products: T[],
   fetchDimensions: (ids: string[]) => PromiseLike<{ data: unknown; error: unknown }>,
+  options?: { allowHealth?: boolean },
 ): Promise<Array<{ product: T; global: Required<Pick<ShopProduct, 'research' | 'verifiedDimensions' | 'compatibilityEvidence'>> }>>;

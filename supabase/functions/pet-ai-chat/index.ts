@@ -549,6 +549,12 @@ const SYNONYMS: Record<string, string[]> = {
   antiparasitario: ["antipulgas", "pulgas"],
   suplemento: ["vitaminas", "complemento"],
   articulaciones: ["articular", "condroprotector"],
+  articular: ["condroprotector", "articulaciones"],
+  artrosis: ["condroprotector"],
+  artritis: ["condroprotector"],
+  huesos: ["condroprotector"],
+  glucosamina: ["condroprotector"],
+  condroitina: ["condroprotector"],
   cucha: ["cama"],
   arena: ["sanitaria"],
 };
@@ -571,7 +577,7 @@ const FALLBACK_KEYWORDS: Array<{ pattern: RegExp; query: string; grupo: string }
   { pattern: /champ[uú]|shampoo/i, query: "shampoo", grupo: "higiene" },
   { pattern: /antipulgas|garrapatas/i, query: "antipulgas", grupo: "higiene" },
   { pattern: /arena sanitaria|arena para gato/i, query: "arena sanitaria", grupo: "higiene" },
-  { pattern: /suplemento|condroprotector|articula/i, query: "suplemento articular", grupo: "higiene" },
+  { pattern: /suplemento|condroprotector|articula|glucosamina|condroitina|artrosis|artritis/i, query: "condroprotector articular", grupo: "salud" },
   { pattern: /alimento hipoalerg[eé]nic\w*|dieta hipoalerg[eé]nic\w*/i, query: "alimento hipoalergenico", grupo: "alimentos" },
   { pattern: /cama ortop[eé]dica|colchoneta/i, query: "cama ortopedica", grupo: "descanso" },
   { pattern: /correa|pretal|arn[eé]s/i, query: "correa pretal", grupo: "accesorios" },
@@ -685,7 +691,7 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
   if (error || !Array.isArray(data)) throw new Error("No se pudo consultar el catalogo de sugerencias.");
   type Candidate = { id: string; title: string; thumbnail: string | null; price: number | null; permalink: string; grupo: string; research_record: unknown; researched_at: string | null; approval_status: string };
   const eligible = await filterEligibleShopProducts(pet, data as Candidate[],
-    ids => admin.rpc("get_shop_compatibility", { p_products: ids }));
+    ids => admin.rpc("get_shop_compatibility", { p_products: ids }), { allowHealth: true });
   const scored = eligible.map(({ product }) => product)
     .map((p) => {
       const titleNormalized = normalizeText(p.title);
