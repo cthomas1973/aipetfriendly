@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { useChat } from '../hooks/useChat';
+import { CHAPITA_QR_PRODUCT, isOwnProductDuplicate } from '../data/ownProducts';
 import { fetchShopCatalog, fetchShopPriceHistory, markShopProductViewed } from '../lib/supabase';
 import { assessShopProduct, assessShopProductForPets, filterShopProducts, SHOP_CATEGORIES, shopComparisonConclusion, shopMoney, shopPetProfile } from '../lib/shop';
 import type { ShopFilters, ShopView } from '../lib/shop';
@@ -121,7 +122,7 @@ export function ShopSection() {
     setView('reference');
     setFilters({ category: 'all', species: '', stage: '', size: '', need: '', query: '', freeShipping: false, fastDelivery: false, sort: 'relevance' });
     void fetchShopCatalog(controller.signal).then(result => {
-      if (!controller.signal.aborted) { setCatalog(result.products); setWarning(result.warning); }
+      if (!controller.signal.aborted) { setCatalog(result.products.filter(p => !isOwnProductDuplicate(p))); setWarning(result.warning); }
     }).catch(e => {
       if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'No se pudo cargar la tienda.');
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -257,6 +258,17 @@ export function ShopSection() {
     {!!recommendations.length && <section className={box}><h3 className="font-bold">Recomendaciones principales</h3>
       {recommendations.map(p => <p key={p.id} className="mt-2 text-sm">{p.title}: {assessment(p).reason}</p>)}
     </section>}
+    {CHAPITA_QR_PRODUCT.active && <article className={`${box} border border-purple-100`} aria-label="Producto propio de AiPetFriendly">
+      <img src={CHAPITA_QR_PRODUCT.imageUrl} alt={CHAPITA_QR_PRODUCT.title} className="mb-2 h-24 w-24 rounded-xl object-cover" loading="lazy" />
+      <p className="text-[11px] font-bold uppercase tracking-wide text-purple-700">Producto propio de AiPetFriendly{CHAPITA_QR_PRODUCT.featured ? ' · Destacado' : ''}</p>
+      <h3 className="font-bold">{CHAPITA_QR_PRODUCT.title}</h3>
+      <p className="text-xs">{CHAPITA_QR_PRODUCT.category} · {CHAPITA_QR_PRODUCT.material}</p>
+      <p className="my-2 text-sm text-slate-600">{CHAPITA_QR_PRODUCT.description}</p>
+      <div className="mt-3"><a href={CHAPITA_QR_PRODUCT.purchaseUrl} target="_blank" rel="noopener noreferrer"
+        aria-label={`Comprar ${CHAPITA_QR_PRODUCT.title} en Mercado Libre`} className="inline-flex items-center gap-1 text-sm font-bold text-emerald-700">
+        Comprar chapita QR <ExternalLink size={14} />
+      </a></div>
+    </article>}
     {loading ? <p role="status">Cargando tienda...</p> : !products.length ? <p className={box}>No hay productos para este filtro por ahora. Prueba otra categoria o busqueda.</p> :
       <div className="grid gap-3 sm:grid-cols-2">{products.map(p => {
         const a = assessment(p);

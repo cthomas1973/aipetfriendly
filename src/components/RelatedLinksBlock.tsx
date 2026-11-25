@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, Newspaper, ShoppingBag } from 'lucide-react';
 import { getPetGuideBySlug } from '../data/petGuides';
+import { getActiveChapitaQrProduct } from '../data/ownProducts';
 import { fetchBeneficioProductoById, fetchBlogPostBySlug } from '../lib/supabase';
 import { fetchProductAffiliateLink, validateAffiliateLink } from '../lib/affiliateLink';
 import type { BlogPost, PublicBeneficioProducto } from '../types';
@@ -65,7 +66,7 @@ export function RelatedLinksBlock({
       })
       .catch(() => {
         if (!cancelled) {
-          setProductResult(null);
+          setProductResult({ productId: relatedProductId, product: null, link: null });
         }
       });
     return () => {
@@ -73,7 +74,12 @@ export function RelatedLinksBlock({
     };
   }, [relatedProductId]);
 
-  if (!relatedGuide && !relatedBlogPost && !relatedProduct) {
+  // Respaldo: la chapita QR solo se ofrece cuando no hay producto tematico
+  // (sin relatedProductId, inactivo o con error) y una vez resuelta la consulta.
+  const productResolved = !relatedProductId || productResult?.productId === relatedProductId;
+  const fallbackProduct = productResolved && !relatedProduct ? getActiveChapitaQrProduct() : null;
+
+  if (!relatedGuide && !relatedBlogPost && !relatedProduct && !fallbackProduct) {
     return null;
   }
 
@@ -152,6 +158,31 @@ export function RelatedLinksBlock({
           {productCardContent}
         </article>
       ))}
+
+      {fallbackProduct && (
+        <a
+          href={fallbackProduct.purchaseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block rounded-2xl border border-purple-200 bg-purple-50 p-4 transition hover:bg-purple-100"
+        >
+          <span className="flex items-center gap-3">
+            <img
+              src={fallbackProduct.imageUrl}
+              alt=""
+              loading="lazy"
+              className="h-10 w-10 flex-shrink-0 rounded-full bg-white object-cover"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-purple-700">
+                Recomendado por AiPetFriendly
+              </span>
+              <span className="block font-bold text-slate-900">{fallbackProduct.title}</span>
+              <span className="mt-1 block text-xs text-slate-600">{fallbackProduct.shortDescription}</span>
+            </span>
+          </span>
+        </a>
+      )}
     </div>
   );
 }

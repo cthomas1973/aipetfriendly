@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RelatedLinksBlock } from './RelatedLinksBlock';
+import { CHAPITA_QR_PRODUCT } from '../data/ownProducts';
 
 const mocks = vi.hoisted(() => ({
   guide: vi.fn(),
@@ -72,7 +73,7 @@ describe('RelatedLinksBlock', () => {
     expect(link.getAttribute('rel')).toBe('sponsored nofollow noopener noreferrer');
   });
 
-  it.each(['inactivo', 'error de lectura'])('no muestra un CTA para un producto %s', async reason => {
+  it.each(['inactivo', 'error de lectura'])('para un producto %s ofrece la chapita QR propia sin afiliado', async reason => {
     if (reason === 'inactivo') mocks.product.mockResolvedValue(null);
     else mocks.product.mockRejectedValue(new Error('Lectura fallida'));
     const { container } = render(
@@ -80,9 +81,34 @@ describe('RelatedLinksBlock', () => {
     );
 
     await screen.findByRole('link', { name: /Nota local/ });
-    await waitFor(() => expect(mocks.product).toHaveBeenCalled());
-    expect(container.querySelector('a[target="_blank"]')).toBeNull();
+    const chapita = await screen.findByRole('link', { name: /Chapita identificatoria QR AiPetFriendly/ });
+    expect(chapita.getAttribute('href')).toBe(CHAPITA_QR_PRODUCT.purchaseUrl);
+    expect(chapita.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(container.querySelectorAll('a[target="_blank"]')).toHaveLength(1);
     expect(screen.queryByText('Producto local')).toBeNull();
+  });
+
+  it('sin producto tematico asignado muestra la chapita QR como respaldo', async () => {
+    render(<RelatedLinksBlock relatedBlogSlug="nota-local" />);
+
+    const chapita = await screen.findByRole('link', { name: /Chapita identificatoria QR AiPetFriendly/ });
+    expect(chapita.getAttribute('href')).toBe(CHAPITA_QR_PRODUCT.purchaseUrl);
+    expect(mocks.product).not.toHaveBeenCalled();
+  });
+
+  it('con producto tematico no muestra la chapita QR', async () => {
+    render(<RelatedLinksBlock relatedProductId="product-a" />);
+
+    await screen.findByRole('link', { name: /Producto local/ });
+    expect(screen.queryByText(/Chapita identificatoria QR/)).toBeNull();
+  });
+
+  it('no muestra la chapita mientras se resuelve el producto tematico', () => {
+    mocks.product.mockReturnValue(new Promise(() => {}));
+    mocks.link.mockReturnValue(new Promise(() => {}));
+    const { container } = render(<RelatedLinksBlock relatedProductId="product-a" />);
+
+    expect(container.querySelector('a')).toBeNull();
   });
 
   it('retira el CTA anterior mientras carga otro producto', async () => {

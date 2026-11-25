@@ -51,7 +51,7 @@ describe('OffersSection afiliacion', () => {
     const { container } = render(<OffersSection />);
 
     const title = await screen.findByText(product.title);
-    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector('a[rel~="sponsored"]')).toBeNull();
     expect(title.closest('article')?.getAttribute('aria-disabled')).toBeNull();
     fireEvent.click(title);
     expect(openWindow).not.toHaveBeenCalled();
@@ -72,6 +72,6 @@ describe('OffersSection afiliacion', () => {
     const { container } = render(<OffersSection />);
 
     await screen.findByText(/No hay productos para este filtro/);
-    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector('a[rel~="sponsored"]')).toBeNull();
   });
 });

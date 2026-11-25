@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShopSection } from './ShopSection';
+import { CHAPITA_QR_PRODUCT } from '../data/ownProducts';
 import type { Pet, ShopProduct } from '../types';
 
 const mocks=vi.hoisted(()=>({catalog:vi.fn(),history:vi.fn(),viewed:vi.fn(),ask:vi.fn(),state:{pets:[] as Pet[],selectedPetId:null as string|null,user:null as {id:string}|null,setSelectedPetId:vi.fn()}}));
@@ -118,6 +119,26 @@ describe('Tienda integrada',()=>{
     const comparison=screen.getByRole('region',{name:'Comparador'});
     expect(await within(comparison).findByText('$ 120,00')).toBeTruthy();
     expect(screen.getAllByRole('button',{name:'Historial de precios'}).every(button=>!button.hasAttribute('disabled'))).toBe(true);
+  });
+  it('muestra la chapita QR propia aunque no este en el catalogo y sin duplicarla si se importa',async()=>{
+    const imported={...food,id:'imported-chapita',externalId:'MLA4239242408',title:'Chapa de identificacion QR AiPetFriendly',link:'https://articulo.mercadolibre.com.ar/MLA-4239242408-chapa?matt_tool=x',category:'tecnologia' as const};
+    mocks.catalog.mockResolvedValue({products:[food,imported],warning:null});
+    render(<ShopSection />);await screen.findByRole('heading',{name:food.title});
+    const own=screen.getByRole('article',{name:'Producto propio de AiPetFriendly'});
+    expect(within(own).getByRole('heading',{name:CHAPITA_QR_PRODUCT.title})).toBeTruthy();
+    const buy=within(own).getByRole('link',{name:/Comprar Chapita identificatoria QR AiPetFriendly/});
+    expect(buy.getAttribute('href')).toBe(CHAPITA_QR_PRODUCT.purchaseUrl);
+    expect(buy.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(screen.queryByRole('heading',{name:imported.title})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Catalogo completo'}));
+    expect(screen.queryByRole('heading',{name:imported.title})).toBeNull();
+    expect(screen.getAllByRole('heading',{name:CHAPITA_QR_PRODUCT.title})).toHaveLength(1);
+  });
+  it('la chapita sigue visible si el catalogo falla y los demas productos no se alteran',async()=>{
+    mocks.catalog.mockRejectedValue(new Error('Catalogo caido'));
+    render(<ShopSection />);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('article',{name:'Producto propio de AiPetFriendly'})).toBeTruthy();
   });
   it('catalogo completo y vista cualquiera de las mascotas reutilizan una sola carga global',async()=>{
     render(<ShopSection />);await screen.findByRole('heading',{name:food.title});

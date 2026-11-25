@@ -2,7 +2,7 @@ import { ChangeEvent, FormEvent, ReactNode, useEffect, useId, useMemo, useRef, u
 import {
   Camera, CheckCircle2, ChevronLeft, ChevronRight,
   Circle, ClipboardList, Download, Heart, Mail,
-  MapPin, MessageCircle, PawPrint, Pill, Plus, QrCode, Shield, Syringe, Tag, Trash2, Utensils, X,
+  MapPin, MessageCircle, PawPrint, Pill, Plus, QrCode, Shield, ShoppingBag, Syringe, Tag, Trash2, Utensils, X,
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { useClinical } from '../hooks/useClinical';
@@ -17,6 +17,7 @@ import { ActivePetBanner } from './ActivePetSelector';
 import { BlogTeaser } from './BlogTeaser';
 import { ClinicalPdfQuota } from './ClinicalPdfQuota';
 import { PET_ACCESS_MESSAGES, recoveryOnlyPetUpdate } from '../lib/petAccess';
+import { getActiveChapitaQrProduct } from '../data/ownProducts';
 import { readNotificationProfile, writeNotificationProfile } from '../lib/notificationProfile';
 import {
   buildCountryOptionsForPicker,
@@ -2418,6 +2419,7 @@ export function PetsSection() {
 
   /* ─── IDENTIFICACION (cartel / chapita / mensajes) ────── */
   if (view === 'identificacion' && pet) {
+    const chapitaQrProduct = getActiveChapitaQrProduct();
     const tagStatusLabel: Record<PetTagRequestStatus, string> = {
       requested: 'Solicitada',
       pending_payment: 'Pendiente de pago',
@@ -2513,6 +2515,29 @@ export function PetsSection() {
           )}
         </div>
       </div>
+
+      {!idLoading && !linkedTagCode && chapitaQrProduct && (
+        <div className="rounded-3xl border border-purple-100 bg-purple-50 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <img src={chapitaQrProduct.imageUrl} alt="" loading="lazy"
+              className="h-16 w-16 shrink-0 rounded-2xl bg-white object-cover" />
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900">¿Todavía no tenés la chapita QR?</h3>
+              <p className="mt-1 text-sm font-semibold text-purple-700">
+                Identificá a tu mascota y facilitá su regreso a casa.
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Con nuestra chapita QR, quien encuentre a {pet.name} podrá acceder a su perfil público y
+            enviarte un mensaje sin ver tus datos personales.
+          </p>
+          <a href={chapitaQrProduct.purchaseUrl} target="_blank" rel="noopener noreferrer"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-purple-500 py-3 font-bold text-white">
+            <ShoppingBag size={18} /> Comprar chapita QR
+          </a>
+        </div>
+      )}
 
       {tagScannerOpen && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4">
