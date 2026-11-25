@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { ImagePlus, Lock, MapPinned, Send, Stethoscope, X } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { SuggestedProductCard } from './SuggestedProductCard';
+import { ChatMessageText } from './ChatMessageText';
 import { useAppState } from '../context/AppStateContext';
 import { isNativeAndroidApp, showInterstitialForNonPremium } from '../lib/mobileAds';
 
@@ -255,7 +256,7 @@ export function ChatSection() {
                         />
                       )}
                       {m.isError && <p className="mb-1 text-xs font-bold uppercase tracking-wide text-rose-500">No se pudo responder</p>}
-                      {m.content}
+                      {m.role === 'assistant' && !m.isError ? <ChatMessageText content={m.content} /> : m.content}
                     </div>
                     {m.role === 'assistant' && m.isError && (
                       <button
@@ -321,7 +322,7 @@ export function ChatSection() {
                         className="mb-2 max-h-56 w-full rounded-xl object-cover"
                       />
                     )}
-                    <p>{m.content}</p>
+                    {m.role === 'assistant' ? <ChatMessageText content={m.content} /> : <p>{m.content}</p>}
                     <p className={`mt-1 text-[11px] ${m.role === 'user' ? 'text-sky-100' : 'text-slate-400'}`}>
                       {new Date(m.createdAt).toLocaleString('es-AR')}
                     </p>

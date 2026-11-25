@@ -49,6 +49,15 @@ describe('Protección de recomendaciones en respuestas IA', () => {
     expect(response).not.toContain('Producto compatible');
   });
 
+  it('usa la respuesta real del modelo en lugar de un texto fijo', () => {
+    const a = safeAiResponse({ question:'¿Cómo le tomo la fiebre?', modelAnswer:'Usá un termómetro rectal lubricado. Lo normal es entre 38 y 39,2 °C.' });
+    const b = safeAiResponse({ question:'¿Dónde busco a Luna?', modelAnswer:'Revisá los alrededores y avisá en grupos vecinales.' });
+    expect(a).toContain('38 y 39,2');
+    expect(b).toContain('grupos vecinales');
+    expect(a).not.toBe(b);
+    expect(a).toContain('no reemplaza la consulta veterinaria');
+  });
+
   it('mantiene una respuesta general de cuidados sin recomendaciones comerciales concretas', () => {
     const response = safeAiResponse({
       question:'¿Cómo cuido su hidratación?',

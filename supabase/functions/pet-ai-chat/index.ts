@@ -396,7 +396,7 @@ function buildPrompt(
     "8. La dosificacion debe ser concreta y practica (por ejemplo mg/kg, ml, comprimidos o porcion diaria segun corresponda), evitando afirmaciones absolutas.",
     "9. Debe quedar MUY claro que es una sugerencia inicial y que requiere validacion veterinaria previa, especialmente en cachorros/geriatrico, embarazo, enfermedad cronica o medicacion concomitante.",
     "10. Cierra siempre con: 'Esta guia es solo orientativa y no reemplaza la consulta veterinaria presencial.'",
-    "11. IMPORTANTE - Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (shampoo, champu, antipulgas, alimento especial, suplemento, cepillo, arena sanitaria, cama, correa, etc.), SIEMPRE agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
+    "11. IMPORTANTE - Si tu respuesta sugiere el uso de un producto o medicacion en venta libre (shampoo, champu, antipulgas, alimento especial, suplemento, cepillo, arena sanitaria, cama, correa, bebedero o fuente de agua, etc.), SIEMPRE agrega al FINAL de tu respuesta, en una linea aparte, exactamente este formato (nunca lo menciones ni lo expliques al usuario, es un dato tecnico oculto para el sistema):",
     'PRODUCT_SUGGESTION: {"query": "palabras clave del producto en español", "grupo": "alimentos|accesorios|higiene|descanso"}',
     "Ejemplo: si recomendaste 'un baño con champú suave' para la piel de un perro, agrega: PRODUCT_SUGGESTION: {\"query\": \"shampoo perro piel sensible\", \"grupo\": \"higiene\"}",
     "Si no corresponde sugerir ningun producto (por ejemplo, si la respuesta es solo orientacion general o requiere atencion veterinaria urgente), NO agregues esa linea.",
@@ -576,6 +576,7 @@ const FALLBACK_KEYWORDS: Array<{ pattern: RegExp; query: string; grupo: string }
   { pattern: /cama ortop[eé]dica|colchoneta/i, query: "cama ortopedica", grupo: "descanso" },
   { pattern: /correa|pretal|arn[eé]s/i, query: "correa pretal", grupo: "accesorios" },
   { pattern: /cepillo|deslanador/i, query: "cepillo deslanador", grupo: "higiene" },
+  { pattern: /bebederos?|fuentes? de agua|dispensador(es)? de agua/i, query: "bebedero fuente", grupo: "accesorios" },
 ];
 
 function findFallbackKeyword(text: string): { query: string; grupo: string } | null {
@@ -663,7 +664,7 @@ function buildSuggestedProductLink(permalink: string): string | null {
 async function findSuggestedProduct(admin: any, query: string, grupoHint: string | null, pet: PetRow): Promise<SuggestedProduct | null> {
   const baseWords = normalizeText(query)
     .split(/\s+/)
-    .filter((w) => w.length >= 4)
+    .filter((w) => w.length >= 4 && !["para", "como", "ante", "sobre", "entre"].includes(w))
     .slice(0, 6);
 
   const words = expandWithSynonyms(baseWords);
@@ -671,17 +672,15 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
 
   const orFilter = words.map((w) => `title.ilike.%${w}%`).join(",");
 
-  let dbQuery = admin
+  const dbQuery = admin
     .from("beneficios_productos")
     .select("id,title,thumbnail,price,permalink,grupo,research_record,researched_at,approval_status")
     .eq("active", true).eq("approval_status", "approved")
     .or(orFilter)
-    .limit(20);
+    .limit(40);
 
-  if (grupoHint && ["alimentos", "accesorios", "higiene", "descanso"].includes(grupoHint)) {
-    dbQuery = dbQuery.eq("grupo", grupoHint);
-  }
-
+  // El grupo es solo una pista: el modelo puede acertar el rubro pero no el grupo
+  // exacto del catalogo (ej. bebederos viven en "tecnologia"), asi que solo desempata.
   const { data, error } = await dbQuery;
   if (error || !Array.isArray(data)) throw new Error("No se pudo consultar el catalogo de sugerencias.");
   type Candidate = { id: string; title: string; thumbnail: string | null; price: number | null; permalink: string; grupo: string; research_record: unknown; researched_at: string | null; approval_status: string };
@@ -690,7 +689,14 @@ async function findSuggestedProduct(admin: any, query: string, grupoHint: string
   const scored = eligible.map(({ product }) => product)
     .map((p) => {
       const titleNormalized = normalizeText(p.title);
-      const score = words.reduce((acc, w) => acc + (titleNormalized.includes(w) ? 1 : 0), 0);
+      // Coincidencia por palabra (tolerando plural) para que "agua" no puntue con "aguacate".
+      const titleTokens = titleNormalized.split(/[^a-z0-9]+/).filter(Boolean).map((t) => t.replace(/s$/, ""));
+      const matches = words.reduce((acc, w) => {
+        const word = w.replace(/s$/, "");
+        const hit = titleTokens.some((t) => t === word || (word.length >= 6 && t.startsWith(word)));
+        return acc + (hit ? 1 : 0);
+      }, 0);
+      const score = matches > 0 && grupoHint && p.grupo === grupoHint ? matches + 0.5 : matches;
       return { ...p, score };
     })
     .filter((p) => p.score > 0)
@@ -807,7 +813,7 @@ serve(async (req) => {
       const limit = resolveLimitByTier(settingsRowData, "guest");
 
       const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(ai.answer);
-      const { recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
+      const { cleanAnswer: modelAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
       let suggestedProduct: SuggestedProduct | null = null;
       if (query && payload.mode !== "shopping") {
         try {
@@ -819,7 +825,7 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         ...ai,
-        answer: safeAiResponse({ mode: payload.mode, question, products: suggestedProduct ? [suggestedProduct] : [], searched: Boolean(query) }),
+        answer: safeAiResponse({ mode: payload.mode, question, modelAnswer, products: suggestedProduct ? [suggestedProduct] : [], searched: Boolean(query) }),
         suggestedProduct,
         recommendVetVisit,
         // No se persiste la imagen de un visitante (no hay historial guest en DB).
@@ -978,7 +984,7 @@ serve(async (req) => {
       const insightAi = await callAiModel(insightPrompt, null);
 
       const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(insightAi.answer);
-      const { recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
+      const { cleanAnswer: modelAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
 
       let suggestedProduct: SuggestedProduct | null = null;
       if (query) {
@@ -990,7 +996,7 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({
-        answer: safeAiResponse({ mode: "weight_insight", question }),
+        answer: safeAiResponse({ mode: "weight_insight", question, modelAnswer }),
         suggestedProduct,
         recommendVetVisit,
       }), {
@@ -1099,7 +1105,7 @@ serve(async (req) => {
     const ai = await callAiModel(prompt, imageDataUrl, payload.mode === "shopping");
 
     const { cleanAnswer: cleanAnswerProduct, query, grupo } = extractProductSuggestion(ai.answer);
-    const { recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
+    const { cleanAnswer: modelAnswer, recommendVetVisit } = extractVetVisitRecommendation(cleanAnswerProduct);
     let suggestedProduct: SuggestedProduct | null = null;
     if (query && payload.mode !== "shopping") {
       try {
@@ -1109,7 +1115,7 @@ serve(async (req) => {
       }
     }
     ai.answer = safeAiResponse({
-      mode: payload.mode, question, hasImage: Boolean(imageDataUrl),
+      mode: payload.mode, question, modelAnswer, hasImage: Boolean(imageDataUrl),
       products: payload.mode === "shopping" ? authorizedProducts : suggestedProduct ? [suggestedProduct] : [],
       searched: Boolean(query),
     });
