@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { AdBanner } from './AdBanner';
 import { RelatedLinksBlock } from './RelatedLinksBlock';
+import { PetGuideContent } from './PetGuideContent';
 import { useAppState } from '../context/AppStateContext';
 import {
   PET_GUIDE_CATEGORY_LABELS,
@@ -206,7 +207,6 @@ function GuideDetail({ slug }: { slug: string }) {
     );
   }
 
-  const Icon = CATEGORY_ICONS[guide.category];
   const isPublished = isGuidePublished(guide.slug);
 
   return (
@@ -226,87 +226,20 @@ function GuideDetail({ slug }: { slug: string }) {
         </div>
       )}
 
-      <header>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">
-          <Icon size={16} />
-          {PET_GUIDE_CATEGORY_LABELS[guide.category]} · {guide.readingTime} de lectura
-          {isRecentlyPublished(getEffectiveReleaseDateIso(guide.slug)) && (
+      <PetGuideContent guide={guide}
+        badge={isRecentlyPublished(getEffectiveReleaseDateIso(guide.slug)) && (
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
               Nuevo
             </span>
           )}
-          {guide.petTypes.map((petType) => (
-            <span
-              key={petType}
-              className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal text-slate-600"
-            >
-              {PET_GUIDE_TYPE_LABELS[petType]}
-            </span>
-          ))}
-        </div>
-        <h1 className="mt-2 text-2xl font-extrabold text-slate-900 md:text-3xl">{guide.title}</h1>
-        <p className="mt-2 text-sm text-slate-600 md:text-base">{guide.summary}</p>
-      </header>
-
-      {guide.coverImage && (
-        <img
-          src={guide.coverImage.src}
-          alt={guide.coverImage.alt}
-          loading="lazy"
-          className="max-h-[32rem] w-full rounded-2xl bg-slate-100 object-contain"
-        />
-      )}
-
-      <AdBanner adSenseSlotId="5896439448" forcePublic />
-
-      <article className="space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-emerald-100 md:p-6">
-        {guide.sections.map((section) => (
-          <div key={section.heading}>
-            <h2 className="font-bold text-slate-900">{section.heading}</h2>
-            {section.paragraphs.map((paragraph, index) => (
-              <p key={index} className="mt-2 text-sm leading-relaxed text-slate-700 md:text-base">
-                {paragraph}
-              </p>
-            ))}
-            {section.image && (
-              <img
-                src={section.image.src}
-                alt={section.image.alt}
-                loading="lazy"
-                className="mt-3 max-h-[28rem] w-full rounded-xl bg-slate-100 object-contain"
-              />
-            )}
-          </div>
-        ))}
-      </article>
-
-      {guide.references && guide.references.length > 0 && (
-        <aside className="space-y-2 border-t border-slate-200 pt-4" aria-labelledby="guide-references-heading">
-          <h2 id="guide-references-heading" className="text-sm font-bold text-slate-800">Fuentes consultadas</h2>
-          <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
-            {guide.references.map((reference) => (
-              <li key={reference.url}>
-                <a href={reference.url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline">
-                  {reference.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
-
-      <RelatedLinksBlock
-        relatedGuideSlug={guide.relatedGuideSlug}
-        relatedBlogSlug={guide.relatedBlogSlug}
-        relatedProductId={guide.relatedProductId}
-        isAdmin={isAdmin}
+        beforeArticle={<AdBanner adSenseSlotId="5896439448" forcePublic />}
+        afterReferences={<RelatedLinksBlock
+          relatedGuideSlug={guide.relatedGuideSlug}
+          relatedBlogSlug={guide.relatedBlogSlug}
+          relatedProductId={guide.relatedProductId}
+          isAdmin={isAdmin}
+        />}
       />
-
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        Esta guía es orientativa y no reemplaza una consulta veterinaria. Ante dudas puntuales
-        sobre la salud de tu mascota, consultá con un profesional o usá el consultorio de IA de
-        AiPetFriendly como primera orientación.
-      </div>
 
       <AdBanner adSenseSlotId="8331031096" forcePublic />
 

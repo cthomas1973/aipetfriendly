@@ -183,6 +183,34 @@ Genera carpeta `dist/` lista para deploy en Vercel, Netlify, GitHub Pages, etc.
 
 ## 📚 Guías
 
+### Constructor administrativo de guías (contenido estático)
+
+En **Admin > Guías** se puede cargar el título, resumen, portada, texto por secciones
+o importar un `.txt` con encabezados `##`. Cada sección permite elegir una imagen,
+moverla/intercambiarla con otra sección y ubicarla antes o después del texto. El orden
+de las secciones mantiene juntas sus imágenes. La previsualización utiliza el mismo
+componente que las páginas públicas y ofrece vista móvil de 360 px.
+
+Todas las imágenes se preparan como JPG de 1600×900 (16:9), con márgenes cuando
+es necesario, sin recortar ni deformar el original. Las guías existentes conservan
+sus imágenes. **Guardar borrador** conserva texto e imágenes en IndexedDB de ese
+navegador, por cuenta; **Recuperar borrador** reemplaza la edición previa con confirmación.
+No se sincronizan borradores entre dispositivos y deben guardarse antes de salir.
+
+**Exportar paquete para integrar** descarga un ZIP con `public/guides/<slug>/`,
+el objeto TypeScript y las instrucciones de integración. No publica, no modifica
+el repositorio desde el navegador y no crea una tabla en Supabase. Copiar las imágenes
+y agregar el objeto a [PET_GUIDES](src/data/petGuides.ts); después ejecutar
+`npm run build`, revisar e integrar/desplegar con autorización.
+
+Sin la confirmación de revisión editorial/veterinaria, el objeto lleva
+`publicationStatus: 'pending_veterinary_review'`. Una edición posterior quita la
+confirmación. Al habilitarlo se verifica una fecha futura separada por al menos
+7 días de la última guía habilitada del repositorio. Si se integran varios ZIP,
+revisar sus fechas en conjunto: el panel no conoce paquetes todavía no desplegados.
+Al llegar la fecha de una guía programada, actualizar el build para que
+[guides-feed.json](public/guides-feed.json), sitemap, notificaciones y reels la incluyan.
+
 ### Setup Supabase Detallado
 Ver [SUPABASE_SETUP.md](SUPABASE_SETUP.md)
 

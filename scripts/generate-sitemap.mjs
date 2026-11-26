@@ -9,6 +9,7 @@ import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { loadEnv } from 'vite';
 import { isBlogPostPubliclyAvailable } from '../shared/seoMeta.mjs';
+import { extractStaticGuides } from './_guide-feed.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = loadEnv('production', path.join(__dirname, '..'), 'VITE_');
@@ -62,18 +63,7 @@ const source = readFileSync(guidesFile, 'utf8');
 // (+ coverImage.src y relatedProductId si existen) dentro del array PET_GUIDES
 // (los campos siempre aparecen en ese orden en cada guia). Se usa regex (no
 // import directo) porque este script corre con Node sobre un .ts.
-const guideBlockRegex =
-  /slug:\s*'([^']+)'[\s\S]*?title:\s*'([^']+)'[\s\S]*?category:\s*'([^']+)'[\s\S]*?publishedAt:\s*'([^']+)'[\s\S]*?summary:\s*\n?\s*'([^']+)'(?:(?:(?!slug:)[\s\S])*?coverImage:\s*\{\s*src:\s*'([^']+)')?(?:(?:(?!slug:)[\s\S])*?relatedProductId:\s*'([^']+)')?/g;
-
-const guides = [];
-let match;
-while ((match = guideBlockRegex.exec(source)) !== null) {
-  const [, slug, title, category, publishedAt, summary, coverImageSrc, relatedProductId] = match;
-  const nextGuideIndex = source.indexOf('    slug:', match.index + match[0].length);
-  const guideBlock = source.slice(match.index, nextGuideIndex === -1 ? source.length : nextGuideIndex);
-  const publicationStatus = guideBlock.match(/publicationStatus:\s*'([^']+)'/)?.[1] || null;
-  guides.push({ slug, title, category, publishedAt, summary, coverImageSrc: coverImageSrc || null, relatedProductId: relatedProductId || null, publicationStatus });
-}
+const guides = extractStaticGuides(source);
 
 if (guides.length === 0) {
   console.error('No se encontraron guias en petGuides.ts, no se genero el sitemap.');

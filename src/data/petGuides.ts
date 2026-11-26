@@ -15,6 +15,7 @@ export interface PetGuideSection {
   heading: string;
   paragraphs: string[];
   image?: PetGuideImage;
+  imagePosition?: 'before' | 'after';
 }
 
 export interface PetGuide {
