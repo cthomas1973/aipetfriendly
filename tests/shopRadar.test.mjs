@@ -130,6 +130,7 @@ describe('Radar oficial y atributos globales',()=>{
     const denied=await investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',sinGanadora);
     expect(denied).toMatchObject({status:'unsupported'});
     expect(denied.error).toContain('/products/{id}/items');
+    expect(denied.error).toContain('buy_box_winner ausente');
   });
   it('un 403 de catalogo no marca al resto del lote como fallido',async()=>{
     const finishes=[];

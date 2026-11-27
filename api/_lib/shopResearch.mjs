@@ -81,7 +81,11 @@ export async function investigateShopCandidate(candidate, token, fetcher = fetch
       if (!(error instanceof ShopProviderError) || error.code !== 'http_403') throw error;
       // /products/{id}/items puede estar denegado; la ficha oficial informa la publicacion ganadora.
       const winner = id(product.buy_box_winner?.item_id);
-      if (!winner) return denied('/products/{id}/items');
+      if (!winner) {
+        const result = denied('/products/{id}/items');
+        result.error += product.buy_box_winner ? ' La ficha trae buy_box_winner sin item_id valido.' : ' La ficha no informa publicacion ganadora (buy_box_winner ausente).';
+        return result;
+      }
       listing = { item_id: winner, category_id: product.buy_box_winner.category_id };
     }
     if (!listing) throw new ShopProviderError('catalog_has_no_accessible_listing');
