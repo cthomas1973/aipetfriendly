@@ -30,6 +30,7 @@ import { PetPublicProfileSection } from './components/PetPublicProfileSection';
 import { PublicLegalPage, PublicFooter, isPublicLegalRoute } from './components/PublicLegalPages';
 import { SiteHeader, type SiteHeaderItem } from './components/SiteHeader';
 import { appTabHref, isPermanentHome } from './lib/siteRoutes';
+import { buildAnalyticsPage, trackPageView } from './lib/analytics';
 import { RemindersLandingSection } from './components/RemindersLandingSection';
 import { FoodWeightLandingSection } from './components/FoodWeightLandingSection';
 import { AIAssistantLandingSection } from './components/AIAssistantLandingSection';
@@ -479,6 +480,30 @@ function AppContent() {
   // Sincronizar con Supabase. `authChecked` indica que ya se comprobo si hay
   // una sesion que restaurar (la Home se muestra de todos modos).
   const { syncError, authChecked = true } = useSupabaseSync();
+
+  // Medicion de paginas vistas (GTM/GA4): una vez por carga inicial y una por
+  // cada cambio real de pagina o seccion. En /?tab= la seccion visible es
+  // activeTab (cambia tambien sin tocar la URL); hasta que haya sesion se usa
+  // la pestaña pedida. El retardo descarta renders intermedios (p. ej. atras/
+  // adelante, donde activeTab se alinea con la URL un render despues).
+  const analyticsTab = isTabHomeRoute ? (user ? activeTab : requestedTab) : null;
+  const lastTrackedPageRef = useRef<string | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const page = buildAnalyticsPage({
+        pathname: normalizedPath,
+        tab: analyticsTab,
+        origin: window.location.origin ?? '',
+        title: typeof document === 'undefined' ? '' : document.title,
+      });
+      if (lastTrackedPageRef.current === page.path) {
+        return;
+      }
+      lastTrackedPageRef.current = page.path;
+      trackPageView(page);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [normalizedPath, analyticsTab]);
 
   useEffect(() => {
     if (!requestedTab) {
