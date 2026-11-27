@@ -64,7 +64,8 @@ export async function researchShopRadar({ env = process.env, fetcher = fetch } =
       if (!(error instanceof ShopProviderError)) throw error;
       result = { status: 'error', error: error.code };
       failed++;
-      if (['http_401', 'http_403', 'http_429'].includes(error.code)) tokenError = error.code;
+      // 403 es una denegacion por recurso: solo 401/429 invalidan al resto del lote.
+      if (['http_401', 'http_429'].includes(error.code)) tokenError = error.code;
     }
     await shopRpc('finish_shop_radar_research', { p_id: candidate.id, p_lease: candidate.leaseId, p_result: result }, env, fetcher);
   }

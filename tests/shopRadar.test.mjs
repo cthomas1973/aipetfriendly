@@ -117,6 +117,34 @@ describe('Radar oficial y atributos globales',()=>{
     expect(await researchShopRadar({env,fetcher})).toMatchObject({researched:2,failed:0,status:'finished'});
     expect(finishes.map(f=>f.p_result.status)).toEqual(['unsupported','ready']);
   });
+  it('catalogo con /items denegado usa la publicacion ganadora de la ficha oficial',async()=>{
+    const product={id:'MLA99999999',status:'active',name:item.title,attributes:item.attributes,
+      pictures:[{url:'https://http2.mlstatic.com/image.jpg'}],buy_box_winner:{item_id:item.id}};
+    const fetcher=vi.fn(async url=>{
+      if(url.endsWith('/products/MLA99999999/items'))return new Response('{}',{status:403});
+      if(url.endsWith('/products/MLA99999999'))return response(product);
+      return response(null);
+    });
+    expect(await investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',fetcher)).toMatchObject({status:'ready',mlaId:item.id});
+    const sinGanadora=vi.fn(async url=>url.endsWith('/items')?new Response('{}',{status:403}):response({...product,buy_box_winner:null}));
+    const denied=await investigateShopCandidate({catalogProductId:'MLA99999999'},'synthetic',sinGanadora);
+    expect(denied).toMatchObject({status:'unsupported'});
+    expect(denied.error).toContain('/products/{id}/items');
+  });
+  it('un 403 de catalogo no marca al resto del lote como fallido',async()=>{
+    const finishes=[];
+    const fetcher=vi.fn(async(url,options)=>{
+      if(url.includes('claim_shop_radar_research'))return response([
+        {id:'c1',catalogProductId:'MLA11111111',leaseId:'l1'},{id:'c2',catalogProductId:'MLA22222222',leaseId:'l2'}]);
+      if(url.includes('finish_shop_radar_research')){finishes.push(JSON.parse(options.body));return response(null);}
+      if(url.endsWith('/products/MLA11111111'))return new Response('{}',{status:403});
+      if(url.endsWith('/products/MLA22222222'))return response({id:'MLA22222222',status:'active',name:item.title,attributes:item.attributes,pictures:[{url:'https://http2.mlstatic.com/image.jpg'}]});
+      if(url.endsWith('/products/MLA22222222/items'))return response({results:[{item_id:item.id}]});
+      return response(null);
+    });
+    expect(await researchShopRadar({env,fetcher})).toMatchObject({researched:2,failed:0});
+    expect(finishes.map(f=>f.p_result.status)).toEqual(['unsupported','ready']);
+  });
   it('publicacion ajena denegada queda unsupported para decision manual, sin inventar ficha',async()=>{
     const fetcher=vi.fn(async url=>url.includes('/items/')?new Response('{"error":"access_denied"}',{status:403}):response(null));
     const result=await investigateShopCandidate({mlaId:item.id},'synthetic',fetcher);

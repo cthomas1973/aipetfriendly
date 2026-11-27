@@ -62,12 +62,28 @@ export async function investigateShopCandidate(candidate, token, fetcher = fetch
   // Los candidatos de catalogo se investigan solo con endpoints permitidos.
   if (!candidate.mlaId && candidate.catalogProductId) {
     const source = `https://api.mercadolibre.com/products/${candidate.catalogProductId}`;
-    const product = await fetchShopJson(source, { headers }, fetcher);
+    const denied = endpoint => ({ status: 'unsupported', error: `Mercado Libre denego (HTTP 403) la lectura de ${endpoint}; revisar o incorporar manualmente.` });
+    let product;
+    try {
+      product = await fetchShopJson(source, { headers }, fetcher);
+    } catch (error) {
+      if (error instanceof ShopProviderError && error.code === 'http_403') return denied('/products/{id}');
+      throw error;
+    }
     if (product.id !== candidate.catalogProductId) throw new ShopProviderError('catalog_product_mismatch');
     if (typeof product.name !== 'string' || !product.name.trim()) throw new ShopProviderError('catalog_product_incomplete');
-    const listings = await fetchShopJson(`${source}/items`, { headers }, fetcher);
-    if (!Array.isArray(listings.results)) throw new ShopProviderError('catalog_listings_unavailable');
-    const listing = listings.results.find(p => id(p.item_id || p.id));
+    let listing;
+    try {
+      const listings = await fetchShopJson(`${source}/items`, { headers }, fetcher);
+      if (!Array.isArray(listings.results)) throw new ShopProviderError('catalog_listings_unavailable');
+      listing = listings.results.find(p => id(p.item_id || p.id));
+    } catch (error) {
+      if (!(error instanceof ShopProviderError) || error.code !== 'http_403') throw error;
+      // /products/{id}/items puede estar denegado; la ficha oficial informa la publicacion ganadora.
+      const winner = id(product.buy_box_winner?.item_id);
+      if (!winner) return denied('/products/{id}/items');
+      listing = { item_id: winner, category_id: product.buy_box_winner.category_id };
+    }
     if (!listing) throw new ShopProviderError('catalog_has_no_accessible_listing');
     const mlaId = id(listing.item_id || listing.id);
     const record = researchShopItem({
